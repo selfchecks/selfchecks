@@ -51,6 +51,120 @@ describe("findCheckManifestFiles", () => {
 });
 
 describe("parseCheckManifestSource", () => {
+  it("extracts account helper browser check definitions", () => {
+    expect(
+      parseCheckManifestSource(
+        `
+          import { Frequency } from 'checkly/constructs';
+          import { Tags } from '@constants';
+          import { createBrowserCheck } from '@utils/browserCheck';
+          import { smokeCheckGroup } from './group';
+
+          createBrowserCheck('Free login', './free.login.spec.ts', {
+            tags: [Tags.App, Tags.Core, Tags.PR],
+            group: smokeCheckGroup,
+            frequency: Frequency.EVERY_24H,
+          });
+        `,
+        "src/__checks__/UI/App/core/free.login.check.ts",
+      ),
+    ).toMatchObject({
+      checks: [
+        {
+          entrypoint: "./free.login.spec.ts",
+          frequency: {
+            intervalMinutes: 1440,
+          },
+          groupKey: "smokeCheckGroup",
+          key: "Free-login",
+          name: "Free login",
+          tags: ["app", "core", "pr"],
+          type: "browser",
+        },
+      ],
+      warnings: [],
+    });
+  });
+
+  it("extracts account helper API checks with BFF request spreads", () => {
+    expect(
+      parseCheckManifestSource(
+        `
+          import { AssertionBuilder, Frequency } from 'checkly/constructs';
+          import { Tags } from '@constants';
+          import { createApiCheck } from '@utils/apiCheck';
+          import { createRequest } from '@utils/requestBff';
+          import { bffCheckGroup } from './group';
+
+          const request = createRequest('gtm.js?id=GTM-MP43XM');
+
+          createApiCheck('bff-gtm-js', {
+            tags: [Tags.API, Tags.Bff],
+            group: bffCheckGroup,
+            frequency: Frequency.EVERY_3H,
+            request: {
+              ...request,
+              assertions: [
+                AssertionBuilder.statusCode().equals(200),
+              ],
+            },
+          });
+        `,
+        "src/__checks__/API/bff/gtm.check.ts",
+      ),
+    ).toMatchObject({
+      checks: [
+        {
+          frequency: {
+            intervalMinutes: 180,
+          },
+          groupKey: "bffCheckGroup",
+          key: "bff-gtm-js",
+          name: "bff-gtm-js",
+          request: {
+            method: "GET",
+            url: "https://bff.sndsy.ru/gtm.js?id=GTM-MP43XM",
+          },
+          tags: ["api", "bff"],
+          type: "api",
+        },
+      ],
+      warnings: [],
+    });
+  });
+
+  it("extracts account helper API checks with account API request spreads", () => {
+    expect(
+      parseCheckManifestSource(
+        `
+          import { createApiCheck } from '@utils/apiCheck';
+          import { createRequest } from '@utils/request';
+
+          const request = createRequest('codeception', {
+            action: 'member.list',
+          });
+
+          createApiCheck('member.list', {
+            request: {
+              ...request,
+              assertions: [],
+            },
+          });
+        `,
+        "src/__checks__/API/core/member.list.check.ts",
+      ).checks[0],
+    ).toMatchObject({
+      key: "member-list",
+      name: "member.list",
+      request: {
+        body: "{\n            action: 'member.list',\n          }",
+        method: "POST",
+        url: "{{API_URL}}/general/api/v100/json/{{ACCOUNT}}",
+      },
+      type: "api",
+    });
+  });
+
   it("extracts browser check definitions", () => {
     expect(
       parseCheckManifestSource(

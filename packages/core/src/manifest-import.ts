@@ -23,6 +23,18 @@ export type ParsedManifestFile = {
   warnings: string[];
 };
 
+type ParsedCheck = {
+  check: Partial<CheckDefinition>;
+  constructName: "ApiCheck" | "BrowserCheck" | "createApiCheck" | "createBrowserCheck";
+};
+
+type RequestFactoryKind = "api" | "bff" | "unknown";
+
+type ParseContext = {
+  requestFactoryKind: RequestFactoryKind;
+  requestVariables: Map<string, ApiRequest>;
+};
+
 const ignoredDirectories = new Set([
   ".git",
   ".next",
@@ -106,26 +118,36 @@ export function parseCheckManifestSource(
     true,
     ts.ScriptKind.TS,
   );
+  const context = buildParseContext(sourceFile, filePath);
   const checks: CheckDefinition[] = [];
   const warnings: string[] = [];
 
+  function addParsedCheck(parsedCheck: ParsedCheck | undefined): void {
+    if (!parsedCheck) {
+      return;
+    }
+
+    const validation = checkDefinitionSchema.safeParse(parsedCheck.check);
+
+    if (validation.success) {
+      checks.push(validation.data);
+      return;
+    }
+
+    warnings.push(
+      `${filePath}: skipped ${parsedCheck.constructName} because ${validation.error.issues
+        .map((issue) => issue.message)
+        .join("; ")}`,
+    );
+  }
+
   function visit(node: ts.Node): void {
     if (ts.isNewExpression(node)) {
-      const parsedCheck = parseCheckNewExpression(node, filePath);
+      addParsedCheck(parseCheckNewExpression(node, filePath, context));
+    }
 
-      if (parsedCheck) {
-        const validation = checkDefinitionSchema.safeParse(parsedCheck.check);
-
-        if (validation.success) {
-          checks.push(validation.data);
-        } else {
-          warnings.push(
-            `${filePath}: skipped ${parsedCheck.constructName} because ${validation.error.issues
-              .map((issue) => issue.message)
-              .join("; ")}`,
-          );
-        }
-      }
+    if (ts.isCallExpression(node)) {
+      addParsedCheck(parseCheckHelperCall(node, filePath, context));
     }
 
     ts.forEachChild(node, visit);
@@ -140,15 +162,84 @@ export function parseCheckManifestSource(
   };
 }
 
+function buildParseContext(sourceFile: ts.SourceFile, filePath: string): ParseContext {
+  const requestFactoryKind = getRequestFactoryKind(sourceFile);
+  const requestVariables = new Map<string, ApiRequest>();
+
+  sourceFile.forEachChild((node) => {
+    if (!ts.isVariableStatement(node)) {
+      return;
+    }
+
+    for (const declaration of node.declarationList.declarations) {
+      if (
+        ts.isIdentifier(declaration.name) &&
+        declaration.initializer &&
+        ts.isCallExpression(declaration.initializer) &&
+        getExpressionName(declaration.initializer.expression) === "createRequest"
+      ) {
+        const request = inferCreateRequest(
+          declaration.initializer,
+          requestFactoryKind,
+          filePath,
+        );
+
+        if (request) {
+          requestVariables.set(declaration.name.text, request);
+        }
+      }
+    }
+  });
+
+  return {
+    requestFactoryKind,
+    requestVariables,
+  };
+}
+
+function getRequestFactoryKind(sourceFile: ts.SourceFile): RequestFactoryKind {
+  for (const statement of sourceFile.statements) {
+    if (!ts.isImportDeclaration(statement)) {
+      continue;
+    }
+
+    const importClause = statement.importClause;
+    const moduleSpecifier = statement.moduleSpecifier;
+
+    if (
+      !importClause?.namedBindings ||
+      !ts.isNamedImports(importClause.namedBindings) ||
+      !ts.isStringLiteral(moduleSpecifier)
+    ) {
+      continue;
+    }
+
+    const importsCreateRequest = importClause.namedBindings.elements.some(
+      (element) =>
+        (element.propertyName?.text ?? element.name.text) === "createRequest",
+    );
+
+    if (!importsCreateRequest) {
+      continue;
+    }
+
+    if (moduleSpecifier.text.endsWith("/requestBff")) {
+      return "bff";
+    }
+
+    if (moduleSpecifier.text.endsWith("/request")) {
+      return "api";
+    }
+  }
+
+  return "unknown";
+}
+
 function parseCheckNewExpression(
   node: ts.NewExpression,
   filePath: string,
-):
-  | {
-      check: Partial<CheckDefinition>;
-      constructName: "ApiCheck" | "BrowserCheck";
-    }
-  | undefined {
+  context: ParseContext,
+): ParsedCheck | undefined {
   const constructName = getExpressionName(node.expression);
 
   if (constructName !== "ApiCheck" && constructName !== "BrowserCheck") {
@@ -178,36 +269,123 @@ function parseCheckNewExpression(
     };
   }
 
-  const name = getStringProperty(config, "name", filePath);
+  return {
+    check: buildCheckFromConfig({
+      config,
+      defaultKey: keyFromArg,
+      defaultName: keyFromArg,
+      filePath,
+      type,
+      context,
+    }),
+    constructName,
+  };
+}
+
+function parseCheckHelperCall(
+  node: ts.CallExpression,
+  filePath: string,
+  context: ParseContext,
+): ParsedCheck | undefined {
+  const helperName = getExpressionName(node.expression);
+
+  if (helperName === "createBrowserCheck") {
+    const [nameArg, entrypointArg, optionsArg] = [...node.arguments];
+    const name = nameArg ? extractStringValue(nameArg, filePath) : undefined;
+    const entrypoint = entrypointArg
+      ? extractStringValue(entrypointArg, filePath)
+      : undefined;
+    const config =
+      optionsArg && ts.isObjectLiteralExpression(optionsArg) ? optionsArg : undefined;
+
+    return {
+      check: {
+        ...buildCheckFromConfig({
+          config,
+          defaultKey: name ? getLogicalId(name) : undefined,
+          defaultName: name,
+          filePath,
+          type: "browser",
+          context,
+        }),
+        entrypoint,
+      },
+      constructName: helperName,
+    };
+  }
+
+  if (helperName === "createApiCheck") {
+    const [nameArg, optionsArg] = [...node.arguments];
+    const name = nameArg ? extractStringValue(nameArg, filePath) : undefined;
+    const config =
+      optionsArg && ts.isObjectLiteralExpression(optionsArg) ? optionsArg : undefined;
+
+    return {
+      check: buildCheckFromConfig({
+        config,
+        defaultKey: name ? getLogicalId(name) : undefined,
+        defaultName: name,
+        filePath,
+        type: "api",
+        context,
+      }),
+      constructName: helperName,
+    };
+  }
+
+  return undefined;
+}
+
+function buildCheckFromConfig({
+  config,
+  context,
+  defaultKey,
+  defaultName,
+  filePath,
+  type,
+}: {
+  config: ts.ObjectLiteralExpression | undefined;
+  context: ParseContext;
+  defaultKey: string | undefined;
+  defaultName: string | undefined;
+  filePath: string;
+  type: CheckType;
+}): Partial<CheckDefinition> {
+  const name = config
+    ? (getStringProperty(config, "name", filePath) ?? defaultName)
+    : defaultName;
   const key =
-    keyFromArg ??
-    getStringProperty(config, "key", filePath) ??
-    getStringProperty(config, "id", filePath) ??
-    getStringProperty(config, "logicalId", filePath) ??
+    defaultKey ??
+    (config
+      ? (getStringProperty(config, "key", filePath) ??
+        getStringProperty(config, "id", filePath) ??
+        getStringProperty(config, "logicalId", filePath))
+      : undefined) ??
     (name ? slugify(name) : undefined);
   const check: Partial<CheckDefinition> = {
-    enabled:
-      getBooleanProperty(config, "enabled") ??
-      getBooleanProperty(config, "activated") ??
-      true,
+    enabled: config
+      ? (getBooleanProperty(config, "enabled") ??
+        getBooleanProperty(config, "activated") ??
+        true)
+      : true,
+    frequency: config ? getFrequencyProperty(config) : undefined,
+    groupKey: config ? getReferenceProperty(config, "group") : undefined,
     key,
     name,
-    tags: getStringArrayProperty(config, "tags", filePath) ?? [],
+    tags: config ? (getStringArrayProperty(config, "tags", filePath) ?? []) : [],
     type,
   };
 
   if (type === "browser") {
-    check.entrypoint =
-      getStringProperty(config, "entrypoint", filePath) ??
-      getCodeEntrypoint(config, filePath);
-  } else {
-    check.request = getApiRequest(config, filePath);
+    check.entrypoint = config
+      ? (getStringProperty(config, "entrypoint", filePath) ??
+        getCodeEntrypoint(config, filePath))
+      : undefined;
+  } else if (config) {
+    check.request = getApiRequest(config, filePath, context);
   }
 
-  return {
-    check,
-    constructName,
-  };
+  return check;
 }
 
 function getExpressionName(expression: ts.Expression): string | undefined {
@@ -273,6 +451,49 @@ function getBooleanProperty(
   return undefined;
 }
 
+function getFrequencyProperty(
+  objectLiteral: ts.ObjectLiteralExpression,
+): CheckDefinition["frequency"] | undefined {
+  const property = getPropertyAssignment(objectLiteral, "frequency");
+
+  if (!property || !ts.isPropertyAccessExpression(property.initializer)) {
+    return undefined;
+  }
+
+  const frequencyName = property.initializer.name.text;
+  const match = /^EVERY_(\d+)(M|H|D)$/.exec(frequencyName);
+
+  if (!match) {
+    return undefined;
+  }
+
+  const value = Number.parseInt(match[1] ?? "", 10);
+  const unit = match[2];
+
+  if (!Number.isSafeInteger(value) || !unit) {
+    return undefined;
+  }
+
+  const multiplier = unit === "M" ? 1 : unit === "H" ? 60 : 1440;
+
+  return {
+    intervalMinutes: value * multiplier,
+  };
+}
+
+function getReferenceProperty(
+  objectLiteral: ts.ObjectLiteralExpression,
+  propertyName: string,
+): string | undefined {
+  const property = getPropertyAssignment(objectLiteral, propertyName);
+
+  if (!property) {
+    return undefined;
+  }
+
+  return getExpressionName(property.initializer);
+}
+
 function getStringArrayProperty(
   objectLiteral: ts.ObjectLiteralExpression,
   propertyName: string,
@@ -285,7 +506,7 @@ function getStringArrayProperty(
   }
 
   return property.initializer.elements.flatMap((element) => {
-    const value = extractStringValue(element, filePath);
+    const value = extractTagValue(element, filePath);
 
     return value ? [value] : [];
   });
@@ -307,16 +528,34 @@ function getCodeEntrypoint(
 function getApiRequest(
   objectLiteral: ts.ObjectLiteralExpression,
   filePath: string,
+  context: ParseContext,
 ): ApiRequest | undefined {
   const requestProperty = getPropertyAssignment(objectLiteral, "request");
 
-  if (!requestProperty || !ts.isObjectLiteralExpression(requestProperty.initializer)) {
+  if (!requestProperty) {
+    return undefined;
+  }
+
+  if (ts.isIdentifier(requestProperty.initializer)) {
+    return context.requestVariables.get(requestProperty.initializer.text);
+  }
+
+  if (ts.isCallExpression(requestProperty.initializer)) {
+    return inferCreateRequest(
+      requestProperty.initializer,
+      context.requestFactoryKind,
+      filePath,
+    );
+  }
+
+  if (!ts.isObjectLiteralExpression(requestProperty.initializer)) {
     return undefined;
   }
 
   const request = requestProperty.initializer;
-  const method = getStringProperty(request, "method", filePath);
-  const url = getStringProperty(request, "url", filePath);
+  const baseRequest = getBaseRequestFromSpreads(request, context);
+  const method = getStringProperty(request, "method", filePath) ?? baseRequest?.method;
+  const url = getStringProperty(request, "url", filePath) ?? baseRequest?.url;
 
   if (!method || !url) {
     return undefined;
@@ -324,10 +563,64 @@ function getApiRequest(
 
   return {
     assertions: [],
-    headers: getRecordProperty(request, "headers", filePath) ?? {},
+    body: getStringProperty(request, "body", filePath) ?? baseRequest?.body,
+    headers:
+      getRecordProperty(request, "headers", filePath) ?? baseRequest?.headers ?? {},
     method,
     url,
   };
+}
+
+function getBaseRequestFromSpreads(
+  objectLiteral: ts.ObjectLiteralExpression,
+  context: ParseContext,
+): ApiRequest | undefined {
+  for (const property of objectLiteral.properties) {
+    if (
+      ts.isSpreadAssignment(property) &&
+      ts.isIdentifier(property.expression) &&
+      context.requestVariables.has(property.expression.text)
+    ) {
+      return context.requestVariables.get(property.expression.text);
+    }
+  }
+
+  return undefined;
+}
+
+function inferCreateRequest(
+  expression: ts.CallExpression,
+  kind: RequestFactoryKind,
+  filePath: string,
+): ApiRequest | undefined {
+  if (getExpressionName(expression.expression) !== "createRequest") {
+    return undefined;
+  }
+
+  if (kind === "bff") {
+    const urlPath = expression.arguments[0]
+      ? extractStringValue(expression.arguments[0], filePath)
+      : "";
+
+    return {
+      assertions: [],
+      headers: {},
+      method: "GET",
+      url: `https://bff.sndsy.ru/${urlPath ?? ""}`,
+    };
+  }
+
+  if (kind === "api") {
+    return {
+      assertions: [],
+      body: expression.arguments[1]?.getText(),
+      headers: {},
+      method: "POST",
+      url: "{{API_URL}}/general/api/v100/json/{{ACCOUNT}}",
+    };
+  }
+
+  return undefined;
 }
 
 function getRecordProperty(
@@ -359,6 +652,21 @@ function getRecordProperty(
   return Object.fromEntries(entries);
 }
 
+function extractTagValue(
+  expression: ts.Expression,
+  filePath: string,
+): string | undefined {
+  if (
+    ts.isPropertyAccessExpression(expression) &&
+    ts.isIdentifier(expression.expression) &&
+    expression.expression.text === "Tags"
+  ) {
+    return expression.name.text.toLowerCase();
+  }
+
+  return extractStringValue(expression, filePath);
+}
+
 function extractStringValue(
   expression: ts.Expression,
   filePath: string,
@@ -367,12 +675,12 @@ function extractStringValue(
     return expression.text;
   }
 
-  if (ts.isTemplateExpression(expression) && expression.templateSpans.length === 0) {
-    return expression.head.text;
-  }
-
   if (ts.isNoSubstitutionTemplateLiteral(expression)) {
     return expression.text;
+  }
+
+  if (ts.isTemplateExpression(expression) && expression.templateSpans.length === 0) {
+    return expression.head.text;
   }
 
   if (ts.isCallExpression(expression) && isPathJoinCall(expression)) {
@@ -401,6 +709,10 @@ function isPathJoinCall(expression: ts.CallExpression): boolean {
     ts.isIdentifier(callExpression.expression) &&
     callExpression.expression.text === "path"
   );
+}
+
+function getLogicalId(value: string): string {
+  return value.replace(/[.\s]/g, "-").replace(/[()]/gi, "");
 }
 
 function slugify(value: string): string {
