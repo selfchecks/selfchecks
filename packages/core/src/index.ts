@@ -113,3 +113,13 @@ export function normalizeTags(tags: Iterable<string>): string[] {
 export function getCheckIdentity(projectSlug: string, checkKey: string): string {
   return `${projectSlug}:${checkKey}`;
 }
+
+export {
+  findCheckManifestFiles,
+  importCheckDefinitions,
+  parseCheckManifestFile,
+  parseCheckManifestSource,
+  type ManifestImportOptions,
+  type ManifestImportResult,
+  type ParsedManifestFile,
+} from "./manifest-import.js";

@@ -266,6 +266,7 @@ Useful commands:
 yarn dev:web
 yarn dev:worker
 yarn workspace @selfchecks/cli dev --help
+yarn workspace @selfchecks/cli dev deploy --dry-run --root .
 yarn typecheck
 yarn lint
 yarn test
@@ -276,7 +277,8 @@ Workspace layout:
 - `apps/web`: Next.js dashboard, shadcn/ui component setup, and credentials auth.
 - `apps/worker`: BullMQ worker entrypoint for queued check execution.
 - `packages/cli`: `selfchecks` command parser for deploy, test, and trigger.
-- `packages/core`: shared domain types and validation.
+- `packages/core`: shared domain types, validation, and the first narrow
+  Checkly-style manifest importer.
 - `packages/db`: Prisma schema and database client.
 
 ## First Implementation Slice

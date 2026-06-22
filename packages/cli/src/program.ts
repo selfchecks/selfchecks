@@ -1,6 +1,6 @@
 import { Command } from "commander";
 
-import { normalizeTags } from "@selfchecks/core";
+import { importCheckDefinitions, normalizeTags } from "@selfchecks/core";
 
 export type EnvVar = {
   name: string;
@@ -13,7 +13,9 @@ export type DeployCommandOutput = {
   dryRun: boolean;
   force: boolean;
   projectSlug: string;
-  status: "pending_implementation";
+  rootDir: string;
+  status: "parsed";
+  summary: Awaited<ReturnType<typeof importCheckDefinitions>>;
 };
 
 export type TestCommandOutput = {
@@ -96,15 +98,25 @@ export function createSelfchecksProgram(
     .option("-c, --config <path>", "Path to a Checkly-compatible config file")
     .option("--force", "Deploy even when the diff contains removals")
     .option("--project <slug>", "Project slug", "default")
+    .option("--root <path>", "Repository root", process.cwd())
     .option("--dry-run", "Parse definitions and print the deploy diff only")
-    .action((commandOptions: Record<string, string | boolean | undefined>) => {
+    .action(async (commandOptions: Record<string, string | boolean | undefined>) => {
+      const projectSlug = String(commandOptions.project ?? "default");
+      const rootDir = String(commandOptions.root ?? process.cwd());
+      const summary = await importCheckDefinitions({
+        projectSlug,
+        rootDir,
+      });
+
       write({
         command: "deploy",
         configPath: String(commandOptions.config ?? "checkly.config.ts"),
         dryRun: Boolean(commandOptions.dryRun),
         force: Boolean(commandOptions.force),
-        projectSlug: String(commandOptions.project ?? "default"),
-        status: "pending_implementation",
+        projectSlug,
+        rootDir,
+        status: "parsed",
+        summary,
       });
     });
 

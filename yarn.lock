@@ -1445,6 +1445,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@selfchecks/core@workspace:packages/core"
   dependencies:
+    typescript: "npm:^5.8.3"
     zod: "npm:^3.25.67"
   languageName: unknown
   linkType: soft

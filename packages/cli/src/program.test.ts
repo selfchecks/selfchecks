@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   type CliCommandOutput,
@@ -6,6 +9,26 @@ import {
   parseEnv,
   parseRetries,
 } from "./program.js";
+
+const tempDirs: string[] = [];
+
+async function createTempProject(): Promise<string> {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "selfchecks-cli-"));
+  tempDirs.push(dir);
+  return dir;
+}
+
+afterEach(async () => {
+  const { rm } = await import("node:fs/promises");
+  await Promise.all(
+    tempDirs.splice(0).map((dir) =>
+      rm(dir, {
+        force: true,
+        recursive: true,
+      }),
+    ),
+  );
+});
 
 async function parseCommand(args: string[]): Promise<CliCommandOutput[]> {
   const outputs: CliCommandOutput[] = [];
@@ -69,7 +92,19 @@ describe("parseRetries", () => {
 });
 
 describe("createSelfchecksProgram", () => {
-  it("emits deploy command options", async () => {
+  it("emits deploy command options and parsed summary", async () => {
+    const rootDir = await createTempProject();
+    await mkdir(path.join(rootDir, "config/checkly"), { recursive: true });
+    await writeFile(
+      path.join(rootDir, "config/checkly/homepage.check.ts"),
+      `
+        new BrowserCheck("homepage", {
+          name: "Homepage",
+          entrypoint: "homepage.spec.ts"
+        });
+      `,
+    );
+
     await expect(
       parseCommand([
         "deploy",
@@ -77,6 +112,8 @@ describe("createSelfchecksProgram", () => {
         "--dry-run",
         "--project",
         "account",
+        "--root",
+        rootDir,
         "--config",
         "config/checkly/checkly.config.ts",
       ]),
@@ -87,7 +124,25 @@ describe("createSelfchecksProgram", () => {
         dryRun: true,
         force: true,
         projectSlug: "account",
-        status: "pending_implementation",
+        rootDir,
+        status: "parsed",
+        summary: {
+          checks: [
+            {
+              enabled: true,
+              entrypoint: "homepage.spec.ts",
+              key: "homepage",
+              name: "Homepage",
+              tags: [],
+              type: "browser",
+            },
+          ],
+          created: 1,
+          projectSlug: "account",
+          removed: 0,
+          updated: 0,
+          warnings: [],
+        },
       },
     ]);
   });

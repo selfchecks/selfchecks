@@ -9,6 +9,8 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "apps/web"),
+      "@selfchecks/core": path.resolve(__dirname, "packages/core/src/index.ts"),
+      "@selfchecks/db": path.resolve(__dirname, "packages/db/src/index.ts"),
     },
   },
   test: {
