@@ -1,0 +1,42 @@
+{
+  "name": "selfchecks",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "yarn@4.13.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "yarn workspace @selfchecks/core build && yarn workspace @selfchecks/db build && yarn workspace @selfchecks/cli build && yarn workspace @selfchecks/worker build && yarn workspace @selfchecks/web build",
+    "db:generate": "yarn workspace @selfchecks/db prisma generate",
+    "db:migrate": "yarn workspace @selfchecks/db prisma migrate dev",
+    "dev": "yarn dev:web",
+    "dev:web": "yarn workspace @selfchecks/web dev",
+    "dev:worker": "yarn workspace @selfchecks/worker dev",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint apps packages --max-warnings=0",
+    "postinstall": "yarn db:generate",
+    "test": "vitest run",
+    "typecheck": "yarn workspace @selfchecks/core typecheck && yarn workspace @selfchecks/db typecheck && yarn workspace @selfchecks/cli typecheck && yarn workspace @selfchecks/worker typecheck && yarn workspace @selfchecks/web typecheck"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.5",
+    "@eslint/js": "^9.30.1",
+    "@next/eslint-plugin-next": "15.5.19",
+    "@types/node": "^20.19.1",
+    "eslint": "^9.30.1",
+    "eslint-config-next": "15.5.19",
+    "globals": "^16.2.0",
+    "jsdom": "^29.1.1",
+    "prettier": "^3.6.2",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.35.1",
+    "vitest": "^3.2.4"
+  }
+}

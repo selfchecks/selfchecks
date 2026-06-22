@@ -1,0 +1,23 @@
+{
+  "name": "@selfchecks/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "typecheck": "tsc -b tsconfig.json --pretty false"
+  },
+  "dependencies": {
+    "@selfchecks/core": "workspace:*",
+    "@selfchecks/db": "workspace:*",
+    "bullmq": "^5.56.4",
+    "ioredis": "^5.6.1"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.3"
+  }
+}

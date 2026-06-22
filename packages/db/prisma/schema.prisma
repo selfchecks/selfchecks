@@ -1,0 +1,194 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum CheckType {
+  API
+  BROWSER
+}
+
+enum CheckRunStatus {
+  QUEUED
+  RUNNING
+  PASSED
+  FAILED
+  TIMED_OUT
+  CANCELLED
+}
+
+enum ArtifactType {
+  LOG
+  SCREENSHOT
+  TRACE
+  VIDEO
+  REQUEST_RESPONSE
+  JSON
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum WebhookAdapter {
+  GENERIC
+  ROCKET_CHAT
+}
+
+model Project {
+  id                  String               @id @default(cuid())
+  slug                String               @unique
+  name                String
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  checks              Check[]
+  deployments         Deployment[]
+  groups              CheckGroup[]
+  runtimeEnvironments RuntimeEnvironment[]
+  secrets             Secret[]
+  webhookEndpoints    WebhookEndpoint[]
+}
+
+model Deployment {
+  id         String   @id @default(cuid())
+  projectId  String
+  gitSha     String?
+  source     String?
+  deployedBy String?
+  summary    Json?
+  createdAt  DateTime @default(now())
+  checks     Check[]
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model CheckGroup {
+  id        String   @id @default(cuid())
+  projectId String
+  key       String
+  name      String
+  tags      String[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  checks    Check[]
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, key])
+}
+
+model Check {
+  id               String       @id @default(cuid())
+  projectId        String
+  groupId          String?
+  deploymentId     String?
+  key              String
+  name             String
+  type             CheckType
+  enabled          Boolean      @default(true)
+  frequencyMinutes Int?
+  tags             String[]
+  entrypoint       String?
+  request          Json?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  deployment       Deployment?  @relation(fields: [deploymentId], references: [id], onDelete: SetNull)
+  group            CheckGroup?  @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  project          Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  runs             CheckRun[]
+
+  @@unique([projectId, key])
+  @@index([projectId, type])
+}
+
+model TestSession {
+  id        String         @id @default(cuid())
+  name      String?
+  source    String?
+  commitSha String?
+  status    CheckRunStatus @default(QUEUED)
+  createdAt DateTime       @default(now())
+  runs      CheckRun[]
+}
+
+model CheckRun {
+  id            String         @id @default(cuid())
+  checkId       String
+  testSessionId String?
+  status        CheckRunStatus @default(QUEUED)
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  durationMs    Int?
+  errorMessage  String?
+  logsPath      String?
+  result        Json?
+  createdAt     DateTime       @default(now())
+  artifacts     Artifact[]
+  check         Check          @relation(fields: [checkId], references: [id], onDelete: Cascade)
+  testSession   TestSession?   @relation(fields: [testSessionId], references: [id], onDelete: SetNull)
+
+  @@index([checkId, createdAt])
+  @@index([status, createdAt])
+}
+
+model Artifact {
+  id        String       @id @default(cuid())
+  runId     String
+  type      ArtifactType
+  path      String
+  mimeType  String?
+  sizeBytes Int?
+  createdAt DateTime     @default(now())
+  run       CheckRun     @relation(fields: [runId], references: [id], onDelete: Cascade)
+}
+
+model WebhookEndpoint {
+  id            String         @id @default(cuid())
+  projectId     String
+  name          String
+  adapter       WebhookAdapter @default(GENERIC)
+  urlCiphertext String
+  enabled       Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id             String             @id @default(cuid())
+  webhookName    String?
+  event          String
+  status         NotificationStatus @default(PENDING)
+  payload        Json
+  responseStatus Int?
+  error          String?
+  createdAt      DateTime           @default(now())
+}
+
+model RuntimeEnvironment {
+  id        String   @id @default(cuid())
+  projectId String
+  name      String
+  variables Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, name])
+}
+
+model Secret {
+  id              String   @id @default(cuid())
+  projectId       String
+  name            String
+  valueCiphertext String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, name])
+}
