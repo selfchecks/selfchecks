@@ -10,12 +10,14 @@ describe("DashboardPage", () => {
     expect(
       screen.getByRole("heading", { name: "Synthetic checks dashboard" }),
     ).toBeTruthy();
-    expect(screen.getByRole("button", { name: "New" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Home" })).toBeTruthy();
     expect(screen.getByText("nikolaev@iprojects.ru")).toBeTruthy();
     expect(screen.getByText("PASSING")).toBeTruthy();
     expect(screen.getByText("DEGRADED")).toBeTruthy();
     expect(screen.getByText("FAILING")).toBeTruthy();
     expect(screen.getByRole("searchbox", { name: "Search checks" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Heartbeats" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Alert channels" })).toBeNull();
   });
 
   it("shows grouped checks and operational metrics", () => {

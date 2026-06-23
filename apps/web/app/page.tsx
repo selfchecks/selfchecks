@@ -1,7 +1,5 @@
 import {
   ArrowDownUp,
-  BarChart3,
-  Bell,
   CalendarDays,
   CheckCircle2,
   ChevronDown,
@@ -9,35 +7,23 @@ import {
   CircleAlert,
   CircleX,
   Folder,
-  Globe2,
-  HeartPulse,
   Home,
-  LayoutDashboard,
-  ListChecks,
-  MapPin,
   MessageSquare,
   MoreVertical,
-  PanelLeftClose,
-  Plus,
-  RadioTower,
   Route,
   Search,
   Settings2,
-  Sparkles,
   Tag,
-  Wrench,
   Zap,
   type LucideIcon,
 } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 type Status = "passing" | "degraded" | "failing";
 
 type NavItem = {
   active?: boolean;
-  badge?: string;
   icon: LucideIcon;
   label: string;
 };
@@ -63,40 +49,7 @@ type GroupRow = {
   updated: string;
 };
 
-const navSections: Array<{ items: NavItem[]; label: string }> = [
-  {
-    label: "DETECT",
-    items: [
-      { active: true, icon: Home, label: "Home" },
-      { icon: HeartPulse, label: "Heartbeats" },
-      { icon: ListChecks, label: "Test sessions" },
-      { icon: CalendarDays, label: "Events" },
-      { icon: BarChart3, label: "Reporting" },
-    ],
-  },
-  {
-    label: "COMMUNICATE",
-    items: [
-      { icon: Bell, label: "Alert channels" },
-      { icon: RadioTower, label: "Status pages" },
-      { icon: LayoutDashboard, label: "Dashboards" },
-      { icon: Wrench, label: "Maintenance" },
-    ],
-  },
-  {
-    label: "RESOLVE",
-    items: [{ icon: Route, label: "Traces" }],
-  },
-  {
-    label: "CONFIGURATION",
-    items: [
-      { icon: Sparkles, label: "Rocky AI" },
-      { icon: MapPin, label: "Private locations" },
-      { icon: Globe2, label: "Environment variables" },
-      { badge: "New", icon: Tag, label: "Tags" },
-    ],
-  },
-];
+const sidebarItems: NavItem[] = [{ active: true, icon: Home, label: "Home" }];
 
 const summaryCards = [
   {
@@ -423,57 +376,39 @@ function Sidebar() {
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-blue-600 text-white">
           <Zap className="h-5 w-5" />
         </div>
-        <Button
-          className="h-10 bg-blue-600 px-4 text-white hover:bg-blue-500"
-          size="sm"
-        >
-          <Plus className="h-4 w-4" />
-          New
-        </Button>
-        <button
-          aria-label="Collapse sidebar"
-          className="ml-auto flex h-9 w-9 items-center justify-center rounded-md text-blue-400 hover:bg-slate-800"
-          type="button"
-        >
-          <PanelLeftClose className="h-5 w-5" />
-        </button>
+        <div className="min-w-0">
+          <div className="truncate text-sm font-semibold text-slate-100">
+            selfchecks
+          </div>
+          <div className="truncate text-xs text-slate-500">Synthetic monitoring</div>
+        </div>
       </div>
 
       <nav className="flex-1 overflow-y-auto px-4 py-5">
-        {navSections.map((section) => (
-          <div className="mb-7" key={section.label}>
-            <div className="mb-2 flex items-center justify-between px-1 text-xs font-semibold uppercase text-slate-500">
-              <span>{section.label}</span>
-              <Plus className="h-4 w-4" />
-            </div>
-            <div className="space-y-1">
-              {section.items.map((item) => {
-                const Icon = item.icon;
+        <div className="mb-2 px-1 text-xs font-semibold uppercase text-slate-500">
+          Available now
+        </div>
+        <div className="space-y-1">
+          {sidebarItems.map((item) => {
+            const Icon = item.icon;
 
-                return (
-                  <button
-                    className={cn(
-                      "flex h-9 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-medium",
-                      item.active
-                        ? "bg-slate-700 text-slate-100"
-                        : "text-slate-400 hover:bg-slate-800 hover:text-slate-200",
-                    )}
-                    key={item.label}
-                    type="button"
-                  >
-                    <Icon className="h-4 w-4 shrink-0" />
-                    <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                    {item.badge ? (
-                      <span className="rounded bg-pink-300 px-1.5 py-0.5 text-xs font-semibold text-pink-950">
-                        {item.badge}
-                      </span>
-                    ) : null}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ))}
+            return (
+              <button
+                className={cn(
+                  "flex h-9 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-medium",
+                  item.active
+                    ? "bg-slate-700 text-slate-100"
+                    : "text-slate-400 hover:bg-slate-800 hover:text-slate-200",
+                )}
+                key={item.label}
+                type="button"
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                <span className="min-w-0 flex-1 truncate">{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
       </nav>
     </aside>
   );
