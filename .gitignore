@@ -14,8 +14,10 @@ dist/
 coverage/
 .next/
 out/
+output/playwright/
 
 .selfchecks/
+.playwright-cli/
 *.tsbuildinfo
 
 .DS_Store

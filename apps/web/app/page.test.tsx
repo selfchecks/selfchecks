@@ -4,26 +4,28 @@ import { describe, expect, it } from "vitest";
 import DashboardPage from "./page";
 
 describe("DashboardPage", () => {
-  it("renders the dashboard shell and empty state", () => {
+  it("renders the Checkly-like dashboard shell", () => {
     render(<DashboardPage />);
 
     expect(
       screen.getByRole("heading", { name: "Synthetic checks dashboard" }),
     ).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Refresh" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Run checks" })).toBeTruthy();
-    expect(
-      screen.getByText(
-        "No checks imported yet. Run selfchecks deploy to populate this list.",
-      ),
-    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "New" })).toBeTruthy();
+    expect(screen.getByText("nikolaev@iprojects.ru")).toBeTruthy();
+    expect(screen.getByText("PASSING")).toBeTruthy();
+    expect(screen.getByText("DEGRADED")).toBeTruthy();
+    expect(screen.getByText("FAILING")).toBeTruthy();
+    expect(screen.getByRole("searchbox", { name: "Search checks" })).toBeTruthy();
   });
 
-  it("shows bootstrap commands for the first installation slice", () => {
+  it("shows grouped checks and operational metrics", () => {
     render(<DashboardPage />);
 
-    expect(screen.getByText("yarn db:migrate")).toBeTruthy();
-    expect(screen.getByText("selfchecks deploy --force")).toBeTruthy();
-    expect(screen.getByText("selfchecks test --tags smoke --record")).toBeTruthy();
+    expect(screen.getByText("API / Regress")).toBeTruthy();
+    expect(screen.getByText("group.list")).toBeTruthy();
+    expect(screen.getByText("issue.get")).toBeTruthy();
+    expect(screen.getByText("Last results")).toBeTruthy();
+    expect(screen.getByText("AVA")).toBeTruthy();
+    expect(screen.getByText("P95")).toBeTruthy();
   });
 });
