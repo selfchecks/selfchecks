@@ -42,6 +42,100 @@ services:
     volumes:
       - selfchecks-prod-redis-data:/data
 
+  migrate:
+    build:
+      context: .
+      dockerfile: docker/selfchecks/Dockerfile
+      target: web
+    command: ["yarn", "workspace", "@selfchecks/db", "prisma", "migrate", "deploy"]
+    container_name: selfchecks-prod-migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in the production env file}
+    networks:
+      - selfchecks-prod
+    restart: "no"
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/selfchecks/Dockerfile
+      target: web
+    container_name: selfchecks-prod-web
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in the production env file}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?Set NEXTAUTH_SECRET in the production env file}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      SELFCHECKS_ADMIN_LOGIN: ${SELFCHECKS_ADMIN_LOGIN:-}
+      SELFCHECKS_ADMIN_PASSWORD: ${SELFCHECKS_ADMIN_PASSWORD:-}
+      SELFCHECKS_ARTIFACTS_DIR: ${SELFCHECKS_ARTIFACTS_DIR:-/app/runtime/artifacts}
+      SELFCHECKS_CADDY_ADMIN_URL: ${SELFCHECKS_CADDY_ADMIN_URL:-http://caddy:2019}
+      SELFCHECKS_CADDY_CONFIG_PATH: ${SELFCHECKS_CADDY_CONFIG_PATH:-/app/runtime/Caddyfile}
+      SELFCHECKS_CADDY_UPSTREAM: ${SELFCHECKS_CADDY_UPSTREAM:-web:3000}
+      SELFCHECKS_CONFIG_PATH: ${SELFCHECKS_CONFIG_PATH:-/app/runtime/selfchecks.config.json}
+      SELFCHECKS_QUEUE_NAME: ${SELFCHECKS_QUEUE_NAME:-selfchecks:checks}
+      SELFCHECKS_SETUP_TOKEN: ${SELFCHECKS_SETUP_TOKEN:-}
+      SELFCHECKS_WEBHOOK_TIMEOUT_MS: ${SELFCHECKS_WEBHOOK_TIMEOUT_MS:-5000}
+    expose:
+      - "3000"
+    networks:
+      - selfchecks-prod
+    restart: unless-stopped
+    volumes:
+      - ./runtime:/app/runtime
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/selfchecks/Dockerfile
+      target: worker
+    container_name: selfchecks-prod-worker
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in the production env file}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      SELFCHECKS_ARTIFACTS_DIR: ${SELFCHECKS_ARTIFACTS_DIR:-/app/runtime/artifacts}
+      SELFCHECKS_QUEUE_NAME: ${SELFCHECKS_QUEUE_NAME:-selfchecks:checks}
+    networks:
+      - selfchecks-prod
+    restart: unless-stopped
+    volumes:
+      - ./runtime:/app/runtime
+
+  caddy:
+    container_name: selfchecks-prod-caddy
+    depends_on:
+      web:
+        condition: service_started
+    image: caddy:2-alpine
+    networks:
+      - selfchecks-prod
+    ports:
+      - "80:80"
+      - "443:443"
+    restart: unless-stopped
+    volumes:
+      - ./runtime/Caddyfile:/etc/caddy/Caddyfile
+      - ./runtime/caddy-data:/data
+      - ./runtime/caddy-config:/config
+      - ./runtime/logs:/var/log/caddy
+    expose:
+      - "2019"
+
 networks:
   selfchecks-prod:
     name: selfchecks-prod-network

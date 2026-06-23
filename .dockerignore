@@ -1,0 +1,13 @@
+node_modules/
+.git/
+.next/
+coverage/
+dist/
+out/
+output/
+.playwright-cli/
+.selfchecks/
+runtime/
+.env
+.env.*
+*.tsbuildinfo

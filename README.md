@@ -270,18 +270,39 @@ it does not collide with other local projects:
 
 Production infrastructure uses a separate Compose file and separate resource
 names. PostgreSQL and Redis are only exposed inside the Compose network by
-default:
+default. The production stack also includes the web app, worker, migration job,
+and Caddy reverse proxy:
 
 ```bash
 cp .env.production.example .env.production
-docker compose --env-file .env.production -f docker-compose.prod.yml up -d
+mkdir -p runtime
+cp bootstrap/selfchecks.config.template.json runtime/selfchecks.config.json
+cp bootstrap/Caddyfile.template runtime/Caddyfile
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
 ```
 
 Production resource names:
 
-- containers: `selfchecks-prod-postgres`, `selfchecks-prod-redis`
+- containers: `selfchecks-prod-web`, `selfchecks-prod-worker`,
+  `selfchecks-prod-caddy`, `selfchecks-prod-postgres`, `selfchecks-prod-redis`
 - network: `selfchecks-prod-network`
 - volumes: `selfchecks-prod-postgres-data`, `selfchecks-prod-redis-data`
+
+For a fresh server install, run:
+
+```bash
+yarn install:server
+```
+
+The installer prepares `/opt/selfchecks`, installs Docker and the Compose plugin
+when missing, generates `.env` secrets, seeds `runtime/selfchecks.config.json`
+and `runtime/Caddyfile`, then starts the production stack. Open
+`http://<server-ip>/setup`, enter the setup token from `/opt/selfchecks/.env`,
+then configure the domain, certificate email, admin login, and admin password.
+
+After setup, Caddy reloads its generated config and requests a public TLS
+certificate for the configured domain. DNS for that domain must already point to
+the server, and ports `80` and `443` must be reachable from the internet.
 
 Useful commands:
 

@@ -1,0 +1,11 @@
+{
+  "admin": null,
+  "server": {
+    "caddyEmail": "",
+    "domain": "",
+    "publicUrl": ""
+  },
+  "setup": {
+    "completedAt": null
+  }
+}
