@@ -1,0 +1,53 @@
+name: selfchecks-prod
+
+services:
+  postgres:
+    container_name: selfchecks-prod-postgres
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-selfchecks}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the production env file}
+      POSTGRES_USER: ${POSTGRES_USER:-selfchecks}
+    expose:
+      - "5432"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U $${POSTGRES_USER:-selfchecks} -d $${POSTGRES_DB:-selfchecks}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    networks:
+      - selfchecks-prod
+    volumes:
+      - selfchecks-prod-postgres-data:/var/lib/postgresql/data
+
+  redis:
+    container_name: selfchecks-prod-redis
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    expose:
+      - "6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    networks:
+      - selfchecks-prod
+    volumes:
+      - selfchecks-prod-redis-data:/data
+
+networks:
+  selfchecks-prod:
+    name: selfchecks-prod-network
+
+volumes:
+  selfchecks-prod-postgres-data:
+    name: selfchecks-prod-postgres-data
+  selfchecks-prod-redis-data:
+    name: selfchecks-prod-redis-data

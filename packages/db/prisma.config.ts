@@ -2,7 +2,7 @@ import { defineConfig } from "prisma/config";
 
 const databaseUrl =
   process.env.DATABASE_URL ??
-  "postgresql://selfchecks:selfchecks@localhost:5432/selfchecks?schema=public";
+  "postgresql://selfchecks:selfchecks@localhost:15432/selfchecks?schema=public";
 
 export default defineConfig({
   engine: "classic",

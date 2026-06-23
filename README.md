@@ -256,13 +256,38 @@ Initial setup:
 corepack enable
 yarn install
 cp .env.example .env
-docker compose up -d
+yarn dev:infra
 yarn db:migrate
 ```
+
+The dev Compose stack uses project-specific names and non-default host ports so
+it does not collide with other local projects:
+
+- containers: `selfchecks-dev-postgres`, `selfchecks-dev-redis`
+- network: `selfchecks-dev-network`
+- volumes: `selfchecks-dev-postgres-data`, `selfchecks-dev-redis-data`
+- host ports: `15432` for PostgreSQL and `16379` for Redis
+
+Production infrastructure uses a separate Compose file and separate resource
+names. PostgreSQL and Redis are only exposed inside the Compose network by
+default:
+
+```bash
+cp .env.production.example .env.production
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d
+```
+
+Production resource names:
+
+- containers: `selfchecks-prod-postgres`, `selfchecks-prod-redis`
+- network: `selfchecks-prod-network`
+- volumes: `selfchecks-prod-postgres-data`, `selfchecks-prod-redis-data`
 
 Useful commands:
 
 ```bash
+yarn dev:infra
+yarn dev:infra:down
 yarn dev:web
 yarn dev:worker
 yarn workspace @selfchecks/cli dev --help
