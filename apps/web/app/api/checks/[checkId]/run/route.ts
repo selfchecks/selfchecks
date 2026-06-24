@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { type CheckType } from "@selfchecks/core";
 
 import { prisma } from "@/lib/prisma";
+import { getRunEnvironment } from "@/lib/settings-data";
 
 export const runtime = "nodejs";
 
@@ -16,6 +17,10 @@ type RouteContext = {
 type CheckJob = {
   checkId: string;
   checkKey: string;
+  env?: Array<{
+    name: string;
+    value: string;
+  }>;
   projectSlug: string;
   rootDir: string;
   runId: string;
@@ -118,6 +123,7 @@ export async function POST(_request: Request, context: RouteContext) {
       id: true,
     },
   });
+  const env = await getRunEnvironment(check.project.slug);
   const queue = createCheckQueue();
 
   try {
@@ -126,6 +132,7 @@ export async function POST(_request: Request, context: RouteContext) {
       {
         checkId: check.id,
         checkKey: check.key,
+        env,
         projectSlug: check.project.slug,
         rootDir,
         runId: run.id,

@@ -1,6 +1,13 @@
 "use client";
 
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type FormEvent,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ArrowDownUp,
   CalendarDays,
@@ -10,27 +17,51 @@ import {
   ChevronRight,
   CircleAlert,
   CircleX,
+  Download,
+  ExternalLink,
+  FileArchive,
+  FileImage,
+  FileJson,
+  FileText,
   Folder,
+  Gauge,
   Home,
+  History,
+  KeyRound,
+  LockKeyhole,
   MoreVertical,
+  Plus,
   Route,
+  Save,
   Search,
+  ServerCog,
   Settings2,
+  SlidersHorizontal,
   Tag,
+  Trash2,
+  UserRound,
+  Video,
   Zap,
   type LucideIcon,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 import { cn } from "@/lib/utils";
 import type {
   DashboardCheckRow,
   DashboardGroupRow,
+  DashboardRunArtifact,
   DashboardRunState,
   DashboardStatus,
   DashboardSummary,
 } from "@/lib/dashboard-types";
+import type {
+  DashboardSettingsData,
+  RuntimeEnvironmentSettingsData,
+} from "@/lib/settings-data";
 
 type Status = DashboardStatus;
+type ActiveView = "dashboard" | "settings";
 type StatusFilter = Status | "all";
 type TagFilter = "all" | "api" | "regress";
 type TypeFilter = "all" | "api" | "browser";
@@ -42,7 +73,7 @@ type DashboardSnapshot = {
 };
 
 type NavItem = {
-  active?: boolean;
+  id: ActiveView;
   icon: LucideIcon;
   label: string;
 };
@@ -54,8 +85,24 @@ type FilterOption<T extends string> = {
   menuLabel?: string;
   value: T;
 };
+type RuntimeVariableDraft = {
+  id: string;
+  name: string;
+  value: string;
+};
+type RuntimeSecretDraft = {
+  currentName?: string;
+  hasValue: boolean;
+  id: string;
+  name: string;
+  updatedAt?: string;
+  value: string;
+};
 
-const sidebarItems: NavItem[] = [{ active: true, icon: Home, label: "Home" }];
+const sidebarItems: NavItem[] = [
+  { icon: Home, id: "dashboard", label: "Home" },
+  { icon: Settings2, id: "settings", label: "Settings" },
+];
 
 const dateRangeLabels: Record<DateRange, string> = {
   "24h": "Last 24 hours",
@@ -153,20 +200,26 @@ const traceFilterOptions = [
 
 export default function DashboardClient({
   initialGroups,
+  initialSettings,
   initialSummary,
 }: {
   initialGroups: GroupRow[];
+  initialSettings: DashboardSettingsData;
   initialSummary: DashboardSummary;
 }) {
+  const [activeView, setActiveView] = useState<ActiveView>("dashboard");
   const [dashboard, setDashboard] = useState<DashboardSnapshot>(() => ({
     groups: initialGroups,
     summary: initialSummary,
   }));
+  const [settings, setSettings] = useState<DashboardSettingsData>(initialSettings);
   const { groups, summary } = dashboard;
+  const router = useRouter();
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [activeActionMenu, setActiveActionMenu] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<DateRange>("24h");
+  const [expandedChecks, setExpandedChecks] = useState<Record<string, boolean>>({});
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(groups.map((group) => [group.name, Boolean(group.expanded)])),
   );
@@ -345,7 +398,9 @@ export default function DashboardClient({
   }, [expandedGroups, groups, query, statusFilter, tagFilter, traceOnly, typeFilter]);
 
   function resetDashboard() {
+    setActiveView("dashboard");
     setDateRange("24h");
+    setExpandedChecks({});
     setExpandedGroups(
       Object.fromEntries(groups.map((group) => [group.name, Boolean(group.expanded)])),
     );
@@ -357,11 +412,21 @@ export default function DashboardClient({
     setTypeFilter("all");
   }
 
+  function openSettings() {
+    setActiveView("settings");
+    setAccountMenuOpen(false);
+    setActiveActionMenu(null);
+  }
+
   function toggleGroup(groupName: string) {
     setExpandedGroups((current) => ({
       ...current,
       [groupName]: !current[groupName],
     }));
+  }
+
+  function toggleCheck(checkId: string) {
+    router.push(`/checks/${encodeURIComponent(checkId)}`);
   }
 
   async function runCheckNow(check: CheckRow) {
@@ -397,121 +462,137 @@ export default function DashboardClient({
   return (
     <main className="min-h-screen bg-[#0d1117] text-slate-200">
       <h1 className="sr-only">Synthetic checks dashboard</h1>
-      <Sidebar onHomeClick={resetDashboard} />
+      <Sidebar
+        activeView={activeView}
+        onDashboardClick={resetDashboard}
+        onSettingsClick={openSettings}
+      />
 
       <div className="min-h-screen xl:pl-72">
         <Topbar
           accountMenuOpen={accountMenuOpen}
+          accountLabel={settings.basic.login || "Admin"}
           onAccountMenuToggle={() => setAccountMenuOpen((open) => !open)}
+          onSettingsClick={openSettings}
         />
 
         <section className="mx-auto flex w-full max-w-[1760px] flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8">
-          <div className="grid gap-4 lg:grid-cols-3">
-            {summaryCards.map((card) => (
-              <button
-                aria-pressed={statusFilter === card.status}
-                className={cn(
-                  "rounded-md border px-5 py-4 text-left shadow-lg transition",
-                  "shadow-black/10",
-                  card.tone,
-                  statusFilter === card.status && "ring-2 ring-blue-500/70",
-                )}
-                key={card.label}
-                onClick={() =>
-                  setStatusFilter((current) =>
-                    current === card.status ? "all" : card.status,
-                  )
-                }
-                type="button"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-xs font-semibold uppercase">{card.label}</span>
-                  <Settings2 className="h-4 w-4 opacity-60" />
-                </div>
-                <div className="mt-1 text-3xl font-semibold leading-none">
-                  {card.value}
-                </div>
-              </button>
-            ))}
-          </div>
-
-          <div className="flex flex-col gap-3">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500" />
-              <input
-                ref={searchInputRef}
-                aria-label="Search checks"
-                className="h-12 w-full rounded-md border border-slate-700 bg-[#111821] pl-11 pr-12 text-sm text-slate-200 outline-none placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search by name, request url..."
-                type="search"
-                value={query}
-              />
-              <kbd className="pointer-events-none absolute right-3 top-1/2 flex h-7 min-w-7 -translate-y-1/2 items-center justify-center rounded bg-slate-700 px-2 text-xs text-slate-400">
-                /
-              </kbd>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <FilterDropdown
-                active={dateRange !== "24h"}
-                className="w-40"
-                icon={CalendarDays}
-                onChange={setDateRange}
-                options={dateRangeOptions}
-                value={dateRange}
-              />
-              <FilterDropdown
-                active={statusFilter !== "all"}
-                className="w-36"
-                icon={CheckCircle2}
-                onChange={setStatusFilter}
-                options={statusFilterOptions}
-                value={statusFilter}
-              />
-              <FilterDropdown
-                active={typeFilter !== "all"}
-                className="w-44"
-                icon={Zap}
-                onChange={setTypeFilter}
-                options={typeFilterOptions}
-                value={typeFilter}
-              />
-              <FilterDropdown
-                active={tagFilter !== "all"}
-                className="w-32"
-                icon={Tag}
-                onChange={setTagFilter}
-                options={tagFilterOptions}
-                value={tagFilter}
-              />
-              <FilterDropdown
-                active={traceOnly}
-                className="w-36"
-                icon={Route}
-                onChange={(value) => setTraceOnly(value === "with-traces")}
-                options={traceFilterOptions}
-                value={traceOnly ? "with-traces" : "all"}
-              />
-            </div>
-
-            {notice ? (
-              <div className="text-sm text-slate-400" role="status">
-                {notice}
+          {activeView === "dashboard" ? (
+            <>
+              <div className="grid gap-4 lg:grid-cols-3">
+                {summaryCards.map((card) => (
+                  <button
+                    aria-pressed={statusFilter === card.status}
+                    className={cn(
+                      "rounded-md border px-5 py-4 text-left shadow-lg transition",
+                      "shadow-black/10",
+                      card.tone,
+                      statusFilter === card.status && "ring-2 ring-blue-500/70",
+                    )}
+                    key={card.label}
+                    onClick={() =>
+                      setStatusFilter((current) =>
+                        current === card.status ? "all" : card.status,
+                      )
+                    }
+                    type="button"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-xs font-semibold uppercase">
+                        {card.label}
+                      </span>
+                      <Settings2 className="h-4 w-4 opacity-60" />
+                    </div>
+                    <div className="mt-1 text-3xl font-semibold leading-none">
+                      {card.value}
+                    </div>
+                  </button>
+                ))}
               </div>
-            ) : null}
-          </div>
 
-          <ChecksTable
-            activeActionMenu={activeActionMenu}
-            groups={filteredGroups}
-            onActionMenuToggle={(key) =>
-              setActiveActionMenu((current) => (current === key ? null : key))
-            }
-            onGroupToggle={toggleGroup}
-            onNotice={setNotice}
-            onRunCheckNow={(check) => void runCheckNow(check)}
-          />
+              <div className="flex flex-col gap-3">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500" />
+                  <input
+                    ref={searchInputRef}
+                    aria-label="Search checks"
+                    className="h-12 w-full rounded-md border border-slate-700 bg-[#111821] pl-11 pr-12 text-sm text-slate-200 outline-none placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder="Search by name, request url..."
+                    type="search"
+                    value={query}
+                  />
+                  <kbd className="pointer-events-none absolute right-3 top-1/2 flex h-7 min-w-7 -translate-y-1/2 items-center justify-center rounded bg-slate-700 px-2 text-xs text-slate-400">
+                    /
+                  </kbd>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <FilterDropdown
+                    active={dateRange !== "24h"}
+                    className="w-40"
+                    icon={CalendarDays}
+                    onChange={setDateRange}
+                    options={dateRangeOptions}
+                    value={dateRange}
+                  />
+                  <FilterDropdown
+                    active={statusFilter !== "all"}
+                    className="w-36"
+                    icon={CheckCircle2}
+                    onChange={setStatusFilter}
+                    options={statusFilterOptions}
+                    value={statusFilter}
+                  />
+                  <FilterDropdown
+                    active={typeFilter !== "all"}
+                    className="w-44"
+                    icon={Zap}
+                    onChange={setTypeFilter}
+                    options={typeFilterOptions}
+                    value={typeFilter}
+                  />
+                  <FilterDropdown
+                    active={tagFilter !== "all"}
+                    className="w-32"
+                    icon={Tag}
+                    onChange={setTagFilter}
+                    options={tagFilterOptions}
+                    value={tagFilter}
+                  />
+                  <FilterDropdown
+                    active={traceOnly}
+                    className="w-36"
+                    icon={Route}
+                    onChange={(value) => setTraceOnly(value === "with-traces")}
+                    options={traceFilterOptions}
+                    value={traceOnly ? "with-traces" : "all"}
+                  />
+                </div>
+
+                {notice ? (
+                  <div className="text-sm text-slate-400" role="status">
+                    {notice}
+                  </div>
+                ) : null}
+              </div>
+
+              <ChecksTable
+                activeActionMenu={activeActionMenu}
+                expandedChecks={expandedChecks}
+                groups={filteredGroups}
+                onActionMenuToggle={(key) =>
+                  setActiveActionMenu((current) => (current === key ? null : key))
+                }
+                onCheckToggle={toggleCheck}
+                onGroupToggle={toggleGroup}
+                onNotice={setNotice}
+                onRunCheckNow={(check) => void runCheckNow(check)}
+              />
+            </>
+          ) : (
+            <SettingsScreen onSettingsChange={setSettings} settings={settings} />
+          )}
         </section>
       </div>
     </main>
@@ -604,6 +685,18 @@ function markQueuedCheck(check: CheckRow): CheckRow {
     tone: "warn" as const,
     value: 18,
   };
+  const queuedRun = {
+    artifacts: [],
+    createdAt: new Date().toISOString(),
+    duration: "-",
+    durationMs: undefined,
+    hasRetries: false,
+    id: `queued:${check.id}`,
+    occurredAt: "Queued",
+    runner: "Local runner",
+    runState: "queued" as const,
+    status: "degraded" as const,
+  };
 
   return {
     ...check,
@@ -613,6 +706,13 @@ function markQueuedCheck(check: CheckRow): CheckRow {
     delta: "-",
     p95: "-",
     runState: "queued",
+    runs: [queuedRun, ...check.runs].slice(0, 24),
+    stats: {
+      ...check.stats,
+      averageDuration: "-",
+      p95Duration: "-",
+      totalRuns: String(Number.parseInt(check.stats.totalRuns, 10) + 1 || 1),
+    },
     status: "degraded",
     time: "queued",
   };
@@ -646,7 +746,15 @@ function summarizeDashboardStatus(statuses: Status[]): Status {
   return "passing";
 }
 
-function Sidebar({ onHomeClick }: { onHomeClick: () => void }) {
+function Sidebar({
+  activeView,
+  onDashboardClick,
+  onSettingsClick,
+}: {
+  activeView: ActiveView;
+  onDashboardClick: () => void;
+  onSettingsClick: () => void;
+}) {
   return (
     <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 flex-col border-r border-slate-800 bg-[#12171f] xl:flex">
       <div className="flex h-16 items-center gap-3 border-b border-slate-800 px-5">
@@ -668,17 +776,18 @@ function Sidebar({ onHomeClick }: { onHomeClick: () => void }) {
         <div className="space-y-1">
           {sidebarItems.map((item) => {
             const Icon = item.icon;
+            const active = item.id === activeView;
 
             return (
               <button
                 className={cn(
                   "flex h-9 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-medium",
-                  item.active
+                  active
                     ? "bg-slate-700 text-slate-100"
                     : "text-slate-400 hover:bg-slate-800 hover:text-slate-200",
                 )}
                 key={item.label}
-                onClick={onHomeClick}
+                onClick={item.id === "dashboard" ? onDashboardClick : onSettingsClick}
                 type="button"
               >
                 <Icon className="h-4 w-4 shrink-0" />
@@ -694,11 +803,17 @@ function Sidebar({ onHomeClick }: { onHomeClick: () => void }) {
 
 function Topbar({
   accountMenuOpen,
+  accountLabel,
   onAccountMenuToggle,
+  onSettingsClick,
 }: {
   accountMenuOpen: boolean;
+  accountLabel: string;
   onAccountMenuToggle: () => void;
+  onSettingsClick: () => void;
 }) {
+  const initials = getInitials(accountLabel);
+
   return (
     <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-slate-800 bg-[#12171f]/95 px-4 backdrop-blur sm:px-6 lg:px-8">
       <div className="flex min-w-0 items-center gap-3">
@@ -715,15 +830,23 @@ function Topbar({
           onClick={onAccountMenuToggle}
           type="button"
         >
-          AL
+          {initials}
         </button>
 
         {accountMenuOpen ? (
           <div className="absolute right-0 top-12 z-30 w-64 rounded-md border border-slate-700 bg-[#12171f] p-3 text-sm shadow-xl shadow-black/30">
-            <div className="font-medium text-slate-100">nikolaev@iprojects.ru</div>
+            <div className="truncate font-medium text-slate-100">{accountLabel}</div>
             <div className="mt-1 text-xs text-slate-500">Signed in locally</div>
+            <button
+              className="mt-3 flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-slate-300 hover:bg-slate-800"
+              onClick={onSettingsClick}
+              type="button"
+            >
+              <Settings2 className="h-4 w-4 text-slate-500" />
+              <span>Settings</span>
+            </button>
             <a
-              className="mt-3 block rounded-md px-2 py-2 text-slate-300 hover:bg-slate-800"
+              className="mt-1 block rounded-md px-2 py-2 text-slate-300 hover:bg-slate-800"
               href="/api/auth/signout"
             >
               Sign out
@@ -733,6 +856,513 @@ function Topbar({
       </div>
     </header>
   );
+}
+
+function SettingsScreen({
+  onSettingsChange,
+  settings,
+}: {
+  onSettingsChange: (settings: DashboardSettingsData) => void;
+  settings: DashboardSettingsData;
+}) {
+  const [basicDraft, setBasicDraft] = useState(() => ({
+    domain: settings.basic.domain,
+    login: settings.basic.login,
+    notificationEmail: settings.basic.notificationEmail,
+    password: "",
+    passwordConfirm: "",
+  }));
+  const [notice, setNotice] = useState("");
+  const [secretRows, setSecretRows] = useState<RuntimeSecretDraft[]>(() =>
+    settings.environment.secrets.map(createSecretDraft),
+  );
+  const [savingBasic, setSavingBasic] = useState(false);
+  const [savingRuntime, setSavingRuntime] = useState(false);
+  const [variableRows, setVariableRows] = useState<RuntimeVariableDraft[]>(() =>
+    settings.environment.variables.map(createVariableDraft),
+  );
+
+  useEffect(() => {
+    setBasicDraft({
+      domain: settings.basic.domain,
+      login: settings.basic.login,
+      notificationEmail: settings.basic.notificationEmail,
+      password: "",
+      passwordConfirm: "",
+    });
+  }, [settings.basic]);
+
+  useEffect(() => {
+    setSecretRows(settings.environment.secrets.map(createSecretDraft));
+    setVariableRows(settings.environment.variables.map(createVariableDraft));
+  }, [settings.environment]);
+
+  async function saveBasic(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSavingBasic(true);
+    setNotice("");
+
+    try {
+      const payload = await postSettingsJson<{
+        error?: string;
+        settings?: DashboardSettingsData["basic"];
+      }>("/api/settings/basic", basicDraft);
+
+      if (!payload.settings) {
+        throw new Error("Basic settings were not returned.");
+      }
+
+      onSettingsChange({
+        ...settings,
+        basic: payload.settings,
+      });
+      setBasicDraft((current) => ({
+        ...current,
+        password: "",
+        passwordConfirm: "",
+      }));
+      setNotice("Basic settings saved.");
+    } catch (error) {
+      setNotice(getErrorMessage(error));
+    } finally {
+      setSavingBasic(false);
+    }
+  }
+
+  async function saveRuntime(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSavingRuntime(true);
+    setNotice("");
+
+    try {
+      const payload = await postSettingsJson<{
+        environment?: RuntimeEnvironmentSettingsData;
+        error?: string;
+      }>("/api/settings/runtime", {
+        environmentName: settings.environment.name,
+        projectSlug: settings.projectSlug,
+        secrets: secretRows.map((row) => ({
+          currentName: row.currentName,
+          name: row.name,
+          value: row.value,
+        })),
+        variables: variableRows.map((row) => ({
+          name: row.name,
+          value: row.value,
+        })),
+      });
+
+      if (!payload.environment) {
+        throw new Error("Runtime settings were not returned.");
+      }
+
+      onSettingsChange({
+        ...settings,
+        environment: payload.environment,
+      });
+      setNotice("Environment settings saved.");
+    } catch (error) {
+      setNotice(getErrorMessage(error));
+    } finally {
+      setSavingRuntime(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase text-blue-300">Settings</p>
+          <h2 className="mt-1 text-2xl font-semibold text-slate-100">Administration</h2>
+        </div>
+        <div className="rounded-md border border-slate-700 bg-[#111821] px-3 py-2 text-sm text-slate-300">
+          Project: {settings.projectSlug}
+        </div>
+      </div>
+
+      {notice ? (
+        <div
+          className="rounded-md border border-slate-700 bg-[#111821] px-3 py-2 text-sm text-slate-300"
+          role="status"
+        >
+          {notice}
+        </div>
+      ) : null}
+
+      <form
+        className="rounded-md border border-slate-800 bg-[#11161d]"
+        onSubmit={(event) => void saveBasic(event)}
+      >
+        <div className="flex items-center gap-3 border-b border-slate-800 px-5 py-4">
+          <span className="flex h-9 w-9 items-center justify-center rounded-md bg-blue-600/20 text-blue-300">
+            <ServerCog className="h-5 w-5" />
+          </span>
+          <div>
+            <h3 className="text-base font-semibold text-slate-100">Basic settings</h3>
+            <div className="text-xs text-slate-500">Domain, login, password, email</div>
+          </div>
+        </div>
+
+        <div className="grid gap-4 p-5 lg:grid-cols-2">
+          <label
+            className="grid gap-2 text-sm font-medium text-slate-200"
+            htmlFor="settings-domain"
+          >
+            Domain
+            <input
+              className="h-10 rounded-md border border-slate-700 bg-[#0f151d] px-3 text-sm text-slate-100 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              id="settings-domain"
+              onChange={(event) =>
+                setBasicDraft((current) => ({
+                  ...current,
+                  domain: event.target.value,
+                }))
+              }
+              required
+              type="text"
+              value={basicDraft.domain}
+            />
+          </label>
+
+          <label
+            className="grid gap-2 text-sm font-medium text-slate-200"
+            htmlFor="settings-login"
+          >
+            Login
+            <input
+              autoComplete="username"
+              className="h-10 rounded-md border border-slate-700 bg-[#0f151d] px-3 text-sm text-slate-100 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              id="settings-login"
+              minLength={3}
+              onChange={(event) =>
+                setBasicDraft((current) => ({
+                  ...current,
+                  login: event.target.value,
+                }))
+              }
+              required
+              type="text"
+              value={basicDraft.login}
+            />
+          </label>
+
+          <label
+            className="grid gap-2 text-sm font-medium text-slate-200"
+            htmlFor="settings-password"
+          >
+            New password
+            <input
+              autoComplete="new-password"
+              className="h-10 rounded-md border border-slate-700 bg-[#0f151d] px-3 text-sm text-slate-100 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              id="settings-password"
+              minLength={8}
+              onChange={(event) =>
+                setBasicDraft((current) => ({
+                  ...current,
+                  password: event.target.value,
+                }))
+              }
+              type="password"
+              value={basicDraft.password}
+            />
+          </label>
+
+          <label
+            className="grid gap-2 text-sm font-medium text-slate-200"
+            htmlFor="settings-password-confirm"
+          >
+            Confirm password
+            <input
+              autoComplete="new-password"
+              className="h-10 rounded-md border border-slate-700 bg-[#0f151d] px-3 text-sm text-slate-100 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              id="settings-password-confirm"
+              minLength={8}
+              onChange={(event) =>
+                setBasicDraft((current) => ({
+                  ...current,
+                  passwordConfirm: event.target.value,
+                }))
+              }
+              type="password"
+              value={basicDraft.passwordConfirm}
+            />
+          </label>
+
+          <label
+            className="grid gap-2 text-sm font-medium text-slate-200 lg:col-span-2"
+            htmlFor="settings-notification-email"
+          >
+            Notification email
+            <input
+              autoComplete="email"
+              className="h-10 rounded-md border border-slate-700 bg-[#0f151d] px-3 text-sm text-slate-100 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              id="settings-notification-email"
+              onChange={(event) =>
+                setBasicDraft((current) => ({
+                  ...current,
+                  notificationEmail: event.target.value,
+                }))
+              }
+              required
+              type="email"
+              value={basicDraft.notificationEmail}
+            />
+          </label>
+        </div>
+
+        <div className="flex justify-end border-t border-slate-800 px-5 py-4">
+          <button
+            className="inline-flex h-10 items-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={savingBasic}
+            type="submit"
+          >
+            <Save className="h-4 w-4" />
+            {savingBasic ? "Saving..." : "Save basic settings"}
+          </button>
+        </div>
+      </form>
+
+      <form
+        className="rounded-md border border-slate-800 bg-[#11161d]"
+        onSubmit={(event) => void saveRuntime(event)}
+      >
+        <div className="flex items-center gap-3 border-b border-slate-800 px-5 py-4">
+          <span className="flex h-9 w-9 items-center justify-center rounded-md bg-emerald-600/20 text-emerald-300">
+            <KeyRound className="h-5 w-5" />
+          </span>
+          <div>
+            <h3 className="text-base font-semibold text-slate-100">
+              Environment & secrets
+            </h3>
+            <div className="text-xs text-slate-500">
+              {settings.environment.name} environment
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-6 p-5 xl:grid-cols-2">
+          <section className="min-w-0">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2 text-sm font-semibold text-slate-100">
+                <UserRound className="h-4 w-4 shrink-0 text-slate-500" />
+                <span className="truncate">Variables</span>
+              </div>
+              <button
+                className="inline-flex h-9 items-center gap-2 rounded-md border border-slate-700 px-3 text-sm font-medium text-slate-200 hover:bg-slate-800"
+                onClick={() =>
+                  setVariableRows((current) => [...current, createVariableDraft()])
+                }
+                type="button"
+              >
+                <Plus className="h-4 w-4" />
+                Add
+              </button>
+            </div>
+
+            <div className="grid gap-2">
+              {variableRows.map((row, index) => (
+                <div
+                  className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_2.5rem]"
+                  key={row.id}
+                >
+                  <input
+                    aria-label={`Variable ${index + 1} name`}
+                    className="h-10 rounded-md border border-slate-700 bg-[#0f151d] px-3 text-sm text-slate-100 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                    onChange={(event) =>
+                      setVariableRows((current) =>
+                        current.map((item) =>
+                          item.id === row.id
+                            ? { ...item, name: event.target.value }
+                            : item,
+                        ),
+                      )
+                    }
+                    placeholder="NAME"
+                    value={row.name}
+                  />
+                  <input
+                    aria-label={`Variable ${index + 1} value`}
+                    className="h-10 rounded-md border border-slate-700 bg-[#0f151d] px-3 text-sm text-slate-100 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                    onChange={(event) =>
+                      setVariableRows((current) =>
+                        current.map((item) =>
+                          item.id === row.id
+                            ? { ...item, value: event.target.value }
+                            : item,
+                        ),
+                      )
+                    }
+                    placeholder="value"
+                    value={row.value}
+                  />
+                  <button
+                    aria-label={`Remove variable ${row.name || index + 1}`}
+                    className="flex h-10 w-10 items-center justify-center rounded-md border border-slate-700 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+                    onClick={() =>
+                      setVariableRows((current) =>
+                        current.filter((item) => item.id !== row.id),
+                      )
+                    }
+                    type="button"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="min-w-0">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2 text-sm font-semibold text-slate-100">
+                <LockKeyhole className="h-4 w-4 shrink-0 text-slate-500" />
+                <span className="truncate">Secrets</span>
+              </div>
+              <button
+                className="inline-flex h-9 items-center gap-2 rounded-md border border-slate-700 px-3 text-sm font-medium text-slate-200 hover:bg-slate-800"
+                onClick={() =>
+                  setSecretRows((current) => [...current, createSecretDraft()])
+                }
+                type="button"
+              >
+                <Plus className="h-4 w-4" />
+                Add
+              </button>
+            </div>
+
+            <div className="grid gap-2">
+              {secretRows.map((row, index) => (
+                <div
+                  className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_2.5rem]"
+                  key={row.id}
+                >
+                  <input
+                    aria-label={`Secret ${index + 1} name`}
+                    className="h-10 rounded-md border border-slate-700 bg-[#0f151d] px-3 text-sm text-slate-100 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                    onChange={(event) =>
+                      setSecretRows((current) =>
+                        current.map((item) =>
+                          item.id === row.id
+                            ? { ...item, name: event.target.value }
+                            : item,
+                        ),
+                      )
+                    }
+                    placeholder="SECRET_NAME"
+                    value={row.name}
+                  />
+                  <input
+                    aria-label={`Secret ${index + 1} value`}
+                    className="h-10 rounded-md border border-slate-700 bg-[#0f151d] px-3 text-sm text-slate-100 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                    onChange={(event) =>
+                      setSecretRows((current) =>
+                        current.map((item) =>
+                          item.id === row.id
+                            ? { ...item, value: event.target.value }
+                            : item,
+                        ),
+                      )
+                    }
+                    placeholder={row.hasValue ? "Keep existing value" : "value"}
+                    type="password"
+                    value={row.value}
+                  />
+                  <button
+                    aria-label={`Remove secret ${row.name || index + 1}`}
+                    className="flex h-10 w-10 items-center justify-center rounded-md border border-slate-700 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+                    onClick={() =>
+                      setSecretRows((current) =>
+                        current.filter((item) => item.id !== row.id),
+                      )
+                    }
+                    type="button"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        <div className="flex justify-end border-t border-slate-800 px-5 py-4">
+          <button
+            className="inline-flex h-10 items-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={savingRuntime}
+            type="submit"
+          >
+            <Save className="h-4 w-4" />
+            {savingRuntime ? "Saving..." : "Save environment"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function getInitials(value: string) {
+  const parts = value
+    .replace(/@.*$/, "")
+    .split(/[\s._-]+/)
+    .filter(Boolean);
+  const initials = parts
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+
+  return initials || "AD";
+}
+
+function createDraftId() {
+  return Math.random().toString(36).slice(2);
+}
+
+function createVariableDraft(
+  variable: RuntimeEnvironmentSettingsData["variables"][number] = {
+    name: "",
+    value: "",
+  },
+): RuntimeVariableDraft {
+  return {
+    id: createDraftId(),
+    name: variable.name,
+    value: variable.value,
+  };
+}
+
+function createSecretDraft(
+  secret: Partial<RuntimeEnvironmentSettingsData["secrets"][number]> = {},
+): RuntimeSecretDraft {
+  return {
+    currentName: secret.currentName,
+    hasValue: Boolean(secret.hasValue),
+    id: createDraftId(),
+    name: secret.name ?? "",
+    updatedAt: secret.updatedAt,
+    value: "",
+  };
+}
+
+async function postSettingsJson<T>(url: string, payload: unknown): Promise<T> {
+  const response = await fetch(url, {
+    body: JSON.stringify(payload),
+    headers: {
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  });
+  const body = (await response.json().catch(() => ({}))) as T & { error?: string };
+
+  if (!response.ok) {
+    throw new Error(body.error ?? "Unable to save settings.");
+  }
+
+  return body;
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function FilterDropdown<T extends string>({
@@ -850,15 +1480,19 @@ function FilterDropdown<T extends string>({
 
 function ChecksTable({
   activeActionMenu,
+  expandedChecks,
   groups: visibleGroups,
   onActionMenuToggle,
+  onCheckToggle,
   onGroupToggle,
   onNotice,
   onRunCheckNow,
 }: {
   activeActionMenu: string | null;
+  expandedChecks: Record<string, boolean>;
   groups: GroupRow[];
   onActionMenuToggle: (key: string) => void;
+  onCheckToggle: (checkId: string) => void;
   onGroupToggle: (groupName: string) => void;
   onNotice: (notice: string) => void;
   onRunCheckNow: (check: CheckRow) => void;
@@ -908,9 +1542,11 @@ function ChecksTable({
             {visibleGroups.map((group) => (
               <GroupBlock
                 activeActionMenu={activeActionMenu}
+                expandedChecks={expandedChecks}
                 group={group}
                 key={group.name}
                 onActionMenuToggle={onActionMenuToggle}
+                onCheckToggle={onCheckToggle}
                 onGroupToggle={onGroupToggle}
                 onNotice={onNotice}
                 onRunCheckNow={onRunCheckNow}
@@ -932,15 +1568,19 @@ function ChecksTable({
 
 function GroupBlock({
   activeActionMenu,
+  expandedChecks,
   group,
   onActionMenuToggle,
+  onCheckToggle,
   onGroupToggle,
   onNotice,
   onRunCheckNow,
 }: {
   activeActionMenu: string | null;
+  expandedChecks: Record<string, boolean>;
   group: GroupRow;
   onActionMenuToggle: (key: string) => void;
+  onCheckToggle: (checkId: string) => void;
   onGroupToggle: (groupName: string) => void;
   onNotice: (notice: string) => void;
   onRunCheckNow: (check: CheckRow) => void;
@@ -1023,8 +1663,10 @@ function GroupBlock({
             <CheckTableRow
               activeActionMenu={activeActionMenu}
               check={check}
-              key={check.name}
+              expanded={Boolean(expandedChecks[check.id])}
+              key={check.id}
               onActionMenuToggle={onActionMenuToggle}
+              onCheckToggle={onCheckToggle}
               onNotice={onNotice}
               onRunCheckNow={onRunCheckNow}
             />
@@ -1037,79 +1679,341 @@ function GroupBlock({
 function CheckTableRow({
   activeActionMenu,
   check,
+  expanded,
   onActionMenuToggle,
+  onCheckToggle,
   onNotice,
   onRunCheckNow,
 }: {
   activeActionMenu: string | null;
   check: CheckRow;
+  expanded: boolean;
   onActionMenuToggle: (key: string) => void;
+  onCheckToggle: (checkId: string) => void;
   onNotice: (notice: string) => void;
   onRunCheckNow: (check: CheckRow) => void;
 }) {
-  const actionKey = `check:${check.name}`;
+  const actionKey = `check:${check.id}`;
+  const toggleLabel = `Open ${check.name}`;
 
   return (
-    <tr className="border-b border-slate-800 bg-[#141a21] text-slate-300 hover:bg-[#18202a]">
-      <td className="px-5 py-3">
-        <div className="flex items-center gap-4 pl-9">
-          <CheckStatus runState={check.runState} status={check.status} />
-          <div className="min-w-0">
-            <div className="truncate font-semibold text-slate-200">{check.name}</div>
-            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-sm text-slate-500">
-              <span
-                className={cn(
-                  check.runState === "queued" && "font-medium text-amber-300",
-                  check.runState === "running" && "font-medium text-blue-300",
-                )}
-              >
-                {check.time}
-              </span>
-              {check.tags.map((tag) => (
+    <>
+      <tr
+        aria-expanded={expanded}
+        aria-label={toggleLabel}
+        className={cn(
+          "cursor-pointer border-b border-slate-800 bg-[#141a21] text-slate-300 outline-none transition",
+          "hover:bg-[#18202a] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/50",
+          expanded && "bg-[#18202a]",
+        )}
+        onClick={() => onCheckToggle(check.id)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onCheckToggle(check.id);
+          }
+        }}
+        role="link"
+        tabIndex={0}
+      >
+        <td className="px-5 py-3">
+          <div className="flex items-center gap-4 pl-9">
+            {expanded ? (
+              <ChevronDown className="h-4 w-4 shrink-0 text-slate-500" />
+            ) : (
+              <ChevronRight className="h-4 w-4 shrink-0 text-slate-500" />
+            )}
+            <CheckStatus runState={check.runState} status={check.status} />
+            <div className="min-w-0">
+              <div className="truncate font-semibold text-slate-200">{check.name}</div>
+              <div className="mt-1 flex flex-wrap items-center gap-1.5 text-sm text-slate-500">
                 <span
-                  className="rounded bg-slate-700 px-1.5 py-0.5 text-xs font-semibold text-slate-300"
-                  key={tag}
+                  className={cn(
+                    check.runState === "queued" && "font-medium text-amber-300",
+                    check.runState === "running" && "font-medium text-blue-300",
+                  )}
                 >
-                  {tag}
+                  {check.time}
                 </span>
-              ))}
+                {check.tags.map((tag) => (
+                  <span
+                    className="rounded bg-slate-700 px-1.5 py-0.5 text-xs font-semibold text-slate-300"
+                    key={tag}
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
-        </div>
-      </td>
-      <td className="px-4 py-3">
-        <span className="inline-flex h-5 items-center rounded border border-slate-500 px-1 text-[10px] font-bold uppercase text-slate-400">
-          {check.type}
-        </span>
-      </td>
-      <td className="px-4 py-3">
-        <SparkBars bars={check.bars} />
-      </td>
-      <td className="px-4 py-3 text-slate-300">{check.ava}</td>
-      <td className="px-4 py-3 text-slate-300">{check.avg}</td>
-      <td className="px-4 py-3 text-slate-300">{check.p95}</td>
-      <td className="px-4 py-3 text-slate-300">{check.delta}</td>
-      <td className="relative px-4 py-3" data-action-menu-root>
-        <button
-          aria-label={`${check.name} actions`}
-          className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-800 hover:text-slate-200"
-          onClick={() => onActionMenuToggle(actionKey)}
-          type="button"
+        </td>
+        <td className="px-4 py-3">
+          <span className="inline-flex h-5 items-center rounded border border-slate-500 px-1 text-[10px] font-bold uppercase text-slate-400">
+            {check.type}
+          </span>
+        </td>
+        <td className="px-4 py-3">
+          <SparkBars bars={check.bars} />
+        </td>
+        <td className="px-4 py-3 text-slate-300">{check.ava}</td>
+        <td className="px-4 py-3 text-slate-300">{check.avg}</td>
+        <td className="px-4 py-3 text-slate-300">{check.p95}</td>
+        <td className="px-4 py-3 text-slate-300">{check.delta}</td>
+        <td
+          className="relative px-4 py-3"
+          data-action-menu-root
+          onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => event.stopPropagation()}
         >
-          <MoreVertical className="h-5 w-5" />
-        </button>
-        {activeActionMenu === actionKey ? (
-          <ActionMenu
-            name={check.name}
-            onClose={() => onActionMenuToggle(actionKey)}
-            onNotice={onNotice}
-            onOpen={() => onNotice(`Selected ${check.name}.`)}
-            onRunNow={() => onRunCheckNow(check)}
-          />
-        ) : null}
+          <button
+            aria-label={`${check.name} actions`}
+            className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-800 hover:text-slate-200"
+            onClick={() => onActionMenuToggle(actionKey)}
+            type="button"
+          >
+            <MoreVertical className="h-5 w-5" />
+          </button>
+          {activeActionMenu === actionKey ? (
+            <ActionMenu
+              name={check.name}
+              onClose={() => onActionMenuToggle(actionKey)}
+              onNotice={onNotice}
+              onOpen={() => {
+                if (!expanded) {
+                  onCheckToggle(check.id);
+                }
+              }}
+              onRunNow={() => onRunCheckNow(check)}
+            />
+          ) : null}
+        </td>
+      </tr>
+      {expanded ? <CheckDetailsRow check={check} /> : null}
+    </>
+  );
+}
+
+function CheckDetailsRow({ check }: { check: CheckRow }) {
+  return (
+    <tr className="border-b border-slate-800 bg-[#0f151d]">
+      <td className="px-5 py-0" colSpan={8}>
+        <div className="grid gap-5 border-l border-blue-500/30 px-5 py-5">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)]">
+            <section className="min-w-0 rounded-md border border-slate-800 bg-[#111821]">
+              <div className="flex items-center gap-2 border-b border-slate-800 px-4 py-3 text-sm font-semibold text-slate-100">
+                <SlidersHorizontal className="h-4 w-4 text-slate-500" />
+                Settings
+              </div>
+              <dl className="grid gap-3 p-4 text-sm md:grid-cols-2">
+                <DetailValue label="Key" value={check.settings.key} />
+                <DetailValue label="Schedule" value={check.settings.frequency} />
+                <DetailValue
+                  label="Enabled"
+                  value={check.settings.enabled ? "yes" : "no"}
+                />
+                <DetailValue label="Type" value={check.type.toUpperCase()} />
+                {check.settings.entrypoint ? (
+                  <DetailValue label="Entrypoint" value={check.settings.entrypoint} />
+                ) : null}
+                {check.settings.request ? (
+                  <>
+                    <DetailValue
+                      label="Request"
+                      value={`${check.settings.request.method} ${check.settings.request.url}`}
+                    />
+                    <DetailValue
+                      label="Assertions"
+                      value={String(check.settings.request.assertions)}
+                    />
+                    <DetailValue
+                      label="Headers"
+                      value={String(check.settings.request.headers)}
+                    />
+                    <DetailValue
+                      label="Body"
+                      value={check.settings.request.body ? "yes" : "no"}
+                    />
+                  </>
+                ) : null}
+              </dl>
+            </section>
+
+            <section className="rounded-md border border-slate-800 bg-[#111821]">
+              <div className="flex items-center gap-2 border-b border-slate-800 px-4 py-3 text-sm font-semibold text-slate-100">
+                <Gauge className="h-4 w-4 text-slate-500" />
+                Run statistics
+              </div>
+              <dl className="grid grid-cols-2 gap-3 p-4 text-sm">
+                <DetailValue label="Runs" value={check.stats.totalRuns} />
+                <DetailValue label="Passed" value={check.stats.passedRuns} />
+                <DetailValue label="Failed" value={check.stats.failedRuns} />
+                <DetailValue label="Availability" value={check.ava} />
+                <DetailValue label="Average" value={check.stats.averageDuration} />
+                <DetailValue label="P95" value={check.stats.p95Duration} />
+              </dl>
+            </section>
+          </div>
+
+          <section className="overflow-hidden rounded-md border border-slate-800 bg-[#111821]">
+            <div className="flex items-center gap-2 border-b border-slate-800 px-4 py-3 text-sm font-semibold text-slate-100">
+              <History className="h-4 w-4 text-slate-500" />
+              Run history
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[900px] text-left text-sm">
+                <thead className="bg-[#121820] text-xs font-semibold uppercase text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3">Run</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Duration</th>
+                    <th className="px-4 py-3">Artifacts</th>
+                    <th className="px-4 py-3">Error</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {check.runs.length > 0 ? (
+                    check.runs.map((run) => (
+                      <tr className="border-t border-slate-800" key={run.id}>
+                        <td className="px-4 py-3 text-slate-300">{run.occurredAt}</td>
+                        <td className="px-4 py-3">
+                          <RunStateBadge runState={run.runState} status={run.status} />
+                        </td>
+                        <td className="px-4 py-3 text-slate-300">{run.duration}</td>
+                        <td className="px-4 py-3">
+                          <ArtifactList artifacts={run.artifacts} />
+                        </td>
+                        <td className="max-w-[28rem] px-4 py-3 text-slate-500">
+                          <span className="line-clamp-2">
+                            {run.errorMessage ?? "-"}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td className="px-4 py-5 text-slate-500" colSpan={5}>
+                        No recorded runs.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
       </td>
     </tr>
   );
+}
+
+function DetailValue({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-xs font-semibold uppercase text-slate-500">{label}</dt>
+      <dd className="mt-1 truncate text-slate-200" title={value}>
+        {value}
+      </dd>
+    </div>
+  );
+}
+
+function RunStateBadge({
+  runState,
+  status,
+}: {
+  runState: DashboardRunState;
+  status: Status;
+}) {
+  const content = runStateTooltipContent[runState];
+
+  return (
+    <span
+      className={cn(
+        "inline-flex h-7 items-center gap-2 rounded-md border px-2 text-xs font-semibold",
+        status === "passing" && "border-emerald-700/60 text-emerald-300",
+        status === "degraded" && "border-amber-700/60 text-amber-300",
+        status === "failing" && "border-red-700/60 text-red-300",
+      )}
+    >
+      <ResultTooltipStatus runState={runState} status={status} />
+      {content.title}
+    </span>
+  );
+}
+
+function ArtifactList({ artifacts }: { artifacts: DashboardRunArtifact[] }) {
+  if (artifacts.length === 0) {
+    return <span className="text-slate-500">No artifacts</span>;
+  }
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {artifacts.map((artifact) => {
+        const Icon = getArtifactIcon(artifact.type);
+        const label = getArtifactTypeLabel(artifact.type);
+
+        return (
+          <span
+            className="inline-flex max-w-full items-center gap-2 rounded-md border border-slate-700 bg-[#0f151d] px-2 py-1 text-xs text-slate-300"
+            key={artifact.id}
+          >
+            <Icon className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+            <span className="max-w-48 truncate" title={artifact.name}>
+              {label}
+              {artifact.size !== "-" ? ` · ${artifact.size}` : ""}
+            </span>
+            <a
+              aria-label={`View ${artifact.name}`}
+              className="flex h-6 w-6 items-center justify-center rounded text-slate-400 hover:bg-slate-800 hover:text-slate-100"
+              href={artifact.viewUrl}
+              rel="noreferrer"
+              target="_blank"
+              title="View"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+            <a
+              aria-label={`Download ${artifact.name}`}
+              className="flex h-6 w-6 items-center justify-center rounded text-slate-400 hover:bg-slate-800 hover:text-slate-100"
+              download
+              href={artifact.downloadUrl}
+              title="Download"
+            >
+              <Download className="h-3.5 w-3.5" />
+            </a>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function getArtifactIcon(type: DashboardRunArtifact["type"]): LucideIcon {
+  if (type === "screenshot") {
+    return FileImage;
+  }
+
+  if (type === "video") {
+    return Video;
+  }
+
+  if (type === "trace") {
+    return FileArchive;
+  }
+
+  if (type === "json" || type === "request_response") {
+    return FileJson;
+  }
+
+  return FileText;
+}
+
+function getArtifactTypeLabel(type: DashboardRunArtifact["type"]) {
+  if (type === "request_response") {
+    return "Request/response";
+  }
+
+  return type.charAt(0).toUpperCase() + type.slice(1);
 }
 
 function ActionMenu({

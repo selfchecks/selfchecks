@@ -2,11 +2,24 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const mocks = vi.hoisted(() => ({
+  routerPush: vi.fn(),
+  routerRefresh: vi.fn(),
+}));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: mocks.routerPush,
+    refresh: mocks.routerRefresh,
+  }),
+}));
+
 import type {
   DashboardCheckRow,
   DashboardGroupRow,
   DashboardSummary,
 } from "@/lib/dashboard-types";
+import type { DashboardSettingsData } from "@/lib/settings-data";
 
 import DashboardClient from "./dashboard-client";
 
@@ -66,6 +79,33 @@ const fixtureSummary: DashboardSummary = {
   failing: 0,
   passing: 5,
 };
+const fixtureSettings: DashboardSettingsData = {
+  basic: {
+    domain: "checks.example.com",
+    login: "nikolaev@iprojects.ru",
+    notificationEmail: "ops@example.com",
+    publicUrl: "https://checks.example.com",
+  },
+  environment: {
+    name: "default",
+    secrets: [
+      {
+        currentName: "API_TOKEN",
+        hasValue: true,
+        name: "API_TOKEN",
+        updatedAt: "2026-06-24T10:00:00.000Z",
+        value: "",
+      },
+    ],
+    variables: [
+      {
+        name: "BASE_URL",
+        value: "https://app.example.com",
+      },
+    ],
+  },
+  projectSlug: "default",
+};
 
 function createCheck(overrides: Partial<DashboardCheckRow>): DashboardCheckRow {
   const name = overrides.name ?? "check";
@@ -73,8 +113,21 @@ function createCheck(overrides: Partial<DashboardCheckRow>): DashboardCheckRow {
   const runState =
     overrides.runState ??
     (status === "passing" ? "passed" : status === "failing" ? "failed" : "not_run");
+  const artifacts = overrides.hasTrace
+    ? [
+        {
+          downloadUrl: `/api/runs/run-${name}/artifacts/artifact-${name}?download=1`,
+          id: `artifact-${name}`,
+          mimeType: "application/zip",
+          name: `${name}-trace.zip`,
+          size: "42 KB",
+          type: "trace" as const,
+          viewUrl: `/api/runs/run-${name}/artifacts/artifact-${name}`,
+        },
+      ]
+    : [];
 
-  return {
+  const baseCheck: DashboardCheckRow = {
     avg: "100 ms",
     ava: "100%",
     bars: [
@@ -100,22 +153,64 @@ function createCheck(overrides: Partial<DashboardCheckRow>): DashboardCheckRow {
     name: "check",
     p95: "100 ms",
     runState,
+    runs: [
+      {
+        artifacts,
+        createdAt: "2026-06-22T19:25:00.000Z",
+        duration: "120 ms",
+        durationMs: 120,
+        hasRetries: false,
+        id: `run-${name}`,
+        occurredAt: "Jun 22 22:25 (UTC+3)",
+        runner: "Local runner",
+        runState,
+        status,
+      },
+    ],
+    settings: {
+      enabled: true,
+      frequency: "5 min",
+      key: name,
+      request: {
+        assertions: 2,
+        body: false,
+        headers: 1,
+        method: "GET",
+        url: `https://example.test/${name}`,
+      },
+    },
+    stats: {
+      averageDuration: "100 ms",
+      failedRuns: status === "failing" ? "1" : "0",
+      p95Duration: "100 ms",
+      passedRuns: status === "passing" ? "1" : "0",
+      totalRuns: "1",
+    },
     status,
     tags: ["api", "regress"],
     time: "about 1 hour ago",
     type: "api",
-    ...overrides,
   };
+
+  return {
+    ...baseCheck,
+    ...overrides,
+  } as DashboardCheckRow;
 }
 
 function renderDashboard() {
   render(
-    <DashboardClient initialGroups={fixtureGroups} initialSummary={fixtureSummary} />,
+    <DashboardClient
+      initialGroups={fixtureGroups}
+      initialSettings={fixtureSettings}
+      initialSummary={fixtureSummary}
+    />,
   );
 }
 
 describe("DashboardPage", () => {
   afterEach(() => {
+    vi.clearAllMocks();
     vi.unstubAllGlobals();
   });
 
@@ -263,6 +358,113 @@ describe("DashboardPage", () => {
     expect(screen.getByText("No checks match the current filters.")).toBeTruthy();
   });
 
+  it("opens settings from the account menu and saves settings forms", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      if (input === "/api/settings/basic") {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              settings: {
+                domain: "checks2.example.com",
+                login: "nikolaev@iprojects.ru",
+                notificationEmail: "alerts@example.com",
+                publicUrl: "https://checks2.example.com",
+              },
+            }),
+            {
+              headers: {
+                "content-type": "application/json",
+              },
+              status: 200,
+            },
+          ),
+        );
+      }
+
+      if (input === "/api/settings/runtime") {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              environment: {
+                name: "default",
+                secrets: fixtureSettings.environment.secrets,
+                variables: [
+                  {
+                    name: "BASE_URL",
+                    value: "https://checks2.example.com",
+                  },
+                ],
+              },
+            }),
+            {
+              headers: {
+                "content-type": "application/json",
+              },
+              status: 200,
+            },
+          ),
+        );
+      }
+
+      return Promise.reject(new Error(`Unexpected fetch ${String(input)}`));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderDashboard();
+
+    await user.click(screen.getByRole("button", { name: "Open account menu" }));
+    const settingsButtons = screen.getAllByRole("button", { name: "Settings" });
+    await user.click(settingsButtons[settingsButtons.length - 1]!);
+
+    expect(screen.getByRole("heading", { name: "Administration" })).toBeTruthy();
+    expect((screen.getByLabelText("Domain") as HTMLInputElement).value).toBe(
+      "checks.example.com",
+    );
+    expect(
+      (screen.getByLabelText("Notification email") as HTMLInputElement).value,
+    ).toBe("ops@example.com");
+    expect((screen.getByLabelText("Variable 1 name") as HTMLInputElement).value).toBe(
+      "BASE_URL",
+    );
+    expect((screen.getByLabelText("Secret 1 name") as HTMLInputElement).value).toBe(
+      "API_TOKEN",
+    );
+
+    await user.clear(screen.getByLabelText("Domain"));
+    await user.type(screen.getByLabelText("Domain"), "checks2.example.com");
+    await user.clear(screen.getByLabelText("Notification email"));
+    await user.type(screen.getByLabelText("Notification email"), "alerts@example.com");
+    await user.click(screen.getByRole("button", { name: "Save basic settings" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/settings/basic",
+        expect.objectContaining({
+          method: "POST",
+        }),
+      );
+    });
+    expect(screen.getByText("Basic settings saved.")).toBeTruthy();
+
+    await user.clear(screen.getByLabelText("Variable 1 value"));
+    await user.type(
+      screen.getByLabelText("Variable 1 value"),
+      "https://checks2.example.com",
+    );
+    await user.click(screen.getByRole("button", { name: "Save environment" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/settings/runtime",
+        expect.objectContaining({
+          method: "POST",
+        }),
+      );
+    });
+    expect(screen.getByText("Environment settings saved.")).toBeTruthy();
+  });
+
   it("opens and closes custom filter dropdowns", async () => {
     const user = userEvent.setup();
 
@@ -278,15 +480,19 @@ describe("DashboardPage", () => {
     expect(screen.queryByRole("option", { name: "Passing" })).toBeNull();
   });
 
-  it("opens local menus", async () => {
+  it("navigates to a dedicated check page from rows and menus", async () => {
     const user = userEvent.setup();
 
     renderDashboard();
 
+    await user.click(screen.getByRole("link", { name: "Open group.list" }));
+
+    expect(mocks.routerPush).toHaveBeenCalledWith("/checks/check-group.list");
+
     await user.click(screen.getByRole("button", { name: "issue.get actions" }));
     await user.click(screen.getByRole("button", { name: "Open" }));
 
-    expect(screen.getByText("Selected issue.get.")).toBeTruthy();
+    expect(mocks.routerPush).toHaveBeenCalledWith("/checks/check-issue.get");
     expect(screen.queryByRole("button", { name: "Open" })).toBeNull();
   });
 

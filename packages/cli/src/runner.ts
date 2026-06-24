@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
 
@@ -62,10 +62,18 @@ type RunnableCheck = Check & {
 };
 
 type CheckExecutionResult = {
+  artifacts?: CollectedRunArtifact[];
   errorMessage?: string;
   logsPath?: string;
   resultJson: Record<string, unknown>;
   status: CheckRunStatus;
+};
+
+type CollectedRunArtifact = {
+  mimeType?: string;
+  path: string;
+  sizeBytes?: number;
+  type: Prisma.ArtifactCreateManyInput["type"];
 };
 
 export async function runChecks(options: RunChecksOptions): Promise<RunChecksSummary> {
@@ -234,6 +242,7 @@ async function runCheck(
         id: run.id,
       },
     });
+    await recordRunArtifacts(run.id, result.artifacts ?? []);
   }
 
   return {
@@ -299,6 +308,7 @@ async function executeCheck(
     const message = error instanceof Error ? error.message : String(error);
 
     return {
+      artifacts: [],
       errorMessage: message,
       resultJson: {
         error: message,
@@ -315,12 +325,14 @@ async function runBrowserCheck(
 ): Promise<CheckExecutionResult> {
   if (!check.entrypoint) {
     return {
+      artifacts: [],
       errorMessage: "Browser check has no Playwright entrypoint.",
       resultJson: {},
       status: "failed",
     };
   }
 
+  const artifactStartedAt = Date.now();
   const logs = await runProcess({
     args: [
       "playwright",
@@ -338,8 +350,12 @@ async function runBrowserCheck(
   const logsPath = run
     ? await writeRunLog(options.rootDir, run.id, logs.output)
     : undefined;
+  const artifacts = run
+    ? await collectRunArtifacts(options.rootDir, artifactStartedAt, logsPath)
+    : [];
 
   return {
+    artifacts,
     errorMessage: logs.exitCode === 0 ? undefined : logs.output.slice(-4000),
     logsPath,
     resultJson: {
@@ -358,6 +374,7 @@ async function runApiCheck(
 
   if (!request) {
     return {
+      artifacts: [],
       errorMessage: "API check has no request definition.",
       resultJson: {},
       status: "failed",
@@ -373,6 +390,7 @@ async function runApiCheck(
   });
 
   return {
+    artifacts: [],
     errorMessage: response.ok
       ? undefined
       : `HTTP ${response.status} ${response.statusText}`,
@@ -432,6 +450,184 @@ async function writeRunLog(
   await writeFile(filePath, output);
 
   return filePath;
+}
+
+async function recordRunArtifacts(
+  runId: string,
+  artifacts: CollectedRunArtifact[],
+): Promise<void> {
+  try {
+    await prisma.artifact.deleteMany({
+      where: {
+        runId,
+      },
+    });
+
+    if (artifacts.length === 0) {
+      return;
+    }
+
+    await prisma.artifact.createMany({
+      data: artifacts.map((artifact) => ({
+        mimeType: artifact.mimeType,
+        path: artifact.path,
+        runId,
+        sizeBytes: artifact.sizeBytes,
+        type: artifact.type,
+      })),
+    });
+  } catch (error) {
+    console.warn("Unable to record run artifacts.", error);
+  }
+}
+
+async function collectRunArtifacts(
+  rootDir: string,
+  startedAt: number,
+  logsPath: string | undefined,
+): Promise<CollectedRunArtifact[]> {
+  const artifacts: CollectedRunArtifact[] = [];
+
+  if (logsPath) {
+    const logArtifact = await describeFileArtifact(logsPath, "LOG", "text/plain");
+
+    if (logArtifact) {
+      artifacts.push(logArtifact);
+    }
+  }
+
+  const discoveredArtifacts = await collectBrowserArtifactFiles(
+    rootDir,
+    startedAt,
+  ).catch((error) => {
+    console.warn("Unable to collect browser artifacts.", error);
+    return [];
+  });
+
+  artifacts.push(...discoveredArtifacts);
+
+  return artifacts;
+}
+
+async function collectBrowserArtifactFiles(
+  rootDir: string,
+  startedAt: number,
+): Promise<CollectedRunArtifact[]> {
+  const directories = [
+    path.join(rootDir, "test-results"),
+    path.join(rootDir, "playwright-report"),
+  ];
+  const seen = new Set<string>();
+  const artifacts = (
+    await Promise.all(
+      directories.map((directory) => walkArtifactDirectory(directory, startedAt, seen)),
+    )
+  ).flat();
+
+  return artifacts.slice(0, 100);
+}
+
+async function walkArtifactDirectory(
+  directory: string,
+  startedAt: number,
+  seen: Set<string>,
+): Promise<CollectedRunArtifact[]> {
+  const entries = await readdir(directory, { withFileTypes: true }).catch(() => []);
+  const artifacts: CollectedRunArtifact[] = [];
+
+  for (const entry of entries) {
+    const filePath = path.join(directory, entry.name);
+
+    if (entry.isDirectory()) {
+      artifacts.push(...(await walkArtifactDirectory(filePath, startedAt, seen)));
+      continue;
+    }
+
+    if (!entry.isFile() || seen.has(filePath)) {
+      continue;
+    }
+
+    seen.add(filePath);
+
+    const inferred = inferArtifactFile(filePath);
+
+    if (!inferred) {
+      continue;
+    }
+
+    const fileStat = await stat(filePath).catch(() => undefined);
+
+    if (!fileStat?.isFile() || fileStat.mtimeMs < startedAt - 1000) {
+      continue;
+    }
+
+    artifacts.push({
+      ...inferred,
+      path: filePath,
+      sizeBytes: Math.min(fileStat.size, Number.MAX_SAFE_INTEGER),
+    });
+  }
+
+  return artifacts;
+}
+
+async function describeFileArtifact(
+  filePath: string,
+  type: Prisma.ArtifactCreateManyInput["type"],
+  mimeType: string,
+): Promise<CollectedRunArtifact | undefined> {
+  const fileStat = await stat(filePath).catch(() => undefined);
+
+  if (!fileStat?.isFile()) {
+    return undefined;
+  }
+
+  return {
+    mimeType,
+    path: filePath,
+    sizeBytes: Math.min(fileStat.size, Number.MAX_SAFE_INTEGER),
+    type,
+  };
+}
+
+function inferArtifactFile(
+  filePath: string,
+): Pick<CollectedRunArtifact, "mimeType" | "type"> | undefined {
+  const fileName = path.basename(filePath).toLowerCase();
+  const extension = path.extname(fileName);
+
+  if ([".png", ".jpg", ".jpeg", ".webp"].includes(extension)) {
+    return {
+      mimeType:
+        extension === ".jpg" || extension === ".jpeg"
+          ? "image/jpeg"
+          : `image/${extension.slice(1)}`,
+      type: "SCREENSHOT",
+    };
+  }
+
+  if ([".mp4", ".webm"].includes(extension)) {
+    return {
+      mimeType: extension === ".mp4" ? "video/mp4" : "video/webm",
+      type: "VIDEO",
+    };
+  }
+
+  if (extension === ".zip" && fileName.includes("trace")) {
+    return {
+      mimeType: "application/zip",
+      type: "TRACE",
+    };
+  }
+
+  if (extension === ".json") {
+    return {
+      mimeType: "application/json",
+      type: "JSON",
+    };
+  }
+
+  return undefined;
 }
 
 function interpolateEnv(value: string, env: Record<string, string>): string {

@@ -1,11 +1,19 @@
+import path from "node:path";
+import { readFile } from "node:fs/promises";
+
 import type {
   DashboardCheckRow,
   DashboardGroupRow,
+  DashboardRunArtifact,
+  DashboardRunRow,
   DashboardRunState,
   DashboardStatus,
   DashboardSummary,
 } from "./dashboard-types";
 import { prisma } from "./prisma";
+
+const DEFAULT_QUEUED_RUN_TIMEOUT_MINUTES = 30;
+const MAX_LOG_PREVIEW_CHARS = 12_000;
 
 type DashboardData = {
   groups: DashboardGroupRow[];
@@ -13,10 +21,62 @@ type DashboardData = {
   summary: DashboardSummary;
 };
 
+export type CheckDetailData = {
+  check: DashboardCheckRow;
+  groupName: string;
+  projectSlug: string;
+  updated: string;
+};
+
+export type RunDetailData = {
+  check: {
+    id: string;
+    name: string;
+    settings: DashboardCheckRow["settings"];
+    tags: string[];
+    type: DashboardCheckRow["type"];
+  };
+  groupName: string;
+  projectSlug: string;
+  run: DashboardRunRow & {
+    createdAtLabel: string;
+    finishedAt: string;
+    jobLog?: string;
+    request?: {
+      assertions: Array<{
+        actual: string;
+        comparison: string;
+        passed?: boolean;
+        source: string;
+        target: string;
+      }>;
+      body?: string;
+      headers: Array<{
+        name: string;
+        value: string;
+      }>;
+      method: string;
+      queryParams: Array<{
+        name: string;
+        value: string;
+      }>;
+      url: string;
+    };
+    resultFields: Array<{
+      label: string;
+      value: string;
+    }>;
+    resultJson: string;
+    startedAt: string;
+  };
+};
+
 type CheckWithRuns = Awaited<ReturnType<typeof fetchChecks>>[number];
 
 export async function getDashboardData(projectSlug: string): Promise<DashboardData> {
   try {
+    await cancelStaleQueuedRuns();
+
     const project =
       (await prisma.project.findUnique({
         select: {
@@ -55,11 +115,144 @@ export async function getDashboardData(projectSlug: string): Promise<DashboardDa
   }
 }
 
+export async function getCheckDetailData(
+  checkId: string,
+): Promise<CheckDetailData | undefined> {
+  try {
+    await cancelStaleQueuedRuns();
+
+    const check = await prisma.check.findFirst({
+      include: {
+        group: true,
+        project: {
+          select: {
+            slug: true,
+          },
+        },
+        runs: {
+          include: {
+            artifacts: {
+              orderBy: {
+                createdAt: "desc",
+              },
+            },
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+          take: 50,
+        },
+      },
+      where: {
+        enabled: true,
+        id: checkId,
+      },
+    });
+
+    if (!check) {
+      return undefined;
+    }
+
+    return {
+      check: mapCheck(check),
+      groupName: check.group?.name ?? "Ungrouped",
+      projectSlug: check.project.slug,
+      updated: formatLatestUpdate([check]),
+    };
+  } catch (error) {
+    console.warn("Unable to load check detail data.", error);
+    return undefined;
+  }
+}
+
+export async function getRunDetailData(
+  checkId: string,
+  runId: string,
+): Promise<RunDetailData | undefined> {
+  try {
+    await cancelStaleQueuedRuns();
+
+    const run = await prisma.checkRun.findFirst({
+      include: {
+        artifacts: {
+          orderBy: {
+            createdAt: "desc",
+          },
+        },
+        check: {
+          include: {
+            group: true,
+            project: {
+              select: {
+                slug: true,
+              },
+            },
+          },
+        },
+      },
+      where: {
+        check: {
+          enabled: true,
+        },
+        checkId,
+        id: runId,
+      },
+    });
+
+    if (!run) {
+      return undefined;
+    }
+
+    const request = formatRunRequest(run.check.request, run.result);
+
+    return {
+      check: {
+        id: run.check.id,
+        name: run.check.name,
+        settings: {
+          enabled: run.check.enabled,
+          entrypoint: run.check.entrypoint ?? undefined,
+          frequency:
+            typeof run.check.frequencyMinutes === "number"
+              ? `${run.check.frequencyMinutes} min`
+              : "manual",
+          key: run.check.key,
+          request: formatRequestSettings(run.check.request),
+        },
+        tags: run.check.tags,
+        type: run.check.type.toLowerCase() as DashboardCheckRow["type"],
+      },
+      groupName: run.check.group?.name ?? "Ungrouped",
+      projectSlug: run.check.project.slug,
+      run: {
+        ...mapRun(run),
+        createdAtLabel: formatRunTimestamp(run.createdAt),
+        finishedAt: run.finishedAt ? formatRunTimestamp(run.finishedAt) : "-",
+        jobLog: await readRunLogPreview(run.logsPath),
+        request,
+        resultFields: formatResultFields(run.result),
+        resultJson: formatResultJson(run.result),
+        startedAt: run.startedAt ? formatRunTimestamp(run.startedAt) : "-",
+      },
+    };
+  } catch (error) {
+    console.warn("Unable to load run detail data.", error);
+    return undefined;
+  }
+}
+
 async function fetchChecks(projectId: string) {
   return prisma.check.findMany({
     include: {
       group: true,
       runs: {
+        include: {
+          artifacts: {
+            orderBy: {
+              createdAt: "desc",
+            },
+          },
+        },
         orderBy: {
           createdAt: "desc",
         },
@@ -110,21 +303,407 @@ function mapCheck(check: CheckWithRuns): DashboardCheckRow {
   const durations = check.runs
     .map((run) => run.durationMs)
     .filter((duration): duration is number => typeof duration === "number");
+  const passedRuns = check.runs.filter((run) => run.status === "PASSED").length;
+  const failedRuns = check.runs.filter((run) =>
+    ["CANCELLED", "FAILED", "TIMED_OUT"].includes(run.status),
+  ).length;
 
   return {
     avg: formatDuration(average(durations)),
     ava: formatAvailability(check.runs),
     bars: buildBars(check.runs),
     delta: latestRun ? "24 h" : "-",
-    hasTrace: Boolean(check.runs.some((run) => run.logsPath)),
+    hasTrace: Boolean(
+      check.runs.some(
+        (run) =>
+          run.logsPath ||
+          run.artifacts.some((artifact) =>
+            ["LOG", "SCREENSHOT", "TRACE", "VIDEO"].includes(artifact.type),
+          ),
+      ),
+    ),
     id: check.id,
     name: check.name,
     p95: formatDuration(percentile(durations, 0.95)),
     runState: mapRunState(latestRun?.status),
+    runs: check.runs.map(mapRun),
+    settings: {
+      enabled: check.enabled,
+      entrypoint: check.entrypoint ?? undefined,
+      frequency:
+        typeof check.frequencyMinutes === "number"
+          ? `${check.frequencyMinutes} min`
+          : "manual",
+      key: check.key,
+      request: formatRequestSettings(check.request),
+    },
+    stats: {
+      averageDuration: formatDuration(average(durations)),
+      failedRuns: String(failedRuns),
+      p95Duration: formatDuration(percentile(durations, 0.95)),
+      passedRuns: String(passedRuns),
+      totalRuns: String(check.runs.length),
+    },
     status: mapRunStatus(latestRun?.status),
     tags: check.tags,
     time: formatRunAge(latestRun),
     type: check.type.toLowerCase() as DashboardCheckRow["type"],
+  };
+}
+
+function mapRun(run: CheckWithRuns["runs"][number]): DashboardRunRow {
+  return {
+    artifacts: mapRunArtifacts(run),
+    createdAt: run.createdAt.toISOString(),
+    duration: formatDuration(run.durationMs ?? undefined),
+    durationMs: run.durationMs ?? undefined,
+    errorMessage: run.errorMessage ?? undefined,
+    hasRetries: hasRunRetries(run.result),
+    id: run.id,
+    occurredAt: formatBarTimestamp(run),
+    runner: "Local runner",
+    runState: mapRunState(run.status),
+    status: mapRunStatus(run.status),
+  };
+}
+
+async function cancelStaleQueuedRuns(now = new Date()) {
+  const timeoutMinutes = parsePositiveInteger(
+    process.env.SELFCHECKS_QUEUED_RUN_TIMEOUT_MINUTES,
+    DEFAULT_QUEUED_RUN_TIMEOUT_MINUTES,
+  );
+  const cutoff = new Date(now.getTime() - timeoutMinutes * 60_000);
+
+  try {
+    await prisma.checkRun.updateMany({
+      data: {
+        errorMessage: `Run was cancelled after waiting in queue for ${timeoutMinutes} minutes.`,
+        finishedAt: now,
+        status: "CANCELLED",
+      },
+      where: {
+        createdAt: {
+          lt: cutoff,
+        },
+        status: "QUEUED",
+      },
+    });
+  } catch (error) {
+    console.warn("Unable to cancel stale queued runs.", error);
+  }
+}
+
+function parsePositiveInteger(value: string | undefined, fallback: number): number {
+  if (!value) {
+    return fallback;
+  }
+
+  const parsedValue = Number.parseInt(value, 10);
+
+  if (!Number.isSafeInteger(parsedValue) || parsedValue <= 0) {
+    return fallback;
+  }
+
+  return parsedValue;
+}
+
+function hasRunRetries(result: unknown): boolean {
+  if (!result || typeof result !== "object") {
+    return false;
+  }
+
+  const value = result as {
+    attempt?: unknown;
+    attempts?: unknown;
+    retries?: unknown;
+    retry?: unknown;
+  };
+
+  return [value.retries, value.retry, value.attempts, value.attempt].some((item) => {
+    if (typeof item === "number") {
+      return item > 0;
+    }
+
+    if (Array.isArray(item)) {
+      return item.length > 0;
+    }
+
+    return false;
+  });
+}
+
+function formatRunRequest(
+  request: unknown,
+  result: unknown,
+): RunDetailData["run"]["request"] {
+  if (!request || typeof request !== "object") {
+    return undefined;
+  }
+
+  const value = request as {
+    assertions?: unknown;
+    body?: unknown;
+    headers?: unknown;
+    method?: unknown;
+    url?: unknown;
+  };
+
+  if (typeof value.method !== "string" || typeof value.url !== "string") {
+    return undefined;
+  }
+
+  return {
+    assertions: formatAssertionRows(value.assertions, result),
+    body: typeof value.body === "string" && value.body.length > 0 ? value.body : undefined,
+    headers: formatHeaderRows(value.headers),
+    method: value.method,
+    queryParams: formatQueryParams(value.url),
+    url: value.url,
+  };
+}
+
+function formatAssertionRows(
+  assertions: unknown,
+  result: unknown,
+): NonNullable<RunDetailData["run"]["request"]>["assertions"] {
+  if (!Array.isArray(assertions)) {
+    return [];
+  }
+
+  return assertions.map((assertion) => {
+    const value =
+      assertion && typeof assertion === "object"
+        ? (assertion as {
+            operator?: unknown;
+            source?: unknown;
+            target?: unknown;
+          })
+        : {};
+    const source = typeof value.source === "string" ? value.source : "response";
+    const operator = typeof value.operator === "string" ? value.operator : "exists";
+    const actualValue = getAssertionActual(source, result);
+
+    return {
+      actual: formatUnknownValue(actualValue),
+      comparison: formatOperatorLabel(operator),
+      passed: compareAssertion(operator, actualValue, value.target),
+      source: formatSourceLabel(source),
+      target: formatUnknownValue(value.target),
+    };
+  });
+}
+
+function getAssertionActual(source: string, result: unknown): unknown {
+  const resultRecord = asRecord(result);
+  const normalizedSource = source.toLowerCase();
+
+  if (normalizedSource.includes("status")) {
+    return resultRecord.status;
+  }
+
+  if (normalizedSource.includes("url")) {
+    return resultRecord.url;
+  }
+
+  if (normalizedSource.includes("body")) {
+    return resultRecord.body;
+  }
+
+  if (normalizedSource.includes("header")) {
+    return resultRecord.headers;
+  }
+
+  return undefined;
+}
+
+function compareAssertion(
+  operator: string,
+  actualValue: unknown,
+  targetValue: unknown,
+): boolean | undefined {
+  if (typeof actualValue === "undefined") {
+    return undefined;
+  }
+
+  const normalizedOperator = operator.toLowerCase();
+
+  if (["equal", "equals", "eq", "toequal"].includes(normalizedOperator)) {
+    return String(actualValue) === String(targetValue);
+  }
+
+  if (["contains", "include", "includes"].includes(normalizedOperator)) {
+    return String(actualValue).includes(String(targetValue));
+  }
+
+  if (["not_equal", "notequals", "not"].includes(normalizedOperator)) {
+    return String(actualValue) !== String(targetValue);
+  }
+
+  return undefined;
+}
+
+function formatHeaderRows(headers: unknown): Array<{ name: string; value: string }> {
+  if (!headers || typeof headers !== "object" || Array.isArray(headers)) {
+    return [];
+  }
+
+  return Object.entries(headers).map(([name, value]) => ({
+    name,
+    value: formatUnknownValue(value),
+  }));
+}
+
+function formatQueryParams(url: string): Array<{ name: string; value: string }> {
+  try {
+    const parsedUrl = new URL(url);
+
+    return [...parsedUrl.searchParams.entries()].map(([name, value]) => ({
+      name,
+      value,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function formatResultFields(
+  result: unknown,
+): RunDetailData["run"]["resultFields"] {
+  const record = asRecord(result);
+
+  return Object.entries(record).map(([label, value]) => ({
+    label: formatSourceLabel(label),
+    value: formatUnknownValue(value),
+  }));
+}
+
+function formatResultJson(result: unknown): string {
+  if (typeof result === "undefined" || result === null) {
+    return "{}";
+  }
+
+  return JSON.stringify(result, null, 2);
+}
+
+async function readRunLogPreview(logsPath: string | null): Promise<string | undefined> {
+  if (!logsPath) {
+    return undefined;
+  }
+
+  try {
+    const log = await readFile(logsPath, "utf8");
+
+    if (log.length <= MAX_LOG_PREVIEW_CHARS) {
+      return log;
+    }
+
+    return `... truncated ${log.length - MAX_LOG_PREVIEW_CHARS} chars ...\n${log.slice(
+      -MAX_LOG_PREVIEW_CHARS,
+    )}`;
+  } catch {
+    return undefined;
+  }
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  return value as Record<string, unknown>;
+}
+
+function formatUnknownValue(value: unknown): string {
+  if (typeof value === "undefined" || value === null) {
+    return "-";
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+
+  return JSON.stringify(value);
+}
+
+function formatOperatorLabel(value: string): string {
+  return value
+    .replace(/[_-]+/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatSourceLabel(value: string): string {
+  return formatOperatorLabel(value);
+}
+
+function mapRunArtifacts(run: CheckWithRuns["runs"][number]): DashboardRunArtifact[] {
+  const artifacts = run.artifacts.map((artifact) => ({
+    downloadUrl: buildArtifactUrl(run.id, artifact.id, true),
+    id: artifact.id,
+    mimeType: artifact.mimeType ?? undefined,
+    name: path.basename(artifact.path),
+    size: formatBytes(artifact.sizeBytes ?? undefined),
+    type: artifact.type.toLowerCase() as DashboardRunArtifact["type"],
+    viewUrl: buildArtifactUrl(run.id, artifact.id),
+  }));
+
+  if (run.logsPath && !artifacts.some((artifact) => artifact.type === "log")) {
+    artifacts.push({
+      downloadUrl: buildArtifactUrl(run.id, "log", true),
+      id: `${run.id}:log`,
+      mimeType: "text/plain",
+      name: path.basename(run.logsPath),
+      size: "-",
+      type: "log",
+      viewUrl: buildArtifactUrl(run.id, "log"),
+    });
+  }
+
+  return artifacts;
+}
+
+function buildArtifactUrl(runId: string, artifactId: string, download = false): string {
+  const url = `/api/runs/${encodeURIComponent(runId)}/artifacts/${encodeURIComponent(
+    artifactId,
+  )}`;
+
+  return download ? `${url}?download=1` : url;
+}
+
+function formatRequestSettings(
+  request: unknown,
+): DashboardCheckRow["settings"]["request"] {
+  if (!request || typeof request !== "object") {
+    return undefined;
+  }
+
+  const value = request as {
+    assertions?: unknown;
+    body?: unknown;
+    headers?: unknown;
+    method?: unknown;
+    url?: unknown;
+  };
+
+  if (typeof value.method !== "string" || typeof value.url !== "string") {
+    return undefined;
+  }
+
+  return {
+    assertions: Array.isArray(value.assertions) ? value.assertions.length : 0,
+    body: typeof value.body === "string" && value.body.length > 0,
+    headers:
+      value.headers &&
+      typeof value.headers === "object" &&
+      !Array.isArray(value.headers)
+        ? Object.keys(value.headers).length
+        : 0,
+    method: value.method,
+    url: value.url,
   };
 }
 
@@ -260,6 +839,22 @@ function formatDuration(value: number | undefined): string {
   }
 
   return `${Math.round(value)} ms`;
+}
+
+function formatBytes(value: number | undefined): string {
+  if (typeof value !== "number") {
+    return "-";
+  }
+
+  if (value >= 1024 * 1024) {
+    return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  if (value >= 1024) {
+    return `${(value / 1024).toFixed(1)} KB`;
+  }
+
+  return `${value} B`;
 }
 
 function formatRunAge(run: CheckWithRuns["runs"][number] | undefined): string {

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   queueAdd: vi.fn(),
@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   checkFindUnique: vi.fn(),
   checkRunCreate: vi.fn(),
   checkRunUpdate: vi.fn(),
+  getRunEnvironment: vi.fn(),
 }));
 
 vi.mock("bullmq", () => ({
@@ -28,6 +29,10 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
+vi.mock("@/lib/settings-data", () => ({
+  getRunEnvironment: mocks.getRunEnvironment,
+}));
+
 import { Queue } from "bullmq";
 
 import { POST } from "./route";
@@ -47,6 +52,10 @@ function createRequest() {
 }
 
 describe("run check route", () => {
+  beforeEach(() => {
+    mocks.getRunEnvironment.mockResolvedValue([]);
+  });
+
   afterEach(() => {
     vi.clearAllMocks();
     vi.unstubAllEnvs();
@@ -71,6 +80,12 @@ describe("run check route", () => {
     mocks.checkRunCreate.mockResolvedValue({
       id: "run_1",
     });
+    mocks.getRunEnvironment.mockResolvedValue([
+      {
+        name: "BASE_URL",
+        value: "https://app.example.com",
+      },
+    ]);
 
     const response = await POST(createRequest(), createContext());
 
@@ -104,6 +119,12 @@ describe("run check route", () => {
       {
         checkId: "check_1",
         checkKey: "issue.get",
+        env: [
+          {
+            name: "BASE_URL",
+            value: "https://app.example.com",
+          },
+        ],
         projectSlug: "account",
         rootDir: "/repo/config/checkly",
         runId: "run_1",

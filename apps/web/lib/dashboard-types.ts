@@ -18,6 +18,60 @@ export type DashboardResultBar = {
   value: number;
 };
 
+export type DashboardArtifactType =
+  | "json"
+  | "log"
+  | "request_response"
+  | "screenshot"
+  | "trace"
+  | "video";
+
+export type DashboardRunArtifact = {
+  downloadUrl: string;
+  id: string;
+  mimeType?: string;
+  name: string;
+  size: string;
+  type: DashboardArtifactType;
+  viewUrl: string;
+};
+
+export type DashboardRunRow = {
+  artifacts: DashboardRunArtifact[];
+  createdAt: string;
+  duration: string;
+  durationMs?: number;
+  errorMessage?: string;
+  hasRetries: boolean;
+  id: string;
+  occurredAt: string;
+  runner: string;
+  runState: DashboardRunState;
+  status: DashboardStatus;
+};
+
+export type DashboardCheckSettings = {
+  enabled: boolean;
+  entrypoint?: string;
+  frequency: string;
+  key: string;
+  request?: {
+    assertions: number;
+    body: boolean;
+    headers: number;
+    method: string;
+    url: string;
+  };
+};
+
+export type DashboardCheckStats = {
+  averageDuration: string;
+  failedRuns: string;
+  p95Duration: string;
+  passedRuns: string;
+  totalRuns: string;
+};
+
 export type DashboardCheckRow = {
   avg: string;
   ava: string;
@@ -28,6 +82,9 @@ export type DashboardCheckRow = {
   name: string;
   p95: string;
   runState: DashboardRunState;
+  runs: DashboardRunRow[];
+  settings: DashboardCheckSettings;
+  stats: DashboardCheckStats;
   status: DashboardStatus;
   tags: string[];
   time: string;

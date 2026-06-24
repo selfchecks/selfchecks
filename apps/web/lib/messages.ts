@@ -3,12 +3,12 @@ export const dashboardCopy = {
     refresh: "Refresh",
     runChecks: "Run checks",
   },
-  bootstrap: {
+  basic: {
     deploy: "Import Checkly-style manifests from the configured repository tree.",
     description: "Initial commands for a fresh selfchecks installation.",
     migrate: "Create the PostgreSQL schema used by the dashboard and runner.",
     test: "Run a selected CI subset and persist report artifacts.",
-    title: "Bootstrap",
+    title: "Basic settings",
   },
   checks: {
     columns: {
