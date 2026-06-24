@@ -948,22 +948,30 @@ function GroupBlock({
   onRunCheckNow: (check: CheckRow) => void;
 }) {
   const actionKey = `group:${group.name}`;
+  const toggleLabel = `${group.expanded ? "Collapse" : "Expand"} ${group.name}`;
 
   return (
     <>
       <tr
+        aria-expanded={group.expanded}
+        aria-label={toggleLabel}
         className={cn(
-          "border-b border-slate-800 text-slate-300",
+          "cursor-pointer border-b border-slate-800 text-slate-300 outline-none transition",
+          "hover:bg-[#202832] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/50",
           group.expanded ? "bg-[#202832]" : "bg-[#11161d]",
         )}
+        onClick={() => onGroupToggle(group.name)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onGroupToggle(group.name);
+          }
+        }}
+        role="button"
+        tabIndex={0}
       >
         <td className="px-5 py-4">
-          <button
-            aria-label={`${group.expanded ? "Collapse" : "Expand"} ${group.name}`}
-            className="flex items-center gap-3 text-left"
-            onClick={() => onGroupToggle(group.name)}
-            type="button"
-          >
+          <div className="flex items-center gap-3 text-left">
             {group.expanded ? (
               <ChevronDown className="h-4 w-4 text-slate-400" />
             ) : (
@@ -977,7 +985,7 @@ function GroupBlock({
                 <span className="text-sm text-slate-500">{group.updated}</span>
               </div>
             </div>
-          </button>
+          </div>
         </td>
         <td className="px-4 py-4">
           <Folder className="h-5 w-5 text-slate-500" />
@@ -987,7 +995,12 @@ function GroupBlock({
         <td className="px-4 py-4" />
         <td className="px-4 py-4" />
         <td className="px-4 py-4" />
-        <td className="relative px-4 py-4" data-action-menu-root>
+        <td
+          className="relative px-4 py-4"
+          data-action-menu-root
+          onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => event.stopPropagation()}
+        >
           <button
             aria-label={`${group.name} actions`}
             className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-800 hover:text-slate-200"

@@ -192,16 +192,23 @@ describe("DashboardPage", () => {
     expect(screen.queryByText("track.list")).toBeNull();
   });
 
-  it("toggles grouped rows", async () => {
+  it("toggles grouped rows from the whole group row", async () => {
     const user = userEvent.setup();
 
     renderDashboard();
 
     expect(screen.getByText("group.list")).toBeTruthy();
 
-    await user.click(screen.getByRole("button", { name: "Collapse API / Regress" }));
+    await user.click(screen.getByRole("button", { name: "API / Regress actions" }));
+    expect(screen.getByText("group.list")).toBeTruthy();
+
+    await user.click(screen.getByText("API / Regress"));
 
     expect(screen.queryByText("group.list")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Expand API / Regress" }));
+
+    expect(screen.getByText("group.list")).toBeTruthy();
   });
 
   it("updates filters from summary cards and filter selects", async () => {
