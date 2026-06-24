@@ -11,7 +11,6 @@ import {
   CircleX,
   Folder,
   Home,
-  MessageSquare,
   MoreVertical,
   Route,
   Search,
@@ -132,7 +131,6 @@ export default function DashboardClient({
   const [query, setQuery] = useState("");
   const [savedView, setSavedView] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [supportOpen, setSupportOpen] = useState(false);
   const [tagFilter, setTagFilter] = useState<TagFilter>("all");
   const [traceOnly, setTraceOnly] = useState(false);
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
@@ -264,7 +262,6 @@ export default function DashboardClient({
           accountMenuOpen={accountMenuOpen}
           onAccountMenuToggle={() => setAccountMenuOpen((open) => !open)}
           projectSlug={projectSlug}
-          onSupportClick={() => setSupportOpen(true)}
         />
 
         <section className="mx-auto flex w-full max-w-[1760px] flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8">
@@ -395,34 +392,6 @@ export default function DashboardClient({
           />
         </section>
       </div>
-
-      <button
-        aria-label="Open support chat"
-        className="fixed bottom-6 right-6 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-blue-600 text-white shadow-xl shadow-blue-950/40 hover:bg-blue-500"
-        onClick={() => setSupportOpen((open) => !open)}
-        type="button"
-      >
-        <MessageSquare className="h-6 w-6" />
-      </button>
-
-      {supportOpen ? (
-        <div className="fixed bottom-24 right-6 z-30 w-80 rounded-md border border-slate-700 bg-[#12171f] p-4 shadow-2xl shadow-black/30">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold text-slate-100">Support</h2>
-            <button
-              className="rounded px-2 py-1 text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-100"
-              onClick={() => setSupportOpen(false)}
-              type="button"
-            >
-              Close
-            </button>
-          </div>
-          <p className="mt-3 text-sm text-slate-400">
-            Local support panel is open. Use logs and run details here as the dashboard
-            grows.
-          </p>
-        </div>
-      ) : null}
     </main>
   );
 }
@@ -513,12 +482,10 @@ function Sidebar({ onHomeClick }: { onHomeClick: () => void }) {
 function Topbar({
   accountMenuOpen,
   onAccountMenuToggle,
-  onSupportClick,
   projectSlug,
 }: {
   accountMenuOpen: boolean;
   onAccountMenuToggle: () => void;
-  onSupportClick: () => void;
   projectSlug: string;
 }) {
   return (
@@ -553,13 +520,6 @@ function Topbar({
       </div>
 
       <div className="flex items-center gap-4 text-sm text-slate-400">
-        <button
-          className="hidden hover:text-slate-100 md:inline"
-          onClick={onSupportClick}
-          type="button"
-        >
-          Support
-        </button>
         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-lime-600/70 text-sm font-semibold text-lime-50">
           AL
         </div>
