@@ -27,6 +27,7 @@ describe("RootLayout", () => {
     expect(layout.type).toBe("html");
     expect(layout.props.className).toBe("dark");
     expect(layout.props.lang).toBe("en");
+    expect(body.props.suppressHydrationWarning).toBe(true);
     expect(child.props.children).toBe("dashboard");
   });
 });
