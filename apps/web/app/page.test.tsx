@@ -126,11 +126,12 @@ describe("DashboardPage", () => {
     expect(screen.getByText("DEGRADED")).toBeTruthy();
     expect(screen.getByText("FAILING")).toBeTruthy();
     expect(screen.getByRole("searchbox", { name: "Search checks" })).toBeTruthy();
-    expect(screen.getByRole("combobox", { name: "Time range" })).toBeTruthy();
-    expect(screen.getByRole("combobox", { name: "Status" })).toBeTruthy();
-    expect(screen.getByRole("combobox", { name: "Check type" })).toBeTruthy();
-    expect(screen.getByRole("combobox", { name: "Tags" })).toBeTruthy();
-    expect(screen.getByRole("combobox", { name: "Traces" })).toBeTruthy();
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(screen.getByRole("button", { name: "Last 24 hours" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Status" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Check type" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Tags" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Traces" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Heartbeats" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Alert channels" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Open support chat" })).toBeNull();
@@ -194,17 +195,16 @@ describe("DashboardPage", () => {
     expect(screen.queryByText("issue.get")).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Home" }));
-    const tagsSelect = screen.getByRole("combobox", {
-      name: "Tags",
-    }) as HTMLSelectElement;
-    await user.selectOptions(tagsSelect, "api");
+    await user.click(screen.getByRole("button", { name: "Tags" }));
+    await user.click(screen.getByRole("option", { name: "api" }));
 
-    expect(tagsSelect.value).toBe("api");
+    expect(screen.getByRole("button", { name: "api" })).toBeTruthy();
     expect(screen.getByText("group.list")).toBeTruthy();
 
-    await user.selectOptions(tagsSelect, "regress");
+    await user.click(screen.getByRole("button", { name: "api" }));
+    await user.click(screen.getByRole("option", { name: "regress" }));
 
-    expect(tagsSelect.value).toBe("regress");
+    expect(screen.getByRole("button", { name: "regress" })).toBeTruthy();
     expect(screen.getByText("group.list")).toBeTruthy();
     expect(screen.queryByText("API / Bff")).toBeNull();
   });
@@ -218,28 +218,37 @@ describe("DashboardPage", () => {
     expect(screen.getByText("nikolaev@iprojects.ru")).toBeTruthy();
     expect(screen.getByText("Signed in locally")).toBeTruthy();
 
-    const timeRangeSelect = screen.getByRole("combobox", {
-      name: "Time range",
-    }) as HTMLSelectElement;
-    await user.selectOptions(timeRangeSelect, "7d");
-    expect(timeRangeSelect.value).toBe("7d");
+    await user.click(screen.getByRole("button", { name: "Last 24 hours" }));
+    await user.click(screen.getByRole("option", { name: "Last 7 days" }));
+    expect(screen.getByRole("button", { name: "Last 7 days" })).toBeTruthy();
 
-    const checkTypeSelect = screen.getByRole("combobox", {
-      name: "Check type",
-    }) as HTMLSelectElement;
-    await user.selectOptions(checkTypeSelect, "api");
-    expect(checkTypeSelect.value).toBe("api");
+    await user.click(screen.getByRole("button", { name: "Check type" }));
+    await user.click(screen.getByRole("option", { name: "API checks" }));
+    expect(screen.getByRole("button", { name: "API checks" })).toBeTruthy();
 
-    const tracesSelect = screen.getByRole("combobox", {
-      name: "Traces",
-    }) as HTMLSelectElement;
-    await user.selectOptions(tracesSelect, "with-traces");
-    expect(tracesSelect.value).toBe("with-traces");
+    await user.click(screen.getByRole("button", { name: "Traces" }));
+    await user.click(screen.getByRole("option", { name: "With traces" }));
+    expect(screen.getByRole("button", { name: "With traces" })).toBeTruthy();
     expect(screen.getByText("track.list")).toBeTruthy();
     expect(screen.queryByText("issue.get")).toBeNull();
 
     await user.click(screen.getByRole("button", { name: /FAILING/ }));
     expect(screen.getByText("No checks match the current filters.")).toBeTruthy();
+  });
+
+  it("opens and closes custom filter dropdowns", async () => {
+    const user = userEvent.setup();
+
+    renderDashboard();
+
+    await user.click(screen.getByRole("button", { name: "Status" }));
+
+    expect(screen.getByRole("listbox")).toBeTruthy();
+    expect(screen.getByRole("option", { name: "Passing" })).toBeTruthy();
+
+    await user.click(screen.getByRole("searchbox", { name: "Search checks" }));
+
+    expect(screen.queryByRole("option", { name: "Passing" })).toBeNull();
   });
 
   it("opens local menus", async () => {

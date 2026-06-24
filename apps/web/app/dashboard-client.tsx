@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDownUp,
   CalendarDays,
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -45,6 +46,7 @@ type CheckRow = DashboardCheckRow;
 type GroupRow = DashboardGroupRow;
 type FilterOption<T extends string> = {
   label: string;
+  menuLabel?: string;
   value: T;
 };
 
@@ -87,26 +89,26 @@ const dateRangeOptions = [
 ] satisfies Array<FilterOption<DateRange>>;
 
 const statusFilterOptions = [
-  { label: statusFilterLabels.all, value: "all" },
+  { label: statusFilterLabels.all, menuLabel: "All statuses", value: "all" },
   { label: statusFilterLabels.passing, value: "passing" },
   { label: statusFilterLabels.degraded, value: "degraded" },
   { label: statusFilterLabels.failing, value: "failing" },
 ] satisfies Array<FilterOption<StatusFilter>>;
 
 const typeFilterOptions = [
-  { label: typeFilterLabels.all, value: "all" },
+  { label: typeFilterLabels.all, menuLabel: "All check types", value: "all" },
   { label: typeFilterLabels.api, value: "api" },
   { label: typeFilterLabels.browser, value: "browser" },
 ] satisfies Array<FilterOption<TypeFilter>>;
 
 const tagFilterOptions = [
-  { label: tagFilterLabels.all, value: "all" },
+  { label: tagFilterLabels.all, menuLabel: "All tags", value: "all" },
   { label: tagFilterLabels.api, value: "api" },
   { label: tagFilterLabels.regress, value: "regress" },
 ] satisfies Array<FilterOption<TagFilter>>;
 
 const traceFilterOptions = [
-  { label: traceFilterLabels.all, value: "all" },
+  { label: traceFilterLabels.all, menuLabel: "All traces", value: "all" },
   { label: traceFilterLabels["with-traces"], value: "with-traces" },
 ] satisfies Array<FilterOption<TraceFilter>>;
 
@@ -362,45 +364,40 @@ export default function DashboardClient({
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <FilterSelect
+              <FilterDropdown
                 active={dateRange !== "24h"}
-                ariaLabel="Time range"
                 className="w-40"
                 icon={CalendarDays}
                 onChange={setDateRange}
                 options={dateRangeOptions}
                 value={dateRange}
               />
-              <FilterSelect
+              <FilterDropdown
                 active={statusFilter !== "all"}
-                ariaLabel="Status"
                 className="w-36"
                 icon={CheckCircle2}
                 onChange={setStatusFilter}
                 options={statusFilterOptions}
                 value={statusFilter}
               />
-              <FilterSelect
+              <FilterDropdown
                 active={typeFilter !== "all"}
-                ariaLabel="Check type"
                 className="w-44"
                 icon={Zap}
                 onChange={setTypeFilter}
                 options={typeFilterOptions}
                 value={typeFilter}
               />
-              <FilterSelect
+              <FilterDropdown
                 active={tagFilter !== "all"}
-                ariaLabel="Tags"
                 className="w-32"
                 icon={Tag}
                 onChange={setTagFilter}
                 options={tagFilterOptions}
                 value={tagFilter}
               />
-              <FilterSelect
+              <FilterDropdown
                 active={traceOnly}
-                ariaLabel="Traces"
                 className="w-36"
                 icon={Route}
                 onChange={(value) => setTraceOnly(value === "with-traces")}
@@ -558,9 +555,8 @@ function Topbar({
   );
 }
 
-function FilterSelect<T extends string>({
+function FilterDropdown<T extends string>({
   active,
-  ariaLabel,
   className,
   icon: Icon,
   onChange,
@@ -568,39 +564,106 @@ function FilterSelect<T extends string>({
   value,
 }: {
   active?: boolean;
-  ariaLabel: string;
   className?: string;
   icon: LucideIcon;
   onChange: (value: T) => void;
   options: Array<FilterOption<T>>;
   value: T;
 }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const selectedOption = options.find((option) => option.value === value) ?? options[0];
+  const selectedLabel = selectedOption?.label ?? "";
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      if (event.target instanceof Element && rootRef.current?.contains(event.target)) {
+        return;
+      }
+
+      setOpen(false);
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
   return (
-    <div className={cn("relative h-9", className)}>
-      <Icon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-      <select
-        aria-label={ariaLabel}
+    <div className={cn("relative h-9", className)} ref={rootRef}>
+      <button
+        aria-expanded={open}
+        aria-haspopup="listbox"
         className={cn(
-          "h-full w-full appearance-none rounded-md border pl-9 pr-9 text-sm font-medium outline-none transition",
+          "flex h-full w-full items-center gap-2 rounded-md border px-3 text-sm font-medium outline-none transition",
           "hover:border-slate-600 hover:bg-slate-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20",
-          active
+          active || open
             ? "border-blue-500/60 bg-blue-500/10 text-blue-300"
             : "border-slate-700 bg-[#111821] text-slate-300",
         )}
-        onChange={(event) => onChange(event.target.value as T)}
-        value={value}
+        onClick={() => setOpen((current) => !current)}
+        type="button"
       >
-        {options.map((option) => (
-          <option
-            className="bg-[#111821] text-slate-200"
-            key={option.value}
-            value={option.value}
-          >
-            {option.label}
-          </option>
-        ))}
-      </select>
-      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+        <Icon className="h-4 w-4 shrink-0 text-slate-400" />
+        <span className="min-w-0 flex-1 truncate text-left">{selectedLabel}</span>
+        <ChevronDown
+          className={cn(
+            "h-4 w-4 shrink-0 text-slate-500 transition-transform",
+            open && "rotate-180",
+          )}
+        />
+      </button>
+
+      {open ? (
+        <div
+          className="absolute left-0 top-11 z-40 w-max min-w-full rounded-md border border-slate-600/80 bg-[#202832] p-1 shadow-2xl shadow-black/40"
+          role="listbox"
+        >
+          {options.map((option) => {
+            const selected = option.value === value;
+
+            return (
+              <button
+                aria-selected={selected}
+                className={cn(
+                  "flex h-9 w-full min-w-44 items-center gap-2 rounded px-3 text-left text-sm font-medium text-slate-200 outline-none",
+                  "hover:bg-slate-700 focus:bg-slate-700",
+                  selected &&
+                    "bg-blue-600 text-white hover:bg-blue-600 focus:bg-blue-600",
+                )}
+                key={option.value}
+                onClick={() => {
+                  onChange(option.value);
+                  setOpen(false);
+                }}
+                role="option"
+                type="button"
+              >
+                <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+                  {selected ? <Check className="h-4 w-4" /> : null}
+                </span>
+                <span className="whitespace-nowrap">
+                  {option.menuLabel ?? option.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
     </div>
   );
 }
