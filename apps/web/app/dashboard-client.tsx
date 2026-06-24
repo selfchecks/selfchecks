@@ -942,17 +942,65 @@ function CheckStatus({ status }: { status: Status }) {
 
 function SparkBars({ bars }: { bars: CheckRow["bars"] }) {
   return (
-    <div className="flex h-10 items-end gap-1">
+    <div className="flex h-12 items-end gap-1 overflow-visible py-1">
       {bars.map((bar, index) => (
         <span
-          className={cn(
-            "w-1 rounded-sm",
-            bar.tone === "warn" ? "bg-amber-400" : "bg-emerald-400",
-          )}
-          key={`${bar.value}-${index}`}
-          style={{ height: `${bar.value}px` }}
-        />
+          aria-label={`${bar.runner} ${bar.duration} ${bar.occurredAt}`}
+          className="group relative flex h-11 w-2 items-end justify-center outline-none hover:z-20 focus-visible:ring-2 focus-visible:ring-blue-400/60 focus-within:z-20"
+          key={`${bar.occurredAt}-${bar.value}-${index}`}
+          tabIndex={0}
+        >
+          <span
+            aria-hidden="true"
+            className={cn(
+              "block w-1 rounded-sm transition",
+              bar.tone === "warn" ? "bg-amber-400" : "bg-emerald-400",
+            )}
+            style={{ height: `${bar.value}px` }}
+          />
+          <span
+            className={cn(
+              "pointer-events-none absolute bottom-full left-1/2 z-30 mb-3 hidden w-max min-w-64 -translate-x-1/2 rounded-md border border-slate-500/20 bg-slate-600 px-4 py-3 text-left shadow-2xl shadow-black/40",
+              "group-hover:block group-focus-within:block",
+            )}
+            role="tooltip"
+          >
+            <span className="flex items-center gap-2 text-base font-semibold text-slate-50">
+              <ResultTooltipStatus status={bar.status} />
+              {bar.runner}
+            </span>
+            <span className="mt-2 flex items-center gap-6 text-sm text-slate-100">
+              <span>{bar.duration}</span>
+              <span>{bar.occurredAt}</span>
+            </span>
+            <span className="absolute left-1/2 top-full h-3 w-3 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-slate-600" />
+          </span>
+        </span>
       ))}
     </div>
+  );
+}
+
+function ResultTooltipStatus({ status }: { status: Status }) {
+  if (status === "failing") {
+    return (
+      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white">
+        <CircleX className="h-4 w-4" />
+      </span>
+    );
+  }
+
+  if (status === "degraded") {
+    return (
+      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-400 text-amber-950">
+        <CircleAlert className="h-4 w-4" />
+      </span>
+    );
+  }
+
+  return (
+    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500 text-emerald-950">
+      <CheckCircle2 className="h-4 w-4" />
+    </span>
   );
 }

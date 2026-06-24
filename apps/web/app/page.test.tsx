@@ -75,9 +75,17 @@ function createCheck(overrides: Partial<DashboardCheckRow>): DashboardCheckRow {
     ava: "100%",
     bars: [
       {
+        duration: "100 ms",
+        occurredAt: "Jun 22 22:20 (UTC+3)",
+        runner: "Local runner",
+        status: "passing",
         value: 12,
       },
       {
+        duration: "120 ms",
+        occurredAt: "Jun 22 22:25 (UTC+3)",
+        runner: "Local runner",
+        status: "passing",
         value: 18,
       },
     ],
@@ -139,6 +147,16 @@ describe("DashboardPage", () => {
     expect(screen.getByText("Last results")).toBeTruthy();
     expect(screen.getByText("AVA")).toBeTruthy();
     expect(screen.getByText("P95")).toBeTruthy();
+  });
+
+  it("renders last result hover targets with run details", () => {
+    renderDashboard();
+
+    expect(
+      screen.getAllByLabelText("Local runner 100 ms Jun 22 22:20 (UTC+3)").length,
+    ).toBeGreaterThan(0);
+    expect(screen.getAllByRole("tooltip").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Local runner").length).toBeGreaterThan(0);
   });
 
   it("filters checks from the search field", async () => {

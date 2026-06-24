@@ -169,12 +169,20 @@ function mapRunStatus(status: string | undefined): DashboardStatus {
 function buildBars(runs: CheckWithRuns["runs"]): DashboardCheckRow["bars"] {
   if (runs.length === 0) {
     return Array.from({ length: 12 }, () => ({
+      duration: "-",
+      occurredAt: "No recorded run",
+      runner: "Local runner",
+      status: "degraded" as const,
       tone: "warn" as const,
       value: 12,
     }));
   }
 
   return [...runs].reverse().map((run) => ({
+    duration: formatDuration(run.durationMs ?? undefined),
+    occurredAt: formatRunTimestamp(run.createdAt),
+    runner: "Local runner",
+    status: mapRunStatus(run.status),
     tone: run.status === "PASSED" ? "good" : ("warn" as const),
     value: Math.max(8, Math.min(44, Math.round((run.durationMs ?? 500) / 40))),
   }));
@@ -219,6 +227,32 @@ function formatDuration(value: number | undefined): string {
   }
 
   return `${Math.round(value)} ms`;
+}
+
+function formatRunTimestamp(date: Date): string {
+  const month = date.toLocaleString("en", { month: "short" });
+  const day = date.toLocaleString("en", { day: "2-digit" });
+  const hour = date.toLocaleString("en", {
+    hour: "2-digit",
+    hour12: false,
+  });
+  const minute = date.toLocaleString("en", { minute: "2-digit" });
+
+  return `${month} ${day} ${hour}:${minute} (${formatTimezoneOffset(date)})`;
+}
+
+function formatTimezoneOffset(date: Date): string {
+  const offsetMinutes = -date.getTimezoneOffset();
+  const sign = offsetMinutes >= 0 ? "+" : "-";
+  const absoluteMinutes = Math.abs(offsetMinutes);
+  const hours = Math.trunc(absoluteMinutes / 60);
+  const minutes = absoluteMinutes % 60;
+
+  if (minutes === 0) {
+    return `UTC${sign}${hours}`;
+  }
+
+  return `UTC${sign}${hours}:${String(minutes).padStart(2, "0")}`;
 }
 
 function formatLatestUpdate(checks: CheckWithRuns[]): string {

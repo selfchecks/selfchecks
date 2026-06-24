@@ -1,9 +1,18 @@
 export type DashboardStatus = "passing" | "degraded" | "failing";
 
+export type DashboardResultBar = {
+  duration: string;
+  occurredAt: string;
+  runner: string;
+  status: DashboardStatus;
+  tone?: "good" | "warn";
+  value: number;
+};
+
 export type DashboardCheckRow = {
   avg: string;
   ava: string;
-  bars: Array<{ tone?: "good" | "warn"; value: number }>;
+  bars: DashboardResultBar[];
   delta: string;
   hasTrace?: boolean;
   id: string;
