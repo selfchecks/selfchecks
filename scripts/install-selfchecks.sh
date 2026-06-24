@@ -215,7 +215,7 @@ DATABASE_URL=postgresql://selfchecks:${postgres_password}@postgres:5432/selfchec
 
 REDIS_HOST=redis
 REDIS_PORT=6379
-SELFCHECKS_QUEUE_NAME=selfchecks:checks
+SELFCHECKS_QUEUE_NAME=selfchecks-checks
 
 SELFCHECKS_CONFIG_PATH=/app/runtime/selfchecks.config.json
 SELFCHECKS_CADDY_CONFIG_PATH=/app/runtime/Caddyfile

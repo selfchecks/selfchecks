@@ -82,7 +82,7 @@ services:
       SELFCHECKS_CADDY_CONFIG_PATH: ${SELFCHECKS_CADDY_CONFIG_PATH:-/app/runtime/Caddyfile}
       SELFCHECKS_CADDY_UPSTREAM: ${SELFCHECKS_CADDY_UPSTREAM:-web:3000}
       SELFCHECKS_CONFIG_PATH: ${SELFCHECKS_CONFIG_PATH:-/app/runtime/selfchecks.config.json}
-      SELFCHECKS_QUEUE_NAME: ${SELFCHECKS_QUEUE_NAME:-selfchecks:checks}
+      SELFCHECKS_QUEUE_NAME: ${SELFCHECKS_QUEUE_NAME:-selfchecks-checks}
       SELFCHECKS_SETUP_TOKEN: ${SELFCHECKS_SETUP_TOKEN:-}
       SELFCHECKS_WEBHOOK_TIMEOUT_MS: ${SELFCHECKS_WEBHOOK_TIMEOUT_MS:-5000}
     expose:
@@ -109,7 +109,7 @@ services:
       REDIS_HOST: ${REDIS_HOST:-redis}
       REDIS_PORT: ${REDIS_PORT:-6379}
       SELFCHECKS_ARTIFACTS_DIR: ${SELFCHECKS_ARTIFACTS_DIR:-/app/runtime/artifacts}
-      SELFCHECKS_QUEUE_NAME: ${SELFCHECKS_QUEUE_NAME:-selfchecks:checks}
+      SELFCHECKS_QUEUE_NAME: ${SELFCHECKS_QUEUE_NAME:-selfchecks-checks}
     networks:
       - selfchecks-prod
     restart: unless-stopped

@@ -15,7 +15,7 @@ describe("getWorkerRuntimeConfig", () => {
         removeOnComplete: 1000,
         removeOnFail: 1000,
       },
-      queueName: "selfchecks:checks",
+      queueName: "selfchecks-checks",
     });
   });
 
@@ -24,7 +24,7 @@ describe("getWorkerRuntimeConfig", () => {
       getWorkerRuntimeConfig({
         REDIS_HOST: "redis.internal",
         REDIS_PORT: "6380",
-        SELFCHECKS_QUEUE_NAME: "custom:checks",
+        SELFCHECKS_QUEUE_NAME: "custom-checks",
         SELFCHECKS_WORKER_CONCURRENCY: "5",
       }),
     ).toMatchObject({
@@ -33,8 +33,16 @@ describe("getWorkerRuntimeConfig", () => {
         host: "redis.internal",
         port: 6380,
       },
-      queueName: "custom:checks",
+      queueName: "custom-checks",
     });
+  });
+
+  it("rejects queue names with colons because BullMQ reserves them for Redis keys", () => {
+    expect(() =>
+      getWorkerRuntimeConfig({
+        SELFCHECKS_QUEUE_NAME: "custom:checks",
+      }),
+    ).toThrow('SELFCHECKS_QUEUE_NAME cannot contain ":"');
   });
 
   it("falls back for invalid numeric values", () => {
