@@ -12,6 +12,7 @@
     "typecheck": "tsc -b tsconfig.json --pretty false"
   },
   "dependencies": {
+    "@selfchecks/cli": "workspace:*",
     "@selfchecks/core": "workspace:*",
     "@selfchecks/db": "workspace:*",
     "bullmq": "^5.56.4",

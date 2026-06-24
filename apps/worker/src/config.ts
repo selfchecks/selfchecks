@@ -1,4 +1,5 @@
 import { type JobsOptions } from "bullmq";
+import { normalizeCheckQueueName } from "@selfchecks/core";
 
 export type WorkerRuntimeConfig = {
   concurrency: number;
@@ -17,8 +18,6 @@ export type WorkerRuntimeEnv = {
   SELFCHECKS_WORKER_CONCURRENCY?: string;
 };
 
-const DEFAULT_QUEUE_NAME = "selfchecks-checks";
-
 function parsePositiveInteger(value: string | undefined, fallback: number): number {
   if (!value) {
     return fallback;
@@ -31,18 +30,6 @@ function parsePositiveInteger(value: string | undefined, fallback: number): numb
   }
 
   return parsedValue;
-}
-
-function parseQueueName(value: string | undefined): string {
-  const queueName = value?.trim() || DEFAULT_QUEUE_NAME;
-
-  if (queueName.includes(":")) {
-    throw new Error(
-      'SELFCHECKS_QUEUE_NAME cannot contain ":" because BullMQ reserves it for Redis keys. Use "-" or "_" instead.',
-    );
-  }
-
-  return queueName;
 }
 
 export function getWorkerRuntimeConfig(
@@ -59,6 +46,6 @@ export function getWorkerRuntimeConfig(
       removeOnComplete: 1000,
       removeOnFail: 1000,
     },
-    queueName: parseQueueName(env.SELFCHECKS_QUEUE_NAME),
+    queueName: normalizeCheckQueueName(env.SELFCHECKS_QUEUE_NAME),
   };
 }

@@ -177,6 +177,37 @@ export default function DashboardClient({
     return () => window.removeEventListener("keydown", handleKeyboard);
   }, []);
 
+  useEffect(() => {
+    if (!activeActionMenu) {
+      return;
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      if (
+        event.target instanceof Element &&
+        event.target.closest("[data-action-menu-root]")
+      ) {
+        return;
+      }
+
+      setActiveActionMenu(null);
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setActiveActionMenu(null);
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [activeActionMenu]);
+
   const filteredGroups = useMemo<GroupRow[]>(() => {
     const nextGroups: GroupRow[] = [];
 
@@ -246,6 +277,30 @@ export default function DashboardClient({
       ...current,
       [groupName]: !current[groupName],
     }));
+  }
+
+  async function runCheckNow(check: CheckRow) {
+    setNotice(`Queueing ${check.name}...`);
+
+    try {
+      const response = await fetch(`/api/checks/${encodeURIComponent(check.id)}/run`, {
+        method: "POST",
+      });
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        runId?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Unable to queue check run.");
+      }
+
+      setNotice(`Queued ${check.name}.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+
+      setNotice(`Failed to queue ${check.name}: ${message}`);
+    }
   }
 
   return (
@@ -369,6 +424,7 @@ export default function DashboardClient({
             }
             onGroupToggle={toggleGroup}
             onNotice={setNotice}
+            onRunCheckNow={(check) => void runCheckNow(check)}
           />
         </section>
       </div>
@@ -555,12 +611,14 @@ function ChecksTable({
   onActionMenuToggle,
   onGroupToggle,
   onNotice,
+  onRunCheckNow,
 }: {
   activeActionMenu: string | null;
   groups: GroupRow[];
   onActionMenuToggle: (key: string) => void;
   onGroupToggle: (groupName: string) => void;
   onNotice: (notice: string) => void;
+  onRunCheckNow: (check: CheckRow) => void;
 }) {
   return (
     <section className="overflow-hidden rounded-md border border-slate-800 bg-[#11161d]">
@@ -612,6 +670,7 @@ function ChecksTable({
                 onActionMenuToggle={onActionMenuToggle}
                 onGroupToggle={onGroupToggle}
                 onNotice={onNotice}
+                onRunCheckNow={onRunCheckNow}
               />
             ))}
             {visibleGroups.length === 0 ? (
@@ -634,12 +693,14 @@ function GroupBlock({
   onActionMenuToggle,
   onGroupToggle,
   onNotice,
+  onRunCheckNow,
 }: {
   activeActionMenu: string | null;
   group: GroupRow;
   onActionMenuToggle: (key: string) => void;
   onGroupToggle: (groupName: string) => void;
   onNotice: (notice: string) => void;
+  onRunCheckNow: (check: CheckRow) => void;
 }) {
   const actionKey = `group:${group.name}`;
 
@@ -681,7 +742,7 @@ function GroupBlock({
         <td className="px-4 py-4" />
         <td className="px-4 py-4" />
         <td className="px-4 py-4" />
-        <td className="relative px-4 py-4">
+        <td className="relative px-4 py-4" data-action-menu-root>
           <button
             aria-label={`${group.name} actions`}
             className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-800 hover:text-slate-200"
@@ -709,6 +770,7 @@ function GroupBlock({
               key={check.name}
               onActionMenuToggle={onActionMenuToggle}
               onNotice={onNotice}
+              onRunCheckNow={onRunCheckNow}
             />
           ))
         : null}
@@ -721,11 +783,13 @@ function CheckTableRow({
   check,
   onActionMenuToggle,
   onNotice,
+  onRunCheckNow,
 }: {
   activeActionMenu: string | null;
   check: CheckRow;
   onActionMenuToggle: (key: string) => void;
   onNotice: (notice: string) => void;
+  onRunCheckNow: (check: CheckRow) => void;
 }) {
   const actionKey = `check:${check.name}`;
 
@@ -762,7 +826,7 @@ function CheckTableRow({
       <td className="px-4 py-3 text-slate-300">{check.avg}</td>
       <td className="px-4 py-3 text-slate-300">{check.p95}</td>
       <td className="px-4 py-3 text-slate-300">{check.delta}</td>
-      <td className="relative px-4 py-3">
+      <td className="relative px-4 py-3" data-action-menu-root>
         <button
           aria-label={`${check.name} actions`}
           className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-800 hover:text-slate-200"
@@ -777,6 +841,7 @@ function CheckTableRow({
             onClose={() => onActionMenuToggle(actionKey)}
             onNotice={onNotice}
             onOpen={() => onNotice(`Selected ${check.name}.`)}
+            onRunNow={() => onRunCheckNow(check)}
           />
         ) : null}
       </td>
@@ -789,11 +854,13 @@ function ActionMenu({
   onClose,
   onNotice,
   onOpen,
+  onRunNow,
 }: {
   name: string;
   onClose: () => void;
   onNotice: (notice: string) => void;
   onOpen: () => void;
+  onRunNow?: () => void;
 }) {
   async function copyName() {
     await navigator.clipboard?.writeText(name);
@@ -813,6 +880,18 @@ function ActionMenu({
       >
         Open
       </button>
+      {onRunNow ? (
+        <button
+          className="block w-full rounded px-3 py-2 text-left text-sm text-slate-300 hover:bg-slate-800"
+          onClick={() => {
+            onRunNow();
+            onClose();
+          }}
+          type="button"
+        >
+          Run now
+        </button>
+      ) : null}
       <button
         className="block w-full rounded px-3 py-2 text-left text-sm text-slate-300 hover:bg-slate-800"
         onClick={() => void copyName()}

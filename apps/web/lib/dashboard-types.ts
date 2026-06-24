@@ -6,6 +6,7 @@ export type DashboardCheckRow = {
   bars: Array<{ tone?: "good" | "warn"; value: number }>;
   delta: string;
   hasTrace?: boolean;
+  id: string;
   name: string;
   p95: string;
   status: DashboardStatus;

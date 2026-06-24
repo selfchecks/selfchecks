@@ -1,6 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type {
   DashboardCheckRow,
@@ -68,6 +68,8 @@ const fixtureSummary: DashboardSummary = {
 };
 
 function createCheck(overrides: Partial<DashboardCheckRow>): DashboardCheckRow {
+  const name = overrides.name ?? "check";
+
   return {
     avg: "100 ms",
     ava: "100%",
@@ -80,6 +82,7 @@ function createCheck(overrides: Partial<DashboardCheckRow>): DashboardCheckRow {
       },
     ],
     delta: "24 h",
+    id: `check-${name}`,
     name: "check",
     p95: "100 ms",
     status: "passing",
@@ -97,6 +100,10 @@ function renderDashboard() {
 }
 
 describe("DashboardPage", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("renders the Checkly-like dashboard shell", () => {
     renderDashboard();
 
@@ -227,5 +234,50 @@ describe("DashboardPage", () => {
 
     expect(screen.getByText("Selected issue.get.")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Open" })).toBeNull();
+  });
+
+  it("closes row action menus from outside clicks", async () => {
+    const user = userEvent.setup();
+
+    renderDashboard();
+
+    await user.click(screen.getByRole("button", { name: "issue.get actions" }));
+    expect(screen.getByRole("button", { name: "Open" })).toBeTruthy();
+
+    await user.click(screen.getByRole("searchbox", { name: "Search checks" }));
+
+    expect(screen.queryByRole("button", { name: "Open" })).toBeNull();
+  });
+
+  it("queues a check run from the row action menu", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          runId: "run_1",
+          status: "queued",
+        }),
+        {
+          headers: {
+            "content-type": "application/json",
+          },
+          status: 202,
+        },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderDashboard();
+
+    await user.click(screen.getByRole("button", { name: "issue.get actions" }));
+    await user.click(screen.getByRole("button", { name: "Run now" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/checks/check-issue.get/run", {
+        method: "POST",
+      });
+    });
+    expect(screen.getByText("Queued issue.get.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Run now" })).toBeNull();
   });
 });

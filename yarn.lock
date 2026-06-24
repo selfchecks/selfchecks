@@ -1429,7 +1429,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@selfchecks/cli@workspace:packages/cli":
+"@selfchecks/cli@workspace:*, @selfchecks/cli@workspace:packages/cli":
   version: 0.0.0-use.local
   resolution: "@selfchecks/cli@workspace:packages/cli"
   dependencies:
@@ -1472,6 +1472,7 @@ __metadata:
     "@types/react": "npm:^19.0.0"
     "@types/react-dom": "npm:^19.0.0"
     autoprefixer: "npm:^10.4.21"
+    bullmq: "npm:^5.56.4"
     class-variance-authority: "npm:^0.7.1"
     clsx: "npm:^2.1.1"
     lucide-react: "npm:^0.468.0"
@@ -1489,6 +1490,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@selfchecks/worker@workspace:apps/worker"
   dependencies:
+    "@selfchecks/cli": "workspace:*"
     "@selfchecks/core": "workspace:*"
     "@selfchecks/db": "workspace:*"
     bullmq: "npm:^5.56.4"

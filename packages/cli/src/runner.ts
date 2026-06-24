@@ -12,7 +12,10 @@ import {
   type TestSession,
 } from "@selfchecks/db";
 
-import type { EnvVar } from "./program.js";
+export type EnvVar = {
+  name: string;
+  value: string;
+};
 
 export type RunCheckResult = {
   checkKey: string;
@@ -42,6 +45,16 @@ export type RunChecksOptions = {
   rootDir: string;
   tagSets: string[][];
   testSessionName?: string;
+};
+
+export type RunCheckByIdOptions = {
+  checkId: string;
+  env: EnvVar[];
+  projectSlug: string;
+  record: true;
+  reporter: string;
+  rootDir: string;
+  runId?: string;
 };
 
 type RunnableCheck = Check & {
@@ -88,6 +101,47 @@ export async function runChecks(options: RunChecksOptions): Promise<RunChecksSum
     skipped: 0,
     total: results.length,
   };
+}
+
+export async function runCheckById(
+  options: RunCheckByIdOptions,
+): Promise<RunCheckResult> {
+  const check = await prisma.check.findFirst({
+    include: {
+      runs: {
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: 1,
+      },
+    },
+    where: {
+      enabled: true,
+      id: options.checkId,
+      project: {
+        slug: options.projectSlug,
+      },
+    },
+  });
+
+  if (!check) {
+    throw new Error(`Check ${options.checkId} was not found.`);
+  }
+
+  return runCheck(
+    check,
+    {
+      checkKeys: [check.key],
+      env: options.env,
+      projectSlug: options.projectSlug,
+      record: options.record,
+      reporter: options.reporter,
+      rootDir: options.rootDir,
+      tagSets: [],
+    },
+    undefined,
+    options.runId,
+  );
 }
 
 async function findRunnableChecks(options: RunChecksOptions): Promise<RunnableCheck[]> {
@@ -155,23 +209,14 @@ async function runCheck(
   check: RunnableCheck,
   options: RunChecksOptions,
   session: TestSession | undefined,
+  existingRunId?: string,
 ): Promise<RunCheckResult> {
   const startedAt = new Date();
   const run = options.record
-    ? await prisma.checkRun.create({
-        data: {
-          checkId: check.id,
-          startedAt,
-          status: "RUNNING",
-          testSessionId: session?.id,
-        },
-      })
+    ? await upsertStartedRun(check.id, startedAt, session, existingRunId)
     : undefined;
 
-  const result =
-    check.type === "BROWSER"
-      ? await runBrowserCheck(check, options, run)
-      : await runApiCheck(check, options);
+  const result = await executeCheck(check, options, run);
   const finishedAt = new Date();
   const durationMs = finishedAt.getTime() - startedAt.getTime();
 
@@ -199,6 +244,68 @@ async function runCheck(
     runId: run?.id,
     status: result.status,
   };
+}
+
+async function upsertStartedRun(
+  checkId: string,
+  startedAt: Date,
+  session: TestSession | undefined,
+  existingRunId: string | undefined,
+): Promise<CheckRun> {
+  if (!existingRunId) {
+    return prisma.checkRun.create({
+      data: {
+        checkId,
+        startedAt,
+        status: "RUNNING",
+        testSessionId: session?.id,
+      },
+    });
+  }
+
+  const run = await prisma.checkRun.findFirst({
+    where: {
+      checkId,
+      id: existingRunId,
+    },
+  });
+
+  if (!run) {
+    throw new Error(`Run ${existingRunId} was not found for check ${checkId}.`);
+  }
+
+  return prisma.checkRun.update({
+    data: {
+      startedAt,
+      status: "RUNNING",
+      testSessionId: session?.id,
+    },
+    where: {
+      id: run.id,
+    },
+  });
+}
+
+async function executeCheck(
+  check: Check,
+  options: RunChecksOptions,
+  run: CheckRun | undefined,
+): Promise<CheckExecutionResult> {
+  try {
+    return check.type === "BROWSER"
+      ? await runBrowserCheck(check, options, run)
+      : await runApiCheck(check, options);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+
+    return {
+      errorMessage: message,
+      resultJson: {
+        error: message,
+      },
+      status: "failed",
+    };
+  }
 }
 
 async function runBrowserCheck(

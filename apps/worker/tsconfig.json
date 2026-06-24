@@ -8,5 +8,9 @@
   },
   "include": ["src/**/*.ts"],
   "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"],
-  "references": [{ "path": "../../packages/core" }, { "path": "../../packages/db" }]
+  "references": [
+    { "path": "../../packages/core" },
+    { "path": "../../packages/db" },
+    { "path": "../../packages/cli" }
+  ]
 }

@@ -2,13 +2,8 @@ import { Command } from "commander";
 
 import { importCheckDefinitions, normalizeTags } from "@selfchecks/core";
 
-import { runChecks, type RunChecksSummary } from "./runner.js";
+import { runChecks, type EnvVar, type RunChecksSummary } from "./runner.js";
 import { persistDeploySummary } from "./storage.js";
-
-export type EnvVar = {
-  name: string;
-  value: string;
-};
 
 export type DeployCommandOutput = {
   command: "deploy";

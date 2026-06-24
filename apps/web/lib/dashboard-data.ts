@@ -116,6 +116,7 @@ function mapCheck(check: CheckWithRuns): DashboardCheckRow {
     bars: buildBars(check.runs),
     delta: latestRun ? "24 h" : "-",
     hasTrace: Boolean(check.runs.some((run) => run.logsPath)),
+    id: check.id,
     name: check.name,
     p95: formatDuration(percentile(durations, 0.95)),
     status: mapRunStatus(latestRun?.status),

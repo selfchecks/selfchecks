@@ -6,6 +6,7 @@ import {
   deploySummarySchema,
   frequencySchema,
   getCheckIdentity,
+  normalizeCheckQueueName,
   normalizeTags,
 } from "./index.js";
 
@@ -177,5 +178,17 @@ describe("deploySummarySchema", () => {
 describe("getCheckIdentity", () => {
   it("creates a stable project-scoped check identity", () => {
     expect(getCheckIdentity("account", "homepage")).toBe("account:homepage");
+  });
+});
+
+describe("normalizeCheckQueueName", () => {
+  it("defaults to the shared selfchecks queue", () => {
+    expect(normalizeCheckQueueName(undefined)).toBe("selfchecks-checks");
+  });
+
+  it("rejects BullMQ-incompatible names", () => {
+    expect(() => normalizeCheckQueueName("selfchecks:checks")).toThrow(
+      'SELFCHECKS_QUEUE_NAME cannot contain ":"',
+    );
   });
 });

@@ -13,6 +13,20 @@ export const checkRunStatuses = [
 ] as const;
 export type CheckRunStatus = (typeof checkRunStatuses)[number];
 
+export const defaultCheckQueueName = "selfchecks-checks";
+
+export function normalizeCheckQueueName(value: string | undefined): string {
+  const queueName = value?.trim() || defaultCheckQueueName;
+
+  if (queueName.includes(":")) {
+    throw new Error(
+      'SELFCHECKS_QUEUE_NAME cannot contain ":" because BullMQ reserves it for Redis keys. Use "-" or "_" instead.',
+    );
+  }
+
+  return queueName;
+}
+
 export const artifactTypes = [
   "log",
   "screenshot",

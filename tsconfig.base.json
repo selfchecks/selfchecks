@@ -16,6 +16,7 @@
     "noUncheckedIndexedAccess": true,
     "paths": {
       "@selfchecks/core": ["packages/core/src/index.ts"],
+      "@selfchecks/cli/runner": ["packages/cli/src/runner.ts"],
       "@selfchecks/db": ["packages/db/src/index.ts"]
     },
     "resolveJsonModule": true,
