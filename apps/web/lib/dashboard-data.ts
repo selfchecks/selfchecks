@@ -1,6 +1,7 @@
 import type {
   DashboardCheckRow,
   DashboardGroupRow,
+  DashboardRunState,
   DashboardStatus,
   DashboardSummary,
 } from "./dashboard-types";
@@ -119,9 +120,10 @@ function mapCheck(check: CheckWithRuns): DashboardCheckRow {
     id: check.id,
     name: check.name,
     p95: formatDuration(percentile(durations, 0.95)),
+    runState: mapRunState(latestRun?.status),
     status: mapRunStatus(latestRun?.status),
     tags: check.tags,
-    time: latestRun ? formatRelative(latestRun.createdAt) : "not run yet",
+    time: formatRunAge(latestRun),
     type: check.type.toLowerCase() as DashboardCheckRow["type"],
   };
 }
@@ -166,12 +168,41 @@ function mapRunStatus(status: string | undefined): DashboardStatus {
   return "degraded";
 }
 
+function mapRunState(status: string | undefined): DashboardRunState {
+  if (status === "QUEUED") {
+    return "queued";
+  }
+
+  if (status === "RUNNING") {
+    return "running";
+  }
+
+  if (status === "PASSED") {
+    return "passed";
+  }
+
+  if (status === "FAILED") {
+    return "failed";
+  }
+
+  if (status === "TIMED_OUT") {
+    return "timed_out";
+  }
+
+  if (status === "CANCELLED") {
+    return "cancelled";
+  }
+
+  return "not_run";
+}
+
 function buildBars(runs: CheckWithRuns["runs"]): DashboardCheckRow["bars"] {
   if (runs.length === 0) {
     return Array.from({ length: 12 }, () => ({
       duration: "-",
       occurredAt: "No recorded run",
       runner: "Local runner",
+      runState: "not_run" as const,
       status: "degraded" as const,
       tone: "warn" as const,
       value: 12,
@@ -180,10 +211,12 @@ function buildBars(runs: CheckWithRuns["runs"]): DashboardCheckRow["bars"] {
 
   return [...runs].reverse().map((run) => ({
     duration: formatDuration(run.durationMs ?? undefined),
-    occurredAt: formatRunTimestamp(run.createdAt),
+    occurredAt: formatBarTimestamp(run),
     runner: "Local runner",
+    runState: mapRunState(run.status),
     status: mapRunStatus(run.status),
-    tone: run.status === "PASSED" ? "good" : ("warn" as const),
+    tone:
+      run.status === "RUNNING" ? "active" : run.status === "PASSED" ? "good" : "warn",
     value: Math.max(8, Math.min(44, Math.round((run.durationMs ?? 500) / 40))),
   }));
 }
@@ -227,6 +260,34 @@ function formatDuration(value: number | undefined): string {
   }
 
   return `${Math.round(value)} ms`;
+}
+
+function formatRunAge(run: CheckWithRuns["runs"][number] | undefined): string {
+  if (!run) {
+    return "not run yet";
+  }
+
+  if (run.status === "QUEUED") {
+    return "queued";
+  }
+
+  if (run.status === "RUNNING") {
+    return "running";
+  }
+
+  return formatRelative(run.createdAt);
+}
+
+function formatBarTimestamp(run: CheckWithRuns["runs"][number]): string {
+  if (run.status === "QUEUED") {
+    return "Queued";
+  }
+
+  if (run.status === "RUNNING") {
+    return "Running";
+  }
+
+  return formatRunTimestamp(run.createdAt);
 }
 
 function formatRunTimestamp(date: Date): string {

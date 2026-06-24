@@ -69,6 +69,10 @@ const fixtureSummary: DashboardSummary = {
 
 function createCheck(overrides: Partial<DashboardCheckRow>): DashboardCheckRow {
   const name = overrides.name ?? "check";
+  const status = overrides.status ?? "passing";
+  const runState =
+    overrides.runState ??
+    (status === "passing" ? "passed" : status === "failing" ? "failed" : "not_run");
 
   return {
     avg: "100 ms",
@@ -78,14 +82,16 @@ function createCheck(overrides: Partial<DashboardCheckRow>): DashboardCheckRow {
         duration: "100 ms",
         occurredAt: "Jun 22 22:20 (UTC+3)",
         runner: "Local runner",
-        status: "passing",
+        runState,
+        status,
         value: 12,
       },
       {
         duration: "120 ms",
         occurredAt: "Jun 22 22:25 (UTC+3)",
         runner: "Local runner",
-        status: "passing",
+        runState,
+        status,
         value: 18,
       },
     ],
@@ -93,7 +99,8 @@ function createCheck(overrides: Partial<DashboardCheckRow>): DashboardCheckRow {
     id: `check-${name}`,
     name: "check",
     p95: "100 ms",
-    status: "passing",
+    runState,
+    status,
     tags: ["api", "regress"],
     time: "about 1 hour ago",
     type: "api",
@@ -154,9 +161,8 @@ describe("DashboardPage", () => {
     renderDashboard();
 
     expect(
-      screen.getAllByLabelText(
-        "Degraded: The latest run needs attention or the check has not run yet.",
-      ).length,
+      screen.getAllByLabelText("Not run yet: This check has no recorded runs yet.")
+        .length,
     ).toBeGreaterThan(0);
     expect(
       screen.getAllByLabelText("Passing: The latest run passed.").length,
@@ -167,7 +173,8 @@ describe("DashboardPage", () => {
     renderDashboard();
 
     expect(
-      screen.getAllByLabelText("Local runner 100 ms Jun 22 22:20 (UTC+3)").length,
+      screen.getAllByLabelText("Passing Local runner 100 ms Jun 22 22:20 (UTC+3)")
+        .length,
     ).toBeGreaterThan(0);
     expect(screen.getAllByRole("tooltip").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Local runner").length).toBeGreaterThan(0);
@@ -289,22 +296,66 @@ describe("DashboardPage", () => {
     expect(screen.queryByRole("button", { name: "Open" })).toBeNull();
   });
 
-  it("queues a check run from the row action menu", async () => {
+  it("queues a check run from the row action menu and refreshes live run state", async () => {
     const user = userEvent.setup();
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          runId: "run_1",
-          status: "queued",
-        }),
-        {
-          headers: {
-            "content-type": "application/json",
-          },
-          status: 202,
-        },
-      ),
-    );
+    let resolveDashboard: ((response: Response) => void) | undefined;
+    const dashboardResponse = new Promise<Response>((resolve) => {
+      resolveDashboard = resolve;
+    });
+    const bffGroup = fixtureGroups[0]!;
+    const regressGroup = fixtureGroups[1]!;
+    const runningGroups: DashboardGroupRow[] = [
+      bffGroup,
+      {
+        ...regressGroup,
+        children: (regressGroup.children ?? []).map((check) =>
+          check.name === "issue.get"
+            ? {
+                ...check,
+                bars: [
+                  ...check.bars,
+                  {
+                    duration: "-",
+                    occurredAt: "Running",
+                    runner: "Local runner",
+                    runState: "running" as const,
+                    status: "degraded" as const,
+                    tone: "active" as const,
+                    value: 18,
+                  },
+                ],
+                runState: "running" as const,
+                status: "degraded" as const,
+                time: "running",
+              }
+            : check,
+        ),
+        status: "degraded",
+        updated: "running",
+      },
+    ];
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              runId: "run_1",
+              status: "queued",
+            }),
+            {
+              headers: {
+                "content-type": "application/json",
+              },
+              status: 202,
+            },
+          ),
+        );
+      }
+
+      expect(input).toBe("/api/dashboard");
+
+      return dashboardResponse;
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     renderDashboard();
@@ -318,6 +369,32 @@ describe("DashboardPage", () => {
       });
     });
     expect(screen.getByText("Queued issue.get.")).toBeTruthy();
+    expect(screen.getAllByText("queued").length).toBeGreaterThan(0);
+    expect(screen.getByLabelText("Queued Local runner - Queued")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Run now" })).toBeNull();
+
+    resolveDashboard?.(
+      new Response(
+        JSON.stringify({
+          groups: runningGroups,
+          summary: {
+            degraded: 2,
+            failing: 0,
+            passing: 4,
+          },
+        }),
+        {
+          headers: {
+            "content-type": "application/json",
+          },
+          status: 200,
+        },
+      ),
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByText("running").length).toBeGreaterThan(0);
+    });
+    expect(screen.getByLabelText("Running Local runner - Running")).toBeTruthy();
   });
 });

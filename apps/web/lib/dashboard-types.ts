@@ -1,11 +1,20 @@
 export type DashboardStatus = "passing" | "degraded" | "failing";
+export type DashboardRunState =
+  | "cancelled"
+  | "failed"
+  | "not_run"
+  | "passed"
+  | "queued"
+  | "running"
+  | "timed_out";
 
 export type DashboardResultBar = {
   duration: string;
   occurredAt: string;
   runner: string;
+  runState: DashboardRunState;
   status: DashboardStatus;
-  tone?: "good" | "warn";
+  tone?: "active" | "good" | "warn";
   value: number;
 };
 
@@ -18,6 +27,7 @@ export type DashboardCheckRow = {
   id: string;
   name: string;
   p95: string;
+  runState: DashboardRunState;
   status: DashboardStatus;
   tags: string[];
   time: string;

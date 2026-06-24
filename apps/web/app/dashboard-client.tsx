@@ -25,6 +25,7 @@ import { cn } from "@/lib/utils";
 import type {
   DashboardCheckRow,
   DashboardGroupRow,
+  DashboardRunState,
   DashboardStatus,
   DashboardSummary,
 } from "@/lib/dashboard-types";
@@ -35,6 +36,10 @@ type TagFilter = "all" | "api" | "regress";
 type TypeFilter = "all" | "api" | "browser";
 type DateRange = "24h" | "7d" | "all";
 type TraceFilter = "all" | "with-traces";
+type DashboardSnapshot = {
+  groups: GroupRow[];
+  summary: DashboardSummary;
+};
 
 type NavItem = {
   active?: boolean;
@@ -65,22 +70,38 @@ const statusFilterLabels: Record<StatusFilter, string> = {
   passing: "Passing",
 };
 
-const statusTooltipTitles: Record<Status, string> = {
-  degraded: "Degraded",
-  failing: "Failing",
-  passing: "Passing",
-};
-
-const statusTooltipDescriptions: Record<Status, string> = {
-  degraded: "The latest run needs attention or the check has not run yet.",
-  failing: "The latest run failed.",
-  passing: "The latest run passed.",
-};
-
-const statusTooltipLabels: Record<Status, string> = {
-  degraded: `${statusTooltipTitles.degraded}: ${statusTooltipDescriptions.degraded}`,
-  failing: `${statusTooltipTitles.failing}: ${statusTooltipDescriptions.failing}`,
-  passing: `${statusTooltipTitles.passing}: ${statusTooltipDescriptions.passing}`,
+const runStateTooltipContent: Record<
+  DashboardRunState,
+  { description: string; title: string }
+> = {
+  cancelled: {
+    description: "The latest run was cancelled before completion.",
+    title: "Cancelled",
+  },
+  failed: {
+    description: "The latest run failed.",
+    title: "Failing",
+  },
+  not_run: {
+    description: "This check has no recorded runs yet.",
+    title: "Not run yet",
+  },
+  passed: {
+    description: "The latest run passed.",
+    title: "Passing",
+  },
+  queued: {
+    description: "This check has been placed in the worker queue.",
+    title: "Queued",
+  },
+  running: {
+    description: "The worker is executing this check now.",
+    title: "Running",
+  },
+  timed_out: {
+    description: "The latest run timed out.",
+    title: "Timed out",
+  },
 };
 
 const tagFilterLabels: Record<TagFilter, string> = {
@@ -137,7 +158,11 @@ export default function DashboardClient({
   initialGroups: GroupRow[];
   initialSummary: DashboardSummary;
 }) {
-  const groups = initialGroups;
+  const [dashboard, setDashboard] = useState<DashboardSnapshot>(() => ({
+    groups: initialGroups,
+    summary: initialSummary,
+  }));
+  const { groups, summary } = dashboard;
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [activeActionMenu, setActiveActionMenu] = useState<string | null>(null);
@@ -151,6 +176,13 @@ export default function DashboardClient({
   const [tagFilter, setTagFilter] = useState<TagFilter>("all");
   const [traceOnly, setTraceOnly] = useState(false);
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+  const hasActiveRuns = useMemo(
+    () =>
+      groups.some((group) =>
+        group.children?.some((check) => ["queued", "running"].includes(check.runState)),
+      ),
+    [groups],
+  );
   const summaryCards = useMemo(
     () =>
       [
@@ -158,19 +190,19 @@ export default function DashboardClient({
           label: "PASSING",
           status: "passing",
           tone: "border-emerald-950/80 bg-emerald-950/75 text-emerald-400 shadow-emerald-950/20",
-          value: String(initialSummary.passing),
+          value: String(summary.passing),
         },
         {
           label: "DEGRADED",
           status: "degraded",
           tone: "border-amber-950/80 bg-amber-950/75 text-amber-400 shadow-amber-950/20",
-          value: String(initialSummary.degraded),
+          value: String(summary.degraded),
         },
         {
           label: "FAILING",
           status: "failing",
           tone: "border-red-950/80 bg-red-950/75 text-red-400 shadow-red-950/20",
-          value: String(initialSummary.failing),
+          value: String(summary.failing),
         },
       ] satisfies Array<{
         label: string;
@@ -178,7 +210,7 @@ export default function DashboardClient({
         tone: string;
         value: string;
       }>,
-    [initialSummary],
+    [summary],
   );
 
   useEffect(() => {
@@ -227,6 +259,39 @@ export default function DashboardClient({
       document.removeEventListener("keydown", handleEscape);
     };
   }, [activeActionMenu]);
+
+  useEffect(() => {
+    if (!hasActiveRuns) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function refreshActiveRuns() {
+      try {
+        const nextDashboard = await fetchDashboardSnapshot();
+
+        if (!cancelled) {
+          setDashboard(nextDashboard);
+        }
+      } catch {
+        if (!cancelled) {
+          setNotice("Unable to refresh run status.");
+        }
+      }
+    }
+
+    const intervalId = window.setInterval(() => {
+      void refreshActiveRuns();
+    }, 1000);
+
+    void refreshActiveRuns();
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [hasActiveRuns]);
 
   const filteredGroups = useMemo<GroupRow[]>(() => {
     const nextGroups: GroupRow[] = [];
@@ -315,6 +380,14 @@ export default function DashboardClient({
         throw new Error(payload.error ?? "Unable to queue check run.");
       }
 
+      setDashboard((current) => {
+        const nextGroups = markCheckQueued(current.groups, check.id);
+
+        return {
+          groups: nextGroups,
+          summary: summarizeDashboardGroups(nextGroups),
+        };
+      });
       setNotice(`Queued ${check.name}.`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -482,6 +555,97 @@ function doesCheckMatchFilters(
     (!filters.traceOnly || check.hasTrace) &&
     (filters.typeFilter === "all" || check.type === filters.typeFilter)
   );
+}
+
+async function fetchDashboardSnapshot(): Promise<DashboardSnapshot> {
+  const response = await fetch("/api/dashboard", {
+    cache: "no-store",
+  });
+  const payload = (await response.json().catch(() => ({}))) as Partial<
+    DashboardSnapshot & { error: string }
+  >;
+
+  if (!response.ok || !payload.groups || !payload.summary) {
+    throw new Error(payload.error ?? "Unable to load dashboard data.");
+  }
+
+  return {
+    groups: payload.groups,
+    summary: payload.summary,
+  };
+}
+
+function markCheckQueued(groups: GroupRow[], checkId: string): GroupRow[] {
+  return groups.map((group) => {
+    if (!group.children) {
+      return group;
+    }
+
+    const children = group.children.map((check) =>
+      check.id === checkId ? markQueuedCheck(check) : check,
+    );
+
+    return {
+      ...group,
+      children,
+      status: summarizeDashboardStatus(children.map((check) => check.status)),
+      updated: children.some((check) => check.id === checkId)
+        ? "queued"
+        : group.updated,
+    };
+  });
+}
+
+function markQueuedCheck(check: CheckRow): CheckRow {
+  const queuedBar = {
+    duration: "-",
+    occurredAt: "Queued",
+    runner: "Local runner",
+    runState: "queued" as const,
+    status: "degraded" as const,
+    tone: "warn" as const,
+    value: 18,
+  };
+
+  return {
+    ...check,
+    avg: "-",
+    ava: check.ava === "-" ? "-" : check.ava,
+    bars: [...check.bars.slice(-23), queuedBar],
+    delta: "-",
+    p95: "-",
+    runState: "queued",
+    status: "degraded",
+    time: "queued",
+  };
+}
+
+function summarizeDashboardGroups(groups: GroupRow[]): DashboardSummary {
+  return groups
+    .flatMap((group) => group.children ?? [])
+    .reduce<DashboardSummary>(
+      (summary, check) => ({
+        ...summary,
+        [check.status]: summary[check.status] + 1,
+      }),
+      {
+        degraded: 0,
+        failing: 0,
+        passing: 0,
+      },
+    );
+}
+
+function summarizeDashboardStatus(statuses: Status[]): Status {
+  if (statuses.includes("failing")) {
+    return "failing";
+  }
+
+  if (statuses.includes("degraded")) {
+    return "degraded";
+  }
+
+  return "passing";
 }
 
 function Sidebar({ onHomeClick }: { onHomeClick: () => void }) {
@@ -878,11 +1042,18 @@ function CheckTableRow({
     <tr className="border-b border-slate-800 bg-[#141a21] text-slate-300 hover:bg-[#18202a]">
       <td className="px-5 py-3">
         <div className="flex items-center gap-4 pl-9">
-          <CheckStatus status={check.status} />
+          <CheckStatus runState={check.runState} status={check.status} />
           <div className="min-w-0">
             <div className="truncate font-semibold text-slate-200">{check.name}</div>
             <div className="mt-1 flex flex-wrap items-center gap-1.5 text-sm text-slate-500">
-              <span>{check.time}</span>
+              <span
+                className={cn(
+                  check.runState === "queued" && "font-medium text-amber-300",
+                  check.runState === "running" && "font-medium text-blue-300",
+                )}
+              >
+                {check.time}
+              </span>
               {check.tags.map((tag) => (
                 <span
                   className="rounded bg-slate-700 px-1.5 py-0.5 text-xs font-semibold text-slate-300"
@@ -997,10 +1168,16 @@ function GroupStatus({ status }: { status: Status }) {
   );
 }
 
-function CheckStatus({ status }: { status: Status }) {
+function CheckStatus({
+  runState,
+  status,
+}: {
+  runState: DashboardRunState;
+  status: Status;
+}) {
   if (status === "degraded") {
     return (
-      <StatusTooltip status={status}>
+      <StatusTooltip runState={runState}>
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-400 text-amber-950">
           <CircleAlert className="h-5 w-5" />
         </span>
@@ -1010,7 +1187,7 @@ function CheckStatus({ status }: { status: Status }) {
 
   if (status === "failing") {
     return (
-      <StatusTooltip status={status}>
+      <StatusTooltip runState={runState}>
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-500 text-white">
           <CircleX className="h-5 w-5" />
         </span>
@@ -1019,7 +1196,7 @@ function CheckStatus({ status }: { status: Status }) {
   }
 
   return (
-    <StatusTooltip status={status}>
+    <StatusTooltip runState={runState}>
       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-emerald-950">
         <CheckCircle2 className="h-5 w-5" />
       </span>
@@ -1027,10 +1204,18 @@ function CheckStatus({ status }: { status: Status }) {
   );
 }
 
-function StatusTooltip({ children, status }: { children: ReactNode; status: Status }) {
+function StatusTooltip({
+  children,
+  runState,
+}: {
+  children: ReactNode;
+  runState: DashboardRunState;
+}) {
+  const content = runStateTooltipContent[runState];
+
   return (
     <span
-      aria-label={statusTooltipLabels[status]}
+      aria-label={`${content.title}: ${content.description}`}
       className="group/status relative inline-flex shrink-0 outline-none"
       tabIndex={0}
     >
@@ -1039,12 +1224,8 @@ function StatusTooltip({ children, status }: { children: ReactNode; status: Stat
         className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-3 hidden w-64 -translate-x-1/2 rounded-md border border-slate-500/20 bg-slate-600 px-3 py-2 text-left text-sm text-slate-100 shadow-2xl shadow-black/40 group-hover/status:block group-focus/status:block"
         role="tooltip"
       >
-        <span className="block font-semibold text-slate-50">
-          {statusTooltipTitles[status]}
-        </span>
-        <span className="mt-1 block text-slate-200">
-          {statusTooltipDescriptions[status]}
-        </span>
+        <span className="block font-semibold text-slate-50">{content.title}</span>
+        <span className="mt-1 block text-slate-200">{content.description}</span>
         <span className="absolute left-1/2 top-full h-3 w-3 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-slate-600" />
       </span>
     </span>
@@ -1054,45 +1235,66 @@ function StatusTooltip({ children, status }: { children: ReactNode; status: Stat
 function SparkBars({ bars }: { bars: CheckRow["bars"] }) {
   return (
     <div className="flex h-12 items-end gap-1 overflow-visible py-1">
-      {bars.map((bar, index) => (
-        <span
-          aria-label={`${bar.runner} ${bar.duration} ${bar.occurredAt}`}
-          className="group relative flex h-11 w-2 items-end justify-center outline-none hover:z-20 focus-visible:ring-2 focus-visible:ring-blue-400/60 focus-within:z-20"
-          key={`${bar.occurredAt}-${bar.value}-${index}`}
-          tabIndex={0}
-        >
+      {bars.map((bar, index) => {
+        const tooltipContent = runStateTooltipContent[bar.runState];
+
+        return (
           <span
-            aria-hidden="true"
-            className={cn(
-              "block w-1 rounded-sm transition",
-              bar.tone === "warn" ? "bg-amber-400" : "bg-emerald-400",
-            )}
-            style={{ height: `${bar.value}px` }}
-          />
-          <span
-            className={cn(
-              "pointer-events-none absolute bottom-full left-1/2 z-30 mb-3 hidden w-max min-w-64 -translate-x-1/2 rounded-md border border-slate-500/20 bg-slate-600 px-4 py-3 text-left shadow-2xl shadow-black/40",
-              "group-hover:block group-focus-within:block",
-            )}
-            role="tooltip"
+            aria-label={`${tooltipContent.title} ${bar.runner} ${bar.duration} ${bar.occurredAt}`}
+            className="group relative flex h-11 w-2 items-end justify-center outline-none hover:z-20 focus-visible:ring-2 focus-visible:ring-blue-400/60 focus-within:z-20"
+            key={`${bar.occurredAt}-${bar.value}-${index}`}
+            tabIndex={0}
           >
-            <span className="flex items-center gap-2 text-base font-semibold text-slate-50">
-              <ResultTooltipStatus status={bar.status} />
-              {bar.runner}
+            <span
+              aria-hidden="true"
+              className={cn(
+                "block w-1 rounded-sm transition",
+                bar.tone === "active" && "bg-blue-400",
+                bar.tone === "warn" && "bg-amber-400",
+                (!bar.tone || bar.tone === "good") && "bg-emerald-400",
+              )}
+              style={{ height: `${bar.value}px` }}
+            />
+            <span
+              className={cn(
+                "pointer-events-none absolute bottom-full left-1/2 z-30 mb-3 hidden w-max min-w-64 -translate-x-1/2 rounded-md border border-slate-500/20 bg-slate-600 px-4 py-3 text-left shadow-2xl shadow-black/40",
+                "group-hover:block group-focus-within:block",
+              )}
+              role="tooltip"
+            >
+              <span className="flex items-center gap-2 text-base font-semibold text-slate-50">
+                <ResultTooltipStatus runState={bar.runState} status={bar.status} />
+                {tooltipContent.title}
+              </span>
+              <span className="mt-2 flex items-center gap-6 text-sm text-slate-100">
+                <span>{bar.runner}</span>
+                <span>{bar.duration}</span>
+                <span>{bar.occurredAt}</span>
+              </span>
+              <span className="absolute left-1/2 top-full h-3 w-3 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-slate-600" />
             </span>
-            <span className="mt-2 flex items-center gap-6 text-sm text-slate-100">
-              <span>{bar.duration}</span>
-              <span>{bar.occurredAt}</span>
-            </span>
-            <span className="absolute left-1/2 top-full h-3 w-3 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-slate-600" />
           </span>
-        </span>
-      ))}
+        );
+      })}
     </div>
   );
 }
 
-function ResultTooltipStatus({ status }: { status: Status }) {
+function ResultTooltipStatus({
+  runState,
+  status,
+}: {
+  runState: DashboardRunState;
+  status: Status;
+}) {
+  if (runState === "running") {
+    return (
+      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-500 text-blue-950">
+        <Zap className="h-4 w-4" />
+      </span>
+    );
+  }
+
   if (status === "failing") {
     return (
       <span className="flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white">
