@@ -34,6 +34,7 @@ type StatusFilter = Status | "all";
 type TagFilter = "all" | "api" | "regress";
 type TypeFilter = "all" | "api" | "browser";
 type DateRange = "24h" | "7d" | "all";
+type TraceFilter = "all" | "with-traces";
 
 type NavItem = {
   active?: boolean;
@@ -43,6 +44,10 @@ type NavItem = {
 
 type CheckRow = DashboardCheckRow;
 type GroupRow = DashboardGroupRow;
+type FilterOption<T extends string> = {
+  label: string;
+  value: T;
+};
 
 const sidebarItems: NavItem[] = [{ active: true, icon: Home, label: "Home" }];
 
@@ -70,6 +75,41 @@ const typeFilterLabels: Record<TypeFilter, string> = {
   api: "API checks",
   browser: "Browser checks",
 };
+
+const traceFilterLabels: Record<TraceFilter, string> = {
+  all: "Traces",
+  "with-traces": "With traces",
+};
+
+const dateRangeOptions = [
+  { label: dateRangeLabels["24h"], value: "24h" },
+  { label: dateRangeLabels["7d"], value: "7d" },
+  { label: dateRangeLabels.all, value: "all" },
+] satisfies Array<FilterOption<DateRange>>;
+
+const statusFilterOptions = [
+  { label: statusFilterLabels.all, value: "all" },
+  { label: statusFilterLabels.passing, value: "passing" },
+  { label: statusFilterLabels.degraded, value: "degraded" },
+  { label: statusFilterLabels.failing, value: "failing" },
+] satisfies Array<FilterOption<StatusFilter>>;
+
+const typeFilterOptions = [
+  { label: typeFilterLabels.all, value: "all" },
+  { label: typeFilterLabels.api, value: "api" },
+  { label: typeFilterLabels.browser, value: "browser" },
+] satisfies Array<FilterOption<TypeFilter>>;
+
+const tagFilterOptions = [
+  { label: tagFilterLabels.all, value: "all" },
+  { label: tagFilterLabels.api, value: "api" },
+  { label: tagFilterLabels.regress, value: "regress" },
+] satisfies Array<FilterOption<TagFilter>>;
+
+const traceFilterOptions = [
+  { label: traceFilterLabels.all, value: "all" },
+  { label: traceFilterLabels["with-traces"], value: "with-traces" },
+] satisfies Array<FilterOption<TraceFilter>>;
 
 export default function DashboardClient({
   initialGroups,
@@ -214,36 +254,6 @@ export default function DashboardClient({
     }));
   }
 
-  function cycleDateRange() {
-    setDateRange((current) =>
-      current === "24h" ? "7d" : current === "7d" ? "all" : "24h",
-    );
-  }
-
-  function cycleStatusFilter() {
-    setStatusFilter((current) =>
-      current === "all"
-        ? "passing"
-        : current === "passing"
-          ? "degraded"
-          : current === "degraded"
-            ? "failing"
-            : "all",
-    );
-  }
-
-  function cycleTagFilter() {
-    setTagFilter((current) =>
-      current === "all" ? "api" : current === "api" ? "regress" : "all",
-    );
-  }
-
-  function cycleTypeFilter() {
-    setTypeFilter((current) =>
-      current === "all" ? "api" : current === "api" ? "browser" : "all",
-    );
-  }
-
   return (
     <main className="min-h-screen bg-[#0d1117] text-slate-200">
       <h1 className="sr-only">Synthetic checks dashboard</h1>
@@ -305,34 +315,50 @@ export default function DashboardClient({
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <FilterButton
+              <FilterSelect
+                active={dateRange !== "24h"}
+                ariaLabel="Time range"
+                className="w-40"
                 icon={CalendarDays}
-                label={dateRangeLabels[dateRange]}
-                onClick={cycleDateRange}
+                onChange={setDateRange}
+                options={dateRangeOptions}
+                value={dateRange}
               />
-              <FilterButton
+              <FilterSelect
                 active={statusFilter !== "all"}
+                ariaLabel="Status"
+                className="w-36"
                 icon={CheckCircle2}
-                label={statusFilterLabels[statusFilter]}
-                onClick={cycleStatusFilter}
+                onChange={setStatusFilter}
+                options={statusFilterOptions}
+                value={statusFilter}
               />
-              <FilterButton
+              <FilterSelect
                 active={typeFilter !== "all"}
+                ariaLabel="Check type"
+                className="w-44"
                 icon={Zap}
-                label={typeFilterLabels[typeFilter]}
-                onClick={cycleTypeFilter}
+                onChange={setTypeFilter}
+                options={typeFilterOptions}
+                value={typeFilter}
               />
-              <FilterButton
+              <FilterSelect
                 active={tagFilter !== "all"}
+                ariaLabel="Tags"
+                className="w-32"
                 icon={Tag}
-                label={tagFilterLabels[tagFilter]}
-                onClick={cycleTagFilter}
+                onChange={setTagFilter}
+                options={tagFilterOptions}
+                value={tagFilter}
               />
-              <FilterButton
+              <FilterSelect
                 active={traceOnly}
+                ariaLabel="Traces"
+                className="w-36"
                 icon={Route}
-                label={traceOnly ? "With traces" : "Traces"}
-                onClick={() => setTraceOnly((current) => !current)}
+                onChange={(value) => setTraceOnly(value === "with-traces")}
+                options={traceFilterOptions}
+                value={traceOnly ? "with-traces" : "all"}
               />
             </div>
 
@@ -542,32 +568,50 @@ function Topbar({
   );
 }
 
-function FilterButton({
+function FilterSelect<T extends string>({
   active,
+  ariaLabel,
+  className,
   icon: Icon,
-  label,
-  onClick,
+  onChange,
+  options,
+  value,
 }: {
   active?: boolean;
+  ariaLabel: string;
+  className?: string;
   icon: LucideIcon;
-  label: string;
-  onClick: () => void;
+  onChange: (value: T) => void;
+  options: Array<FilterOption<T>>;
+  value: T;
 }) {
   return (
-    <button
-      className={cn(
-        "inline-flex h-9 items-center gap-2 rounded-md border px-3 text-sm font-medium hover:border-slate-600 hover:bg-slate-800",
-        active
-          ? "border-blue-500/60 bg-blue-500/10 text-blue-300"
-          : "border-slate-700 bg-[#111821] text-slate-300",
-      )}
-      onClick={onClick}
-      type="button"
-    >
-      <Icon className="h-4 w-4 text-slate-400" />
-      {label}
-      <ChevronDown className="h-4 w-4 text-slate-500" />
-    </button>
+    <div className={cn("relative h-9", className)}>
+      <Icon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+      <select
+        aria-label={ariaLabel}
+        className={cn(
+          "h-full w-full appearance-none rounded-md border pl-9 pr-9 text-sm font-medium outline-none transition",
+          "hover:border-slate-600 hover:bg-slate-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20",
+          active
+            ? "border-blue-500/60 bg-blue-500/10 text-blue-300"
+            : "border-slate-700 bg-[#111821] text-slate-300",
+        )}
+        onChange={(event) => onChange(event.target.value as T)}
+        value={value}
+      >
+        {options.map((option) => (
+          <option
+            className="bg-[#111821] text-slate-200"
+            key={option.value}
+            value={option.value}
+          >
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+    </div>
   );
 }
 
