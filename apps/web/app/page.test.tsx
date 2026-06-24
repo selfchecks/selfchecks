@@ -120,6 +120,7 @@ describe("DashboardPage", () => {
     expect(screen.queryByRole("button", { name: "Alert channels" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Open support chat" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Support" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
   });
 
   it("shows grouped checks and operational metrics", () => {
@@ -220,9 +221,6 @@ describe("DashboardPage", () => {
     const user = userEvent.setup();
 
     renderDashboard();
-
-    await user.click(screen.getByRole("button", { name: "Save" }));
-    expect(screen.getByText("View saved locally.")).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "issue.get actions" }));
     await user.click(screen.getByRole("button", { name: "Open" }));

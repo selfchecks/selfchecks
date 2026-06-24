@@ -127,7 +127,6 @@ export default function DashboardClient({
   );
   const [notice, setNotice] = useState("");
   const [query, setQuery] = useState("");
-  const [savedView, setSavedView] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [tagFilter, setTagFilter] = useState<TagFilter>("all");
   const [traceOnly, setTraceOnly] = useState(false);
@@ -236,7 +235,6 @@ export default function DashboardClient({
     );
     setNotice("Dashboard filters reset.");
     setQuery("");
-    setSavedView(false);
     setStatusFilter("all");
     setTagFilter("all");
     setTraceOnly(false);
@@ -355,21 +353,6 @@ export default function DashboardClient({
                 value={traceOnly ? "with-traces" : "all"}
               />
             </div>
-
-            <button
-              className={cn(
-                "inline-flex h-9 w-fit items-center gap-2 rounded-md px-2 text-sm font-medium hover:bg-blue-500/10",
-                savedView ? "text-emerald-400" : "text-blue-400",
-              )}
-              onClick={() => {
-                setSavedView((current) => !current);
-                setNotice(savedView ? "Saved view removed." : "View saved locally.");
-              }}
-              type="button"
-            >
-              <Tag className="h-4 w-4" />
-              {savedView ? "Saved" : "Save"}
-            </button>
 
             {notice ? (
               <div className="text-sm text-slate-400" role="status">
