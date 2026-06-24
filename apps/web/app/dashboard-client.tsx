@@ -113,11 +113,9 @@ const traceFilterOptions = [
 export default function DashboardClient({
   initialGroups,
   initialSummary,
-  projectSlug,
 }: {
   initialGroups: GroupRow[];
   initialSummary: DashboardSummary;
-  projectSlug: string;
 }) {
   const groups = initialGroups;
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -261,7 +259,6 @@ export default function DashboardClient({
         <Topbar
           accountMenuOpen={accountMenuOpen}
           onAccountMenuToggle={() => setAccountMenuOpen((open) => !open)}
-          projectSlug={projectSlug}
         />
 
         <section className="mx-auto flex w-full max-w-[1760px] flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8">
@@ -482,11 +479,9 @@ function Sidebar({ onHomeClick }: { onHomeClick: () => void }) {
 function Topbar({
   accountMenuOpen,
   onAccountMenuToggle,
-  projectSlug,
 }: {
   accountMenuOpen: boolean;
   onAccountMenuToggle: () => void;
-  projectSlug: string;
 }) {
   return (
     <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-slate-800 bg-[#12171f]/95 px-4 backdrop-blur sm:px-6 lg:px-8">
@@ -494,19 +489,21 @@ function Topbar({
         <div className="flex h-9 w-9 items-center justify-center rounded-md bg-blue-600 text-white xl:hidden">
           <Zap className="h-5 w-5" />
         </div>
+      </div>
+
+      <div className="relative flex items-center">
         <button
-          className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1 text-sm font-medium text-slate-300 hover:bg-slate-800"
+          aria-expanded={accountMenuOpen}
+          aria-label="Open account menu"
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-lime-600/70 text-sm font-semibold text-lime-50 hover:bg-lime-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
           onClick={onAccountMenuToggle}
           type="button"
         >
-          <span className="truncate">nikolaev@iprojects.ru</span>
-          <ChevronDown className="h-4 w-4 shrink-0 text-slate-500" />
+          AL
         </button>
-        <span className="hidden rounded border border-slate-700 px-2 py-1 text-xs text-slate-400 sm:inline">
-          {projectSlug}
-        </span>
+
         {accountMenuOpen ? (
-          <div className="absolute left-4 top-14 z-30 w-64 rounded-md border border-slate-700 bg-[#12171f] p-3 text-sm shadow-xl shadow-black/30 sm:left-6 lg:left-8 xl:left-80">
+          <div className="absolute right-0 top-12 z-30 w-64 rounded-md border border-slate-700 bg-[#12171f] p-3 text-sm shadow-xl shadow-black/30">
             <div className="font-medium text-slate-100">nikolaev@iprojects.ru</div>
             <div className="mt-1 text-xs text-slate-500">Signed in locally</div>
             <a
@@ -517,12 +514,6 @@ function Topbar({
             </a>
           </div>
         ) : null}
-      </div>
-
-      <div className="flex items-center gap-4 text-sm text-slate-400">
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-lime-600/70 text-sm font-semibold text-lime-50">
-          AL
-        </div>
       </div>
     </header>
   );

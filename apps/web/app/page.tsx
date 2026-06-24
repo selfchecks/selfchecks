@@ -11,7 +11,6 @@ export default async function DashboardPage() {
     <DashboardClient
       initialGroups={dashboard.groups}
       initialSummary={dashboard.summary}
-      projectSlug={dashboard.projectSlug}
     />
   );
 }

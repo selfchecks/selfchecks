@@ -92,11 +92,7 @@ function createCheck(overrides: Partial<DashboardCheckRow>): DashboardCheckRow {
 
 function renderDashboard() {
   render(
-    <DashboardClient
-      initialGroups={fixtureGroups}
-      initialSummary={fixtureSummary}
-      projectSlug="account"
-    />,
+    <DashboardClient initialGroups={fixtureGroups} initialSummary={fixtureSummary} />,
   );
 }
 
@@ -108,7 +104,9 @@ describe("DashboardPage", () => {
       screen.getByRole("heading", { name: "Synthetic checks dashboard" }),
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Home" })).toBeTruthy();
-    expect(screen.getByText("nikolaev@iprojects.ru")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Open account menu" })).toBeTruthy();
+    expect(screen.queryByText("nikolaev@iprojects.ru")).toBeNull();
+    expect(screen.queryByText("account")).toBeNull();
     expect(screen.getByText("PASSING")).toBeTruthy();
     expect(screen.getByText("DEGRADED")).toBeTruthy();
     expect(screen.getByText("FAILING")).toBeTruthy();
@@ -190,7 +188,8 @@ describe("DashboardPage", () => {
 
     renderDashboard();
 
-    await user.click(screen.getByRole("button", { name: "nikolaev@iprojects.ru" }));
+    await user.click(screen.getByRole("button", { name: "Open account menu" }));
+    expect(screen.getByText("nikolaev@iprojects.ru")).toBeTruthy();
     expect(screen.getByText("Signed in locally")).toBeTruthy();
 
     const timeRangeSelect = screen.getByRole("combobox", {
