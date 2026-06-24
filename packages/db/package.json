@@ -13,7 +13,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "prisma": "prisma",
+    "prisma": "node --env-file-if-exists=../../.env ../../node_modules/prisma/build/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

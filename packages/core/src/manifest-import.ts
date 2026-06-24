@@ -100,10 +100,17 @@ export async function parseCheckManifestFile(
   const sourceText = await readFile(filePath, "utf8");
   const relativePath = path.relative(rootDir, filePath);
   const result = parseCheckManifestSource(sourceText, relativePath);
+  const group = inferGroupFromPath(relativePath);
 
   return {
-    ...result,
+    checks: result.checks.map((check) => ({
+      ...check,
+      entrypoint: normalizeEntrypoint(rootDir, relativePath, check.entrypoint),
+      groupKey: group?.key ?? check.groupKey,
+      groupName: group?.name ?? check.groupName,
+    })),
     filePath: relativePath,
+    warnings: result.warnings,
   };
 }
 
@@ -723,4 +730,63 @@ function slugify(value: string): string {
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "") || "check"
   );
+}
+
+function normalizeEntrypoint(
+  rootDir: string,
+  checkFilePath: string,
+  entrypoint: string | undefined,
+): string | undefined {
+  if (!entrypoint || path.isAbsolute(entrypoint)) {
+    return entrypoint;
+  }
+
+  if (!entrypoint.startsWith(".")) {
+    return entrypoint;
+  }
+
+  const absoluteEntrypoint = path.resolve(
+    rootDir,
+    path.dirname(checkFilePath),
+    entrypoint,
+  );
+
+  return path.relative(rootDir, absoluteEntrypoint);
+}
+
+function inferGroupFromPath(
+  filePath: string,
+): { key: string; name: string } | undefined {
+  const parts = filePath.split(path.sep);
+  const checksIndex = parts.indexOf("__checks__");
+
+  if (checksIndex === -1) {
+    return undefined;
+  }
+
+  const first = parts[checksIndex + 1];
+  const second = parts[checksIndex + 2];
+  const third = parts[checksIndex + 3];
+
+  if (!first || !second) {
+    return undefined;
+  }
+
+  const name =
+    first.toLowerCase() === "ui" && third
+      ? `${titleCase(second)} / ${titleCase(third)}`
+      : `${titleCase(first)} / ${titleCase(second)}`;
+
+  return {
+    key: slugify(name),
+    name,
+  };
+}
+
+function titleCase(value: string): string {
+  return value
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
 }

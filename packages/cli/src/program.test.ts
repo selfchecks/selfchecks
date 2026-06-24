@@ -33,6 +33,14 @@ afterEach(async () => {
 async function parseCommand(args: string[]): Promise<CliCommandOutput[]> {
   const outputs: CliCommandOutput[] = [];
   const program = createSelfchecksProgram({
+    runChecksLocally: async () => ({
+      durationMs: 10,
+      failed: 0,
+      passed: 0,
+      results: [],
+      skipped: 0,
+      total: 0,
+    }),
     write: (value) => outputs.push(value),
   });
 
@@ -164,15 +172,26 @@ describe("createSelfchecksProgram", () => {
     ).resolves.toEqual([
       {
         command: "test",
+        checkKeys: [],
         env: [
           {
             name: "ENVIRONMENT_URL",
             value: "https://example.test",
           },
         ],
+        projectSlug: "default",
         record: true,
         reporter: "github",
-        status: "pending_implementation",
+        rootDir: process.cwd(),
+        status: "completed",
+        summary: {
+          durationMs: 10,
+          failed: 0,
+          passed: 0,
+          results: [],
+          skipped: 0,
+          total: 0,
+        },
         tagSets: [
           ["app", "smoke"],
           ["pr", "transport"],
@@ -189,6 +208,8 @@ describe("createSelfchecksProgram", () => {
         "github",
         "--retries",
         "1",
+        "-e",
+        "ENVIRONMENT_URL=https://example.test",
         "--record",
         "--test-session-name",
         "Deploy v1.2.3",
@@ -196,10 +217,20 @@ describe("createSelfchecksProgram", () => {
     ).resolves.toEqual([
       {
         command: "trigger",
+        projectSlug: "default",
         record: true,
         reporter: "github",
         retries: 1,
-        status: "pending_implementation",
+        rootDir: process.cwd(),
+        status: "completed",
+        summary: {
+          durationMs: 10,
+          failed: 0,
+          passed: 0,
+          results: [],
+          skipped: 0,
+          total: 0,
+        },
         testSessionName: "Deploy v1.2.3",
       },
     ]);

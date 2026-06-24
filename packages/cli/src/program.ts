@@ -2,6 +2,9 @@ import { Command } from "commander";
 
 import { importCheckDefinitions, normalizeTags } from "@selfchecks/core";
 
+import { runChecks, type RunChecksSummary } from "./runner.js";
+import { persistDeploySummary } from "./storage.js";
+
 export type EnvVar = {
   name: string;
   value: string;
@@ -14,25 +17,32 @@ export type DeployCommandOutput = {
   force: boolean;
   projectSlug: string;
   rootDir: string;
-  status: "parsed";
+  status: "deployed" | "parsed";
   summary: Awaited<ReturnType<typeof importCheckDefinitions>>;
 };
 
 export type TestCommandOutput = {
+  checkKeys: string[];
   command: "test";
   env: EnvVar[];
+  projectSlug: string;
   record: boolean;
   reporter: string;
-  status: "pending_implementation";
+  rootDir: string;
+  status: "completed";
+  summary: RunChecksSummary;
   tagSets: string[][];
 };
 
 export type TriggerCommandOutput = {
   command: "trigger";
+  projectSlug: string;
   record: boolean;
   reporter: string;
   retries: number;
-  status: "pending_implementation";
+  rootDir: string;
+  status: "completed";
+  summary: RunChecksSummary;
   testSessionName?: string;
 };
 
@@ -42,6 +52,8 @@ export type CliCommandOutput =
   | TriggerCommandOutput;
 
 export type CreateSelfchecksProgramOptions = {
+  deployChecks?: typeof persistDeploySummary;
+  runChecksLocally?: typeof runChecks;
   write?: (value: CliCommandOutput) => void;
 };
 
@@ -84,6 +96,8 @@ export function createSelfchecksProgram(
     ((value: CliCommandOutput) => {
       process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
     });
+  const deployChecks = options.deployChecks ?? persistDeploySummary;
+  const runChecksLocally = options.runChecksLocally ?? runChecks;
 
   const program = new Command();
 
@@ -103,10 +117,17 @@ export function createSelfchecksProgram(
     .action(async (commandOptions: Record<string, string | boolean | undefined>) => {
       const projectSlug = String(commandOptions.project ?? "default");
       const rootDir = String(commandOptions.root ?? process.cwd());
-      const summary = await importCheckDefinitions({
+      const parsedSummary = await importCheckDefinitions({
         projectSlug,
         rootDir,
       });
+      const summary = commandOptions.dryRun
+        ? parsedSummary
+        : await deployChecks({
+            projectSlug,
+            rootDir,
+            summary: parsedSummary,
+          });
 
       write({
         command: "deploy",
@@ -115,7 +136,7 @@ export function createSelfchecksProgram(
         force: Boolean(commandOptions.force),
         projectSlug,
         rootDir,
-        status: "parsed",
+        status: commandOptions.dryRun ? "parsed" : "deployed",
         summary,
       });
     });
@@ -124,25 +145,47 @@ export function createSelfchecksProgram(
     .command("test")
     .description("Run selected checks locally for ad-hoc CI validation.")
     .option("--tags <tags>", "Comma-separated tag selector", collect, [])
+    .option("--check <key>", "Run a specific check key", collect, [])
     .option("-e, --env <name=value>", "Runtime environment variable", collect, [])
+    .option("--project <slug>", "Project slug", "default")
     .option("--record", "Persist the run and artifacts")
     .option("--reporter <name>", "Reporter name", "list")
+    .option("--root <path>", "Repository root", process.cwd())
     .action(
-      (commandOptions: {
+      async (commandOptions: {
+        check: string[];
         env: string[];
+        project: string;
         record?: boolean;
         reporter: string;
+        root: string;
         tags: string[];
       }) => {
-        write({
-          command: "test",
-          env: commandOptions.env.map(parseEnv),
+        const tagSets = commandOptions.tags.map((tagSet) =>
+          normalizeTags(tagSet.split(",")),
+        );
+        const env = commandOptions.env.map(parseEnv);
+        const summary = await runChecksLocally({
+          checkKeys: commandOptions.check,
+          env,
+          projectSlug: commandOptions.project,
           record: Boolean(commandOptions.record),
           reporter: commandOptions.reporter,
-          status: "pending_implementation",
-          tagSets: commandOptions.tags.map((tagSet) =>
-            normalizeTags(tagSet.split(",")),
-          ),
+          rootDir: commandOptions.root,
+          tagSets,
+        });
+
+        write({
+          checkKeys: commandOptions.check,
+          command: "test",
+          env,
+          projectSlug: commandOptions.project,
+          record: Boolean(commandOptions.record),
+          reporter: commandOptions.reporter,
+          rootDir: commandOptions.root,
+          status: "completed",
+          summary,
+          tagSets,
         });
       },
     );
@@ -150,23 +193,44 @@ export function createSelfchecksProgram(
   program
     .command("trigger")
     .description("Queue deployed checks for execution.")
+    .option("-e, --env <name=value>", "Runtime environment variable", collect, [])
+    .option("--project <slug>", "Project slug", "default")
     .option("--record", "Persist the run and artifacts")
     .option("--reporter <name>", "Reporter name", "list")
     .option("--retries <count>", "Retry failed checks", "0")
+    .option("--root <path>", "Repository root", process.cwd())
     .option("--test-session-name <name>", "Display name for the created test session")
     .action(
-      (commandOptions: {
+      async (commandOptions: {
+        env: string[];
+        project: string;
         record?: boolean;
         reporter: string;
         retries: string;
+        root: string;
         testSessionName?: string;
       }) => {
-        write({
-          command: "trigger",
+        const retries = parseRetries(commandOptions.retries);
+        const env = commandOptions.env.map(parseEnv);
+        const summary = await runChecksLocally({
+          env,
+          projectSlug: commandOptions.project,
           record: Boolean(commandOptions.record),
           reporter: commandOptions.reporter,
-          retries: parseRetries(commandOptions.retries),
-          status: "pending_implementation",
+          rootDir: commandOptions.root,
+          tagSets: [],
+          testSessionName: commandOptions.testSessionName,
+        });
+
+        write({
+          command: "trigger",
+          projectSlug: commandOptions.project,
+          record: Boolean(commandOptions.record),
+          reporter: commandOptions.reporter,
+          retries,
+          rootDir: commandOptions.root,
+          status: "completed",
+          summary,
           testSessionName: commandOptions.testSessionName,
         });
       },

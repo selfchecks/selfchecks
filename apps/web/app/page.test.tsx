@@ -2,11 +2,107 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
-import DashboardPage from "./page";
+import type {
+  DashboardCheckRow,
+  DashboardGroupRow,
+  DashboardSummary,
+} from "@/lib/dashboard-types";
+
+import DashboardClient from "./dashboard-client";
+
+const fixtureGroups: DashboardGroupRow[] = [
+  {
+    checks: "1 checks",
+    name: "API / Bff",
+    status: "passing",
+    updated: "10 minutes ago",
+  },
+  {
+    checks: "5 checks",
+    children: [
+      createCheck({
+        avg: "1.53 s",
+        hasTrace: true,
+        name: "group.list",
+        p95: "1.53 s",
+        status: "degraded",
+      }),
+      createCheck({
+        avg: "514 ms",
+        name: "issue.get",
+        p95: "514 ms",
+        status: "passing",
+      }),
+      createCheck({
+        avg: "388 ms",
+        hasTrace: true,
+        name: "member.get",
+        p95: "388 ms",
+        status: "passing",
+      }),
+      createCheck({
+        avg: "305 ms",
+        name: "sequence.get",
+        p95: "305 ms",
+        status: "passing",
+      }),
+      createCheck({
+        avg: "739 ms",
+        hasTrace: true,
+        name: "track.list",
+        p95: "739 ms",
+        status: "passing",
+      }),
+    ],
+    expanded: true,
+    name: "API / Regress",
+    status: "degraded",
+    updated: "about 8 hours ago",
+  },
+];
+
+const fixtureSummary: DashboardSummary = {
+  degraded: 1,
+  failing: 0,
+  passing: 5,
+};
+
+function createCheck(overrides: Partial<DashboardCheckRow>): DashboardCheckRow {
+  return {
+    avg: "100 ms",
+    ava: "100%",
+    bars: [
+      {
+        value: 12,
+      },
+      {
+        value: 18,
+      },
+    ],
+    delta: "24 h",
+    name: "check",
+    p95: "100 ms",
+    status: "passing",
+    tags: ["api", "regress"],
+    time: "about 1 hour ago",
+    type: "api",
+    ...overrides,
+  };
+}
+
+function renderDashboard() {
+  render(
+    <DashboardClient
+      initialGroups={fixtureGroups}
+      initialSummary={fixtureSummary}
+      projectSlug="account"
+    />,
+  );
+}
 
 describe("DashboardPage", () => {
   it("renders the Checkly-like dashboard shell", () => {
-    render(<DashboardPage />);
+    renderDashboard();
 
     expect(
       screen.getByRole("heading", { name: "Synthetic checks dashboard" }),
@@ -22,7 +118,7 @@ describe("DashboardPage", () => {
   });
 
   it("shows grouped checks and operational metrics", () => {
-    render(<DashboardPage />);
+    renderDashboard();
 
     expect(screen.getByText("API / Regress")).toBeTruthy();
     expect(screen.getByText("group.list")).toBeTruthy();
@@ -35,7 +131,7 @@ describe("DashboardPage", () => {
   it("filters checks from the search field", async () => {
     const user = userEvent.setup();
 
-    render(<DashboardPage />);
+    renderDashboard();
 
     await user.type(screen.getByRole("searchbox", { name: "Search checks" }), "issue");
 
@@ -47,7 +143,7 @@ describe("DashboardPage", () => {
   it("toggles grouped rows", async () => {
     const user = userEvent.setup();
 
-    render(<DashboardPage />);
+    renderDashboard();
 
     expect(screen.getByText("group.list")).toBeTruthy();
 
@@ -59,7 +155,7 @@ describe("DashboardPage", () => {
   it("updates filters from summary cards and filter buttons", async () => {
     const user = userEvent.setup();
 
-    render(<DashboardPage />);
+    renderDashboard();
 
     await user.click(screen.getByRole("button", { name: /DEGRADED/ }));
 
@@ -82,7 +178,7 @@ describe("DashboardPage", () => {
   it("opens the account menu and cycles passive filters", async () => {
     const user = userEvent.setup();
 
-    render(<DashboardPage />);
+    renderDashboard();
 
     await user.click(screen.getByRole("button", { name: "nikolaev@iprojects.ru" }));
     expect(screen.getByText("Signed in locally")).toBeTruthy();
@@ -105,7 +201,7 @@ describe("DashboardPage", () => {
   it("opens local menus and support panel", async () => {
     const user = userEvent.setup();
 
-    render(<DashboardPage />);
+    renderDashboard();
 
     await user.click(screen.getByRole("button", { name: "Save" }));
     expect(screen.getByText("View saved locally.")).toBeTruthy();

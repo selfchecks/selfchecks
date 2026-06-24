@@ -3,7 +3,7 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
-  transpilePackages: ["@selfchecks/core", "@selfchecks/db"],
+  transpilePackages: ["@selfchecks/core"],
 };
 
 export default nextConfig;

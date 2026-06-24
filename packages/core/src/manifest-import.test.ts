@@ -305,4 +305,39 @@ describe("importCheckDefinitions", () => {
       warnings: [],
     });
   });
+
+  it("normalizes Checkly helper entrypoints and inferred group names", async () => {
+    const rootDir = await createTempProject();
+    const checksDir = path.join(rootDir, "src/__checks__/UI/App/smoke");
+
+    await mkdir(checksDir, { recursive: true });
+    await writeFile(
+      path.join(checksDir, "free.signin.check.ts"),
+      `
+        createBrowserCheck("Signin", "./free.signin.spec.ts", {
+          group: smokeCheckGroup,
+          tags: ["app", "smoke"]
+        });
+      `,
+    );
+
+    await expect(
+      importCheckDefinitions({
+        projectSlug: "account",
+        rootDir,
+      }),
+    ).resolves.toMatchObject({
+      checks: [
+        {
+          entrypoint: "src/__checks__/UI/App/smoke/free.signin.spec.ts",
+          groupKey: "app-smoke",
+          groupName: "App / Smoke",
+          key: "Signin",
+          name: "Signin",
+          tags: ["app", "smoke"],
+          type: "browser",
+        },
+      ],
+    });
+  });
 });

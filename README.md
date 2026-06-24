@@ -313,10 +313,29 @@ yarn dev:web
 yarn dev:worker
 yarn workspace @selfchecks/cli dev --help
 yarn workspace @selfchecks/cli dev deploy --dry-run --root .
+yarn checks:deploy:account
+yarn checks:test:account
+yarn checks:test:account:signin
 yarn typecheck
 yarn lint
 yarn test
 ```
+
+Local end-to-end smoke flow with the current account checks:
+
+```bash
+yarn dev:infra
+yarn db:migrate
+yarn checks:deploy:account
+yarn checks:test:account
+yarn checks:test:account:signin
+yarn dev:web
+```
+
+Open `http://localhost:3000`, sign in with the local admin credentials from
+`.env`, and the dashboard will read imported checks and recorded runs from the
+local database. Imported checks without a run are shown as degraded until they
+are executed.
 
 Workspace layout:
 

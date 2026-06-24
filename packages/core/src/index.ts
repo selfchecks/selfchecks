@@ -60,6 +60,7 @@ export const checkDefinitionSchema = z
     entrypoint: z.string().optional(),
     frequency: frequencySchema.optional(),
     groupKey: z.string().optional(),
+    groupName: z.string().optional(),
     key: z.string().min(1),
     name: z.string().min(1),
     request: apiRequestSchema.optional(),
