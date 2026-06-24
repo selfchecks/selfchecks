@@ -1232,12 +1232,12 @@ function StatusTooltip({
     >
       {children}
       <span
-        className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-3 hidden w-64 -translate-x-1/2 rounded-md border border-slate-500/20 bg-slate-600 px-3 py-2 text-left text-sm text-slate-100 shadow-2xl shadow-black/40 group-hover/status:block group-focus/status:block"
+        className="pointer-events-none absolute bottom-full left-0 z-30 mb-3 hidden w-64 rounded-md border border-slate-500/20 bg-slate-600 px-3 py-2 text-left text-sm text-slate-100 shadow-2xl shadow-black/40 group-hover/status:block group-focus/status:block"
         role="tooltip"
       >
         <span className="block font-semibold text-slate-50">{content.title}</span>
         <span className="mt-1 block text-slate-200">{content.description}</span>
-        <span className="absolute left-1/2 top-full h-3 w-3 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-slate-600" />
+        <span className="absolute left-4 top-full h-3 w-3 -translate-y-1/2 rotate-45 bg-slate-600" />
       </span>
     </span>
   );
