@@ -365,8 +365,6 @@ export default function DashboardClient({
   }
 
   async function runCheckNow(check: CheckRow) {
-    setNotice(`Queueing ${check.name}...`);
-
     try {
       const response = await fetch(`/api/checks/${encodeURIComponent(check.id)}/run`, {
         method: "POST",
@@ -388,7 +386,7 @@ export default function DashboardClient({
           summary: summarizeDashboardGroups(nextGroups),
         };
       });
-      setNotice(`Queued ${check.name}.`);
+      setNotice("");
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
 

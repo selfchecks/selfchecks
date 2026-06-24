@@ -375,7 +375,7 @@ describe("DashboardPage", () => {
         method: "POST",
       });
     });
-    expect(screen.getByText("Queued issue.get.")).toBeTruthy();
+    expect(screen.queryByText("Queued issue.get.")).toBeNull();
     expect(screen.getAllByText("queued").length).toBeGreaterThan(0);
     expect(screen.getByLabelText("Queued Local runner - Queued")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Run now" })).toBeNull();
