@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDownUp,
   CalendarDays,
@@ -63,6 +63,24 @@ const statusFilterLabels: Record<StatusFilter, string> = {
   degraded: "Degraded",
   failing: "Failing",
   passing: "Passing",
+};
+
+const statusTooltipTitles: Record<Status, string> = {
+  degraded: "Degraded",
+  failing: "Failing",
+  passing: "Passing",
+};
+
+const statusTooltipDescriptions: Record<Status, string> = {
+  degraded: "The latest run needs attention or the check has not run yet.",
+  failing: "The latest run failed.",
+  passing: "The latest run passed.",
+};
+
+const statusTooltipLabels: Record<Status, string> = {
+  degraded: `${statusTooltipTitles.degraded}: ${statusTooltipDescriptions.degraded}`,
+  failing: `${statusTooltipTitles.failing}: ${statusTooltipDescriptions.failing}`,
+  passing: `${statusTooltipTitles.passing}: ${statusTooltipDescriptions.passing}`,
 };
 
 const tagFilterLabels: Record<TagFilter, string> = {
@@ -982,23 +1000,53 @@ function GroupStatus({ status }: { status: Status }) {
 function CheckStatus({ status }: { status: Status }) {
   if (status === "degraded") {
     return (
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-400 text-amber-950">
-        <CircleAlert className="h-5 w-5" />
-      </span>
+      <StatusTooltip status={status}>
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-400 text-amber-950">
+          <CircleAlert className="h-5 w-5" />
+        </span>
+      </StatusTooltip>
     );
   }
 
   if (status === "failing") {
     return (
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-500 text-white">
-        <CircleX className="h-5 w-5" />
-      </span>
+      <StatusTooltip status={status}>
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-500 text-white">
+          <CircleX className="h-5 w-5" />
+        </span>
+      </StatusTooltip>
     );
   }
 
   return (
-    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-emerald-950">
-      <CheckCircle2 className="h-5 w-5" />
+    <StatusTooltip status={status}>
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-emerald-950">
+        <CheckCircle2 className="h-5 w-5" />
+      </span>
+    </StatusTooltip>
+  );
+}
+
+function StatusTooltip({ children, status }: { children: ReactNode; status: Status }) {
+  return (
+    <span
+      aria-label={statusTooltipLabels[status]}
+      className="group/status relative inline-flex shrink-0 outline-none"
+      tabIndex={0}
+    >
+      {children}
+      <span
+        className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-3 hidden w-64 -translate-x-1/2 rounded-md border border-slate-500/20 bg-slate-600 px-3 py-2 text-left text-sm text-slate-100 shadow-2xl shadow-black/40 group-hover/status:block group-focus/status:block"
+        role="tooltip"
+      >
+        <span className="block font-semibold text-slate-50">
+          {statusTooltipTitles[status]}
+        </span>
+        <span className="mt-1 block text-slate-200">
+          {statusTooltipDescriptions[status]}
+        </span>
+        <span className="absolute left-1/2 top-full h-3 w-3 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-slate-600" />
+      </span>
     </span>
   );
 }

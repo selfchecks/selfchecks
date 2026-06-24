@@ -150,6 +150,19 @@ describe("DashboardPage", () => {
     expect(screen.getByText("P95")).toBeTruthy();
   });
 
+  it("explains check status icons", () => {
+    renderDashboard();
+
+    expect(
+      screen.getAllByLabelText(
+        "Degraded: The latest run needs attention or the check has not run yet.",
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByLabelText("Passing: The latest run passed.").length,
+    ).toBeGreaterThan(0);
+  });
+
   it("renders last result hover targets with run details", () => {
     renderDashboard();
 
