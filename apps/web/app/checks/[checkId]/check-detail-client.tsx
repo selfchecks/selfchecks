@@ -203,12 +203,6 @@ export default function CheckDetailClient({
             </div>
             <div className="flex items-center gap-2">
               <button
-                className="hidden h-10 items-center gap-2 rounded-md border border-slate-700 px-4 text-sm font-semibold text-slate-200 hover:bg-slate-800 sm:inline-flex"
-                type="button"
-              >
-                Edit
-              </button>
-              <button
                 className="inline-flex h-10 items-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={scheduling}
                 onClick={() => void scheduleNow()}
