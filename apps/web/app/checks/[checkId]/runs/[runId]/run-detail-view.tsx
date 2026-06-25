@@ -173,8 +173,8 @@ export function RunDetailView({ accountLabel, detail }: RunDetailViewProps) {
                 </div>
               </div>
 
-              <section className="rounded-md border border-slate-700 bg-[#111821] p-5">
-                <div className="flex flex-wrap items-center gap-3 rounded-md bg-slate-800 px-4 py-3">
+              <section>
+                <div className="flex flex-wrap items-center gap-3 rounded-md border border-slate-700 bg-slate-800 px-4 py-3">
                   {run.request ? (
                     <span className="rounded bg-blue-600 px-2 py-1 text-xs font-bold uppercase text-white">
                       {run.request.method}
