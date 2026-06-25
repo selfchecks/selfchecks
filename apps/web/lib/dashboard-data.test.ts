@@ -117,6 +117,10 @@ describe("dashboard data", () => {
       id: "run_1",
       logsPath: null,
       result: {
+        body: '{"ok":true}',
+        headers: {
+          "content-type": "application/json",
+        },
         performance: {
           errors: {
             networkErrors: 7,
@@ -153,6 +157,18 @@ describe("dashboard data", () => {
     expect(detail?.groupName).toBe("API / Bff");
     expect(detail?.projectSlug).toBe("default");
     expect(detail?.run.duration).toBe("2.39 s");
+    expect(detail?.run.response).toMatchObject({
+      body: '{"ok":true}',
+      headers: [
+        {
+          name: "content-type",
+          value: "application/json",
+        },
+      ],
+      status: "200",
+      statusText: "OK",
+      url: "https://bff.sndsy.ru/gtm.js?id=GTM-MP43XM",
+    });
     expect(detail?.run.performance).toMatchObject({
       errors: {
         networkErrors: 7,

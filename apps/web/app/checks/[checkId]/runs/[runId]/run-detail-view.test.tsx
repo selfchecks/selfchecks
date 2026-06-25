@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import type { RunDetailData } from "@/lib/dashboard-data";
@@ -98,6 +99,18 @@ const detail: RunDetailData = {
       ],
       url: "https://bff.sndsy.ru/gtm.js?id=GTM-MP43XM",
     },
+    response: {
+      body: '{"ok":true}',
+      headers: [
+        {
+          name: "content-type",
+          value: "application/json",
+        },
+      ],
+      status: "200",
+      statusText: "OK",
+      url: "https://bff.sndsy.ru/gtm.js?id=GTM-MP43XM",
+    },
     resultFields: [
       {
         label: "Status",
@@ -108,7 +121,8 @@ const detail: RunDetailData = {
         value: "OK",
       },
     ],
-    resultJson: '{\n  "status": 200,\n  "statusText": "OK"\n}',
+    resultJson:
+      '{\n  "body": "{\\"ok\\":true}",\n  "headers": {\n    "content-type": "application/json"\n  },\n  "status": 200,\n  "statusText": "OK"\n}',
     runner: "Local runner",
     runState: "passed",
     startedAt: "Jun 24 16:20 (UTC+3)",
@@ -132,6 +146,7 @@ const browserDetail: RunDetailData = {
   run: {
     ...detail.run,
     request: undefined,
+    response: undefined,
     resultFields: [
       {
         label: "Command",
@@ -150,7 +165,9 @@ const browserDetail: RunDetailData = {
 };
 
 describe("RunDetailView", () => {
-  it("renders a dedicated run detail page with request, result and artifacts", () => {
+  it("renders a dedicated run detail page with request, response and artifacts", async () => {
+    const user = userEvent.setup();
+
     render(<RunDetailView accountLabel="nikolaev@iprojects.ru" detail={detail} />);
 
     expect(screen.getByText("selfchecks")).toBeTruthy();
@@ -171,6 +188,14 @@ describe("RunDetailView", () => {
     expect(screen.getAllByText("11").length).toBeGreaterThan(0);
     expect(screen.getByText("Playwright test report")).toBeTruthy();
     expect(screen.getByText("Page navigations")).toBeTruthy();
+    const navigationToggle = screen.getByLabelText(
+      "Toggle navigation https://bff.sndsy.ru/gtm.js?id=GTM-MP43XM",
+    );
+    const navigationDetails = navigationToggle.closest("details") as HTMLDetailsElement;
+    expect(navigationDetails.open).toBe(false);
+    await user.click(navigationToggle);
+    expect(navigationDetails.open).toBe(true);
+    expect(screen.getAllByText("Response body").length).toBeGreaterThan(0);
     expect(screen.getByText("Assertions")).toBeTruthy();
     expect(screen.getAllByText("Status").length).toBeGreaterThan(1);
     expect(screen.getByText("Equals")).toBeTruthy();
@@ -178,8 +203,10 @@ describe("RunDetailView", () => {
     expect(screen.getByText("Request data")).toBeTruthy();
     expect(screen.getByText("Query params")).toBeTruthy();
     expect(screen.getByText("GTM-MP43XM")).toBeTruthy();
-    expect(screen.getByText("Result data")).toBeTruthy();
-    expect(screen.getByText(/"statusText": "OK"/)).toBeTruthy();
+    expect(screen.getByText("Response data")).toBeTruthy();
+    expect(screen.getByText("content-type")).toBeTruthy();
+    expect(screen.getAllByText("application/json").length).toBeGreaterThan(1);
+    expect(screen.getAllByText('{"ok":true}').length).toBeGreaterThan(0);
     expect(
       screen.queryByRole("link", { name: "Open Trace artifact trace.zip" }),
     ).toBeNull();
@@ -204,7 +231,7 @@ describe("RunDetailView", () => {
         .href,
     ).toContain("/api/runs/run_1/artifacts/artifact_1?download=1");
     expect(screen.getByText("Job log")).toBeTruthy();
-    expect(screen.getByText(/200 OK/)).toBeTruthy();
+    expect(screen.getAllByText(/200 OK/).length).toBeGreaterThan(1);
   });
 
   it("hides empty API-only blocks for browser runs", () => {

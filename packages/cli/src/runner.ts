@@ -76,6 +76,8 @@ type CollectedRunArtifact = {
   type: Prisma.ArtifactCreateManyInput["type"];
 };
 
+const MAX_RESPONSE_BODY_CHARS = 20_000;
+
 export async function runChecks(options: RunChecksOptions): Promise<RunChecksSummary> {
   const startedAt = Date.now();
   const checks = await findRunnableChecks(options);
@@ -388,6 +390,13 @@ async function runApiCheck(
     headers: request.headers,
     method: request.method,
   });
+  const responseBody = await response.text();
+  const body =
+    responseBody.length > MAX_RESPONSE_BODY_CHARS
+      ? `${responseBody.slice(0, MAX_RESPONSE_BODY_CHARS)}\n... truncated ${
+          responseBody.length - MAX_RESPONSE_BODY_CHARS
+        } chars ...`
+      : responseBody;
 
   return {
     artifacts: [],
@@ -395,6 +404,8 @@ async function runApiCheck(
       ? undefined
       : `HTTP ${response.status} ${response.statusText}`,
     resultJson: {
+      body,
+      headers: Object.fromEntries(response.headers.entries()),
       status: response.status,
       statusText: response.statusText,
       url,

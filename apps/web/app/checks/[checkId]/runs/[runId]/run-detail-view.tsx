@@ -34,7 +34,11 @@ type RunDetailViewProps = {
 
 type PageNavigationEntry = {
   id: string;
+  method?: string;
+  requestBody?: string;
+  responseBody?: string;
   statusCode?: string;
+  statusText?: string;
   tone: DashboardStatus;
   url: string;
 };
@@ -232,7 +236,8 @@ export function RunDetailView({ accountLabel, detail }: RunDetailViewProps) {
                 className={cn("grid gap-5", run.request ? "xl:grid-cols-2" : "")}
               >
                 {run.request ? <RequestDataPanel request={run.request} /> : null}
-                <ResultPanel
+                <ResponseDataPanel
+                  response={run.response}
                   resultFields={run.resultFields}
                   resultJson={run.resultJson}
                 />
@@ -367,31 +372,64 @@ function PageNavigationsPanel({ entries }: { entries: PageNavigationEntry[] }) {
       <div className="grid gap-3">
         {entries.length > 0 ? (
           entries.map((entry) => (
-            <div
-              className="flex items-center gap-3 rounded-md border border-slate-700 bg-[#111821] px-4 py-4"
+            <details
+              className="overflow-hidden rounded-md border border-slate-700 bg-[#111821]"
               key={entry.id}
             >
-              <ChevronRight className="h-4 w-4 shrink-0 text-slate-500" />
-              <CheckStatusIcon compact runState="passed" status={entry.tone} />
-              <span
-                className="min-w-0 flex-1 truncate text-slate-300"
-                title={entry.url}
+              <summary
+                aria-label={`Toggle navigation ${entry.url}`}
+                className="flex cursor-pointer list-none items-center gap-3 px-4 py-4 hover:bg-slate-800/60"
               >
-                {entry.url}
-              </span>
-              {entry.statusCode ? (
+                <ChevronRight className="h-4 w-4 shrink-0 text-slate-500" />
+                <CheckStatusIcon compact runState="passed" status={entry.tone} />
                 <span
-                  className={cn(
-                    "shrink-0 rounded px-2 py-1 text-xs font-bold",
-                    entry.tone === "passing"
-                      ? "bg-emerald-700 text-emerald-100"
-                      : "bg-red-800 text-red-100",
-                  )}
+                  className="min-w-0 flex-1 truncate text-slate-300"
+                  title={entry.url}
                 >
-                  {entry.statusCode}
+                  {entry.url}
                 </span>
-              ) : null}
-            </div>
+                {entry.statusCode ? (
+                  <span
+                    className={cn(
+                      "shrink-0 rounded px-2 py-1 text-xs font-bold",
+                      entry.tone === "passing"
+                        ? "bg-emerald-700 text-emerald-100"
+                        : "bg-red-800 text-red-100",
+                    )}
+                  >
+                    {entry.statusCode}
+                  </span>
+                ) : null}
+              </summary>
+              <div className="grid gap-4 border-t border-slate-800 px-4 py-4 text-sm md:grid-cols-2">
+                <div className="grid gap-3">
+                  <DetailRow label="URL" value={entry.url} />
+                  {entry.method ? (
+                    <DetailRow label="Method" value={entry.method} />
+                  ) : null}
+                  {entry.requestBody ? (
+                    <CodeBlock label="Request body" value={entry.requestBody} />
+                  ) : null}
+                </div>
+                <div className="grid gap-3">
+                  {entry.statusCode ? (
+                    <DetailRow
+                      label="Status"
+                      value={
+                        entry.statusText
+                          ? `${entry.statusCode} ${entry.statusText}`
+                          : entry.statusCode
+                      }
+                    />
+                  ) : null}
+                  {entry.responseBody ? (
+                    <CodeBlock label="Response body" value={entry.responseBody} />
+                  ) : (
+                    <div className="text-slate-500">No response body recorded.</div>
+                  )}
+                </div>
+              </div>
+            </details>
           ))
         ) : (
           <div className="rounded-md border border-slate-800 bg-[#111821] px-4 py-5 text-sm text-slate-500">
@@ -484,13 +522,41 @@ function RequestDataPanel({ request }: { request: RunDetailData["run"]["request"
   );
 }
 
-function ResultPanel({
+function ResponseDataPanel({
+  response,
   resultFields,
   resultJson,
 }: {
+  response: RunDetailData["run"]["response"];
   resultFields: RunDetailData["run"]["resultFields"];
   resultJson: string;
 }) {
+  if (response) {
+    const statusValue =
+      response.status && response.statusText
+        ? `${response.status} ${response.statusText}`
+        : (response.status ?? response.statusText);
+
+    return (
+      <section className="rounded-md border border-slate-800 bg-[#111821]">
+        <div className="border-b border-slate-800 px-4 py-3 text-sm font-semibold text-slate-100">
+          Response data
+        </div>
+        <div className="grid gap-5 p-4 text-sm">
+          {response.url ? <DetailRow label="URL" value={response.url} /> : null}
+          {statusValue ? <DetailRow label="Status" value={statusValue} /> : null}
+          <KeyValueList
+            emptyLabel="No response headers."
+            items={response.headers}
+            title="Headers"
+          />
+          <CodeBlock label="Body" value={response.body ?? "No response body."} />
+          <CodeBlock label="Raw result" value={resultJson} />
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="rounded-md border border-slate-800 bg-[#111821]">
       <div className="border-b border-slate-800 px-4 py-3 text-sm font-semibold text-slate-100">
@@ -739,17 +805,17 @@ function getResultField(fields: RunDetailData["run"]["resultFields"], label: str
 }
 
 function buildPageNavigations(run: RunDetailData["run"]): PageNavigationEntry[] {
-  const urls = [
-    run.request?.url,
-    getResultField(run.resultFields, "Url"),
-    ...extractUrls(run.jobLog ?? ""),
-  ];
+  const urls = [run.request?.url, run.response?.url, ...extractUrls(run.jobLog ?? "")];
   const uniqueUrls = [...new Set(urls.filter((url): url is string => Boolean(url)))];
-  const statusCode = getResultField(run.resultFields, "Status");
+  const statusCode = run.response?.status ?? getResultField(run.resultFields, "Status");
 
   return uniqueUrls.map((url, index) => ({
     id: `${index}-${url}`,
+    method: index === 0 ? run.request?.method : undefined,
+    requestBody: index === 0 ? run.request?.body : undefined,
+    responseBody: index === 0 ? run.response?.body : undefined,
     statusCode: index === 0 ? statusCode : undefined,
+    statusText: index === 0 ? run.response?.statusText : undefined,
     tone: statusCode && Number.parseInt(statusCode, 10) >= 400 ? "failing" : "passing",
     url,
   }));

@@ -63,6 +63,16 @@ export type RunDetailData = {
       }>;
       url: string;
     };
+    response?: {
+      body?: string;
+      headers: Array<{
+        name: string;
+        value: string;
+      }>;
+      status?: string;
+      statusText?: string;
+      url?: string;
+    };
     resultFields: Array<{
       label: string;
       value: string;
@@ -231,6 +241,7 @@ export async function getRunDetailData(
         finishedAt: run.finishedAt ? formatRunTimestamp(run.finishedAt) : "-",
         jobLog: await readRunLogPreview(run.logsPath),
         request,
+        response: formatRunResponse(run.result),
         resultFields: formatResultFields(run.result),
         resultJson: formatResultJson(run.result),
         startedAt: run.startedAt ? formatRunTimestamp(run.startedAt) : "-",
@@ -568,6 +579,27 @@ function formatRunRequest(
   };
 }
 
+function formatRunResponse(result: unknown): RunDetailData["run"]["response"] {
+  const value = asRecord(result);
+  const status = formatOptionalValue(value.status);
+  const statusText = formatOptionalValue(value.statusText);
+  const url = typeof value.url === "string" ? value.url : undefined;
+  const body = formatResponseBody(value.body ?? value.responseBody);
+  const headers = formatHeaderRows(value.headers ?? value.responseHeaders);
+
+  if (!status && !statusText && !url && !body && headers.length === 0) {
+    return undefined;
+  }
+
+  return {
+    ...(body ? { body } : {}),
+    headers,
+    ...(status ? { status } : {}),
+    ...(statusText ? { statusText } : {}),
+    ...(url ? { url } : {}),
+  };
+}
+
 function formatAssertionRows(
   assertions: unknown,
   result: unknown,
@@ -657,6 +689,26 @@ function formatHeaderRows(headers: unknown): Array<{ name: string; value: string
     name,
     value: formatUnknownValue(value),
   }));
+}
+
+function formatOptionalValue(value: unknown): string | undefined {
+  if (typeof value === "undefined" || value === null) {
+    return undefined;
+  }
+
+  return formatUnknownValue(value);
+}
+
+function formatResponseBody(value: unknown): string | undefined {
+  if (typeof value === "undefined" || value === null) {
+    return undefined;
+  }
+
+  if (typeof value === "string") {
+    return value.length > 0 ? value : undefined;
+  }
+
+  return JSON.stringify(value, null, 2);
 }
 
 function formatQueryParams(url: string): Array<{ name: string; value: string }> {
