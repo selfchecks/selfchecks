@@ -17,7 +17,6 @@ import {
   Folder,
   Gauge,
   History,
-  MapPin,
   RefreshCw,
   SlidersHorizontal,
   Video,
@@ -113,7 +112,6 @@ export default function CheckDetailClient({
   const [dateFilter, setDateFilter] = useState<DateFilter>("7d");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [hasRetriesOnly, setHasRetriesOnly] = useState(false);
-  const [localRunnerOnly, setLocalRunnerOnly] = useState(false);
   const requestLabel = check.settings.request
     ? `${check.settings.request.method} ${check.settings.request.url}`
     : (check.settings.entrypoint ?? "No request configured");
@@ -126,10 +124,9 @@ export default function CheckDetailClient({
       filterRuns(check.runs, {
         dateFilter,
         hasRetriesOnly,
-        localRunnerOnly,
         statusFilter,
       }),
-    [check.runs, dateFilter, hasRetriesOnly, localRunnerOnly, statusFilter],
+    [check.runs, dateFilter, hasRetriesOnly, statusFilter],
   );
   const filteredStats = useMemo(() => calculateRunStats(filteredRuns), [filteredRuns]);
 
@@ -336,12 +333,6 @@ export default function CheckDetailClient({
                   label="Has retries"
                   onClick={() => setHasRetriesOnly((currentValue) => !currentValue)}
                 />
-                <SegmentButton
-                  active={localRunnerOnly}
-                  icon={MapPin}
-                  label="Location"
-                  onClick={() => setLocalRunnerOnly((currentValue) => !currentValue)}
-                />
               </div>
 
               <section className="grid gap-5 rounded-md border border-slate-800 bg-[#11161d] p-5">
@@ -358,7 +349,7 @@ export default function CheckDetailClient({
 
               <PerformanceAnalytics runs={filteredRuns} />
 
-              <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,26rem)]">
+              <section className="grid gap-5 xl:grid-cols-2">
                 <SettingsPanel check={check} />
                 <RunStatsPanel stats={filteredStats} />
               </section>
@@ -526,11 +517,11 @@ function PerformanceAnalytics({ runs }: { runs: DashboardRunRow[] }) {
           chartType="bar"
           emptyLabel="No browser errors recorded for the selected runs."
           metrics={[
-            { label: "Console Errors", value: String(analytics.errors.consoleErrors) },
-            { label: "Network Errors", value: String(analytics.errors.networkErrors) },
-            { label: "Script Errors", value: String(analytics.errors.scriptErrors) },
+            { label: "Console", value: String(analytics.errors.consoleErrors) },
+            { label: "Network", value: String(analytics.errors.networkErrors) },
+            { label: "Script", value: String(analytics.errors.scriptErrors) },
             {
-              label: "Document Errors",
+              label: "Document",
               value: String(analytics.errors.documentErrors),
             },
           ]}
@@ -573,17 +564,17 @@ function AnalyticsPanel({
         </span>
       </div>
       <div
-        className="mt-4 grid gap-x-6 overflow-x-auto pb-1"
+        className="mt-4 grid gap-x-4"
         style={{
-          gridTemplateColumns: `repeat(${metrics.length}, minmax(max-content, 1fr))`,
+          gridTemplateColumns: `repeat(${metrics.length}, minmax(0, 1fr))`,
         }}
       >
         {metrics.map((metric) => (
-          <div className="min-w-max" key={metric.label}>
-            <div className="whitespace-nowrap text-sm font-medium text-slate-500">
+          <div className="min-w-0" key={metric.label}>
+            <div className="truncate text-sm font-medium text-slate-500">
               {metric.label}
             </div>
-            <div className="mt-1 whitespace-nowrap text-lg font-semibold text-slate-100">
+            <div className="mt-1 truncate text-lg font-semibold text-slate-100">
               {metric.value}
             </div>
           </div>
@@ -928,7 +919,6 @@ function filterRuns(
   filters: {
     dateFilter: DateFilter;
     hasRetriesOnly: boolean;
-    localRunnerOnly: boolean;
     statusFilter: StatusFilter;
   },
 ) {
@@ -948,10 +938,6 @@ function filterRuns(
     }
 
     if (filters.hasRetriesOnly && !run.hasRetries) {
-      return false;
-    }
-
-    if (filters.localRunnerOnly && run.runner !== "Local runner") {
       return false;
     }
 

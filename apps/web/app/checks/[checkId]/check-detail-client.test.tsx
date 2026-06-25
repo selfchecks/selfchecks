@@ -181,7 +181,8 @@ describe("CheckDetailClient", () => {
     expect(screen.getByText("Interactivity")).toBeTruthy();
     expect(screen.getAllByText("TTFB").length).toBeGreaterThan(1);
     expect(screen.getByText("239 ms")).toBeTruthy();
-    expect(screen.getAllByText("Network Errors").length).toBeGreaterThan(1);
+    expect(screen.getByText("Network")).toBeTruthy();
+    expect(screen.getByText("Network Errors")).toBeTruthy();
     expect(screen.getByText("12")).toBeTruthy();
     expect(screen.getAllByText("TBT").length).toBeGreaterThan(1);
     expect(screen.getByText("1.87 s")).toBeTruthy();
@@ -227,11 +228,6 @@ describe("CheckDetailClient", () => {
       screen.getByRole("button", { name: "Has retries" }).getAttribute("aria-pressed"),
     ).toBe("true");
     expect(screen.getByText("Expected status 200")).toBeTruthy();
-
-    await user.click(screen.getByRole("button", { name: "Location" }));
-    expect(
-      screen.getByRole("button", { name: "Location" }).getAttribute("aria-pressed"),
-    ).toBe("true");
 
     await user.click(screen.getByRole("button", { name: "24hr" }));
 
