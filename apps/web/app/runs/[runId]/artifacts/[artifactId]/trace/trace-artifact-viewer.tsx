@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 
 import { DetailSidebar } from "@/app/checks/detail-sidebar";
 
-const TRACE_VIEWER_ORIGIN = "https://trace.playwright.dev";
+const TRACE_VIEWER_PATH = "/trace-viewer/index.html";
 
 type TraceArtifactViewerProps = {
   artifactUrl: string;
@@ -24,7 +24,7 @@ export function TraceArtifactViewer({
 
   useEffect(() => {
     const traceUrl = new URL(artifactUrl, window.location.origin);
-    setViewerUrl(`${TRACE_VIEWER_ORIGIN}/?trace=${encodeURIComponent(traceUrl.href)}`);
+    setViewerUrl(`${TRACE_VIEWER_PATH}?trace=${encodeURIComponent(traceUrl.href)}`);
   }, [artifactUrl]);
 
   function goBack() {
@@ -91,7 +91,7 @@ export function TraceArtifactViewer({
         <section className="h-[calc(100vh-4rem)] min-h-[36rem] bg-[#1f1f1f]">
           {viewerUrl ? (
             <iframe
-              allow="clipboard-read; clipboard-write"
+              allow="clipboard-read; clipboard-write; local-network"
               className="h-full w-full border-0"
               src={viewerUrl}
               title="Playwright trace viewer"

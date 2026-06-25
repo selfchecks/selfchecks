@@ -188,6 +188,7 @@ describe("artifact route", () => {
         "http://localhost/api/runs/run_1/artifacts/artifact_1?traceViewer=1&token=abc",
         {
           headers: {
+            "access-control-request-private-network": "true",
             origin: "https://trace.playwright.dev",
           },
           method: "OPTIONS",
@@ -197,6 +198,7 @@ describe("artifact route", () => {
 
     expect(response.status).toBe(204);
     expect(response.headers.get("access-control-allow-methods")).toBe("GET, OPTIONS");
+    expect(response.headers.get("access-control-allow-private-network")).toBe("true");
     expect(response.headers.get("access-control-allow-origin")).toBe(
       "https://trace.playwright.dev",
     );

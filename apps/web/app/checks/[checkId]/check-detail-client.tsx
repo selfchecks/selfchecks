@@ -386,11 +386,13 @@ export default function CheckDetailClient({
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex min-w-0 items-start gap-3">
-                          <CheckStatusIcon
-                            compact
-                            runState={run.runState}
-                            status={run.status}
-                          />
+                          <span className="mt-1 shrink-0">
+                            <CheckStatusIcon
+                              compact
+                              runState={run.runState}
+                              status={run.status}
+                            />
+                          </span>
                           <div className="min-w-0">
                             <div className="truncate text-base font-medium text-slate-200">
                               {run.runner}
@@ -570,11 +572,18 @@ function AnalyticsPanel({
           ?
         </span>
       </div>
-      <div className="mt-4 flex flex-wrap gap-x-7 gap-y-3">
+      <div
+        className="mt-4 grid gap-x-6 overflow-x-auto pb-1"
+        style={{
+          gridTemplateColumns: `repeat(${metrics.length}, minmax(max-content, 1fr))`,
+        }}
+      >
         {metrics.map((metric) => (
-          <div className="min-w-20" key={metric.label}>
-            <div className="text-sm font-medium text-slate-500">{metric.label}</div>
-            <div className="mt-1 text-lg font-semibold text-slate-100">
+          <div className="min-w-max" key={metric.label}>
+            <div className="whitespace-nowrap text-sm font-medium text-slate-500">
+              {metric.label}
+            </div>
+            <div className="mt-1 whitespace-nowrap text-lg font-semibold text-slate-100">
               {metric.value}
             </div>
           </div>

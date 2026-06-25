@@ -159,6 +159,7 @@ function buildTraceViewerCorsHeaders(request: Request): Headers {
   const headers = new Headers({
     "Access-Control-Allow-Headers": "Range, Content-Type",
     "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Private-Network": "true",
     "Access-Control-Expose-Headers": "Content-Length, Content-Range",
     Vary: "Origin",
   });
