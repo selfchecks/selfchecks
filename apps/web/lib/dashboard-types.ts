@@ -36,6 +36,23 @@ export type DashboardRunArtifact = {
   viewUrl: string;
 };
 
+export type DashboardRunPerformance = {
+  errors?: {
+    consoleErrors?: number;
+    documentErrors?: number;
+    networkErrors?: number;
+    scriptErrors?: number;
+  };
+  timings?: {
+    dclMs?: number;
+    fcpMs?: number;
+    lcpMs?: number;
+    loadedMs?: number;
+    tbtMs?: number;
+    ttfbMs?: number;
+  };
+};
+
 export type DashboardRunRow = {
   artifacts: DashboardRunArtifact[];
   createdAt: string;
@@ -45,6 +62,7 @@ export type DashboardRunRow = {
   hasRetries: boolean;
   id: string;
   occurredAt: string;
+  performance?: DashboardRunPerformance;
   runner: string;
   runState: DashboardRunState;
   status: DashboardStatus;

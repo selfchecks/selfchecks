@@ -20,9 +20,12 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-import { GET } from "./route";
+import { createTraceAccessToken } from "@/lib/trace-access";
+
+import { GET, OPTIONS } from "./route";
 
 const tempDirs: string[] = [];
+const originalNextAuthSecret = process.env.NEXTAUTH_SECRET;
 
 async function createTempFile(name: string, content: string) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "selfchecks-artifact-"));
@@ -46,6 +49,11 @@ function createContext(runId = "run_1", artifactId = "artifact_1") {
 describe("artifact route", () => {
   afterEach(async () => {
     vi.clearAllMocks();
+    if (originalNextAuthSecret === undefined) {
+      delete process.env.NEXTAUTH_SECRET;
+    } else {
+      process.env.NEXTAUTH_SECRET = originalNextAuthSecret;
+    }
     await Promise.all(
       tempDirs.splice(0).map((directory) =>
         rm(directory, {
@@ -110,6 +118,88 @@ describe("artifact route", () => {
         id: "run_1",
       },
     });
+  });
+
+  it("allows the embedded trace viewer to read a signed trace artifact", async () => {
+    process.env.NEXTAUTH_SECRET = "test-secret";
+    const filePath = await createTempFile("trace.zip", "trace payload");
+    const token = createTraceAccessToken("run_1", "artifact_1");
+
+    mocks.artifactFindFirst.mockResolvedValue({
+      mimeType: "application/zip",
+      path: filePath,
+      type: "TRACE",
+    });
+
+    const response = await GET(
+      new Request(
+        `http://localhost/api/runs/run_1/artifacts/artifact_1?traceViewer=1&token=${token}`,
+        {
+          headers: {
+            origin: "https://trace.playwright.dev",
+          },
+        },
+      ),
+      createContext("run_1", "artifact_1"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBe(
+      "https://trace.playwright.dev",
+    );
+    expect(response.headers.get("content-disposition")).toContain("inline");
+    await expect(response.text()).resolves.toBe("trace payload");
+  });
+
+  it("rejects unsigned trace viewer artifact requests", async () => {
+    process.env.NEXTAUTH_SECRET = "test-secret";
+    const filePath = await createTempFile("trace.zip", "trace payload");
+
+    mocks.artifactFindFirst.mockResolvedValue({
+      mimeType: "application/zip",
+      path: filePath,
+      type: "TRACE",
+    });
+
+    const response = await GET(
+      new Request(
+        "http://localhost/api/runs/run_1/artifacts/artifact_1?traceViewer=1&token=bad",
+        {
+          headers: {
+            origin: "https://trace.playwright.dev",
+          },
+        },
+      ),
+      createContext("run_1", "artifact_1"),
+    );
+
+    await expect(response.json()).resolves.toEqual({
+      error: "Trace access token is invalid or expired.",
+    });
+    expect(response.status).toBe(401);
+    expect(response.headers.get("access-control-allow-origin")).toBe(
+      "https://trace.playwright.dev",
+    );
+  });
+
+  it("answers trace viewer CORS preflight requests", () => {
+    const response = OPTIONS(
+      new Request(
+        "http://localhost/api/runs/run_1/artifacts/artifact_1?traceViewer=1&token=abc",
+        {
+          headers: {
+            origin: "https://trace.playwright.dev",
+          },
+          method: "OPTIONS",
+        },
+      ),
+    );
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("access-control-allow-methods")).toBe("GET, OPTIONS");
+    expect(response.headers.get("access-control-allow-origin")).toBe(
+      "https://trace.playwright.dev",
+    );
   });
 
   it("returns not found when the file is missing", async () => {

@@ -117,6 +117,17 @@ describe("dashboard data", () => {
       id: "run_1",
       logsPath: null,
       result: {
+        performance: {
+          errors: {
+            networkErrors: 7,
+          },
+          timings: {
+            fcpMs: 6600,
+            lcpMs: 7010,
+            tbtMs: 1870,
+            ttfbMs: 239,
+          },
+        },
         status: 200,
         statusText: "OK",
         url: "https://bff.sndsy.ru/gtm.js?id=GTM-MP43XM",
@@ -142,6 +153,17 @@ describe("dashboard data", () => {
     expect(detail?.groupName).toBe("API / Bff");
     expect(detail?.projectSlug).toBe("default");
     expect(detail?.run.duration).toBe("2.39 s");
+    expect(detail?.run.performance).toMatchObject({
+      errors: {
+        networkErrors: 7,
+      },
+      timings: {
+        fcpMs: 6600,
+        lcpMs: 7010,
+        tbtMs: 1870,
+        ttfbMs: 239,
+      },
+    });
     expect(detail?.run.resultFields).toContainEqual({
       label: "Status",
       value: "200",
@@ -164,7 +186,7 @@ describe("dashboard data", () => {
       name: "trace.zip",
       size: "42.0 KB",
       type: "trace",
-      viewUrl: "/api/runs/run_1/artifacts/artifact_1",
+      viewUrl: "/runs/run_1/artifacts/artifact_1/trace",
     });
   });
 });

@@ -62,6 +62,43 @@ type RunStatsView = {
   passedRuns: string;
   totalRuns: string;
 };
+type ChartPoint = {
+  id: string;
+  label: string;
+  value?: number;
+};
+type ChartSeries = {
+  color: string;
+  label: string;
+  points: ChartPoint[];
+};
+type PerformanceAnalyticsView = {
+  duration: {
+    p50: string;
+    p95: string;
+    p99: string;
+    series: ChartSeries[];
+  };
+  errors: {
+    consoleErrors: number;
+    documentErrors: number;
+    networkErrors: number;
+    scriptErrors: number;
+    series: ChartSeries[];
+  };
+  interactivity: {
+    series: ChartSeries[];
+    tbt: string;
+  };
+  loading: {
+    dcl: string;
+    fcp: string;
+    lcp: string;
+    loaded: string;
+    series: ChartSeries[];
+    ttfb: string;
+  };
+};
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -319,6 +356,8 @@ export default function CheckDetailClient({
                 <ResultChart runs={filteredRuns} />
               </section>
 
+              <PerformanceAnalytics runs={filteredRuns} />
+
               <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,26rem)]">
                 <SettingsPanel check={check} />
                 <RunStatsPanel stats={filteredStats} />
@@ -450,6 +489,306 @@ function ResultChart({ runs }: { runs: DashboardRunRow[] }) {
           No runs match the current filters.
         </div>
       )}
+    </div>
+  );
+}
+
+function PerformanceAnalytics({ runs }: { runs: DashboardRunRow[] }) {
+  const analytics = useMemo(() => buildPerformanceAnalytics(runs), [runs]);
+
+  return (
+    <section className="grid gap-4">
+      <h2 className="text-xl font-semibold text-slate-100">Performance</h2>
+      <div className="grid gap-4 xl:grid-cols-2">
+        <AnalyticsPanel
+          metrics={[
+            { label: "P50", value: analytics.duration.p50 },
+            { label: "P95", value: analytics.duration.p95 },
+            { label: "P99", value: analytics.duration.p99 },
+          ]}
+          series={analytics.duration.series}
+          title="Check duration"
+        />
+        <AnalyticsPanel
+          metrics={[
+            { label: "TTFB", value: analytics.loading.ttfb },
+            { label: "FCP", value: analytics.loading.fcp },
+            { label: "LCP", value: analytics.loading.lcp },
+            { label: "Loaded", value: analytics.loading.loaded },
+            { label: "DCL", value: analytics.loading.dcl },
+          ]}
+          series={analytics.loading.series}
+          title="Loading"
+        />
+        <AnalyticsPanel
+          chartType="bar"
+          emptyLabel="No browser errors recorded for the selected runs."
+          metrics={[
+            { label: "Console Errors", value: String(analytics.errors.consoleErrors) },
+            { label: "Network Errors", value: String(analytics.errors.networkErrors) },
+            { label: "Script Errors", value: String(analytics.errors.scriptErrors) },
+            {
+              label: "Document Errors",
+              value: String(analytics.errors.documentErrors),
+            },
+          ]}
+          series={analytics.errors.series}
+          title="Errors"
+        />
+        <AnalyticsPanel
+          emptyLabel="No interactivity metrics recorded for the selected runs."
+          metrics={[{ label: "TBT", value: analytics.interactivity.tbt }]}
+          series={analytics.interactivity.series}
+          title="Interactivity"
+        />
+      </div>
+    </section>
+  );
+}
+
+function AnalyticsPanel({
+  chartType = "line",
+  emptyLabel = "No performance metrics recorded for the selected runs.",
+  metrics,
+  series,
+  title,
+}: {
+  chartType?: "bar" | "line";
+  emptyLabel?: string;
+  metrics: Array<{ label: string; value: string }>;
+  series: ChartSeries[];
+  title: string;
+}) {
+  return (
+    <section className="rounded-md border border-slate-800 bg-[#111821] p-5">
+      <div className="flex items-center gap-2">
+        <h3 className="text-base font-semibold text-slate-100">{title}</h3>
+        <span
+          aria-hidden="true"
+          className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-600 text-[10px] font-bold text-slate-500"
+        >
+          ?
+        </span>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-x-7 gap-y-3">
+        {metrics.map((metric) => (
+          <div className="min-w-20" key={metric.label}>
+            <div className="text-sm font-medium text-slate-500">{metric.label}</div>
+            <div className="mt-1 text-lg font-semibold text-slate-100">
+              {metric.value}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-6">
+        {chartType === "bar" ? (
+          <StackedBarChart emptyLabel={emptyLabel} series={series} title={title} />
+        ) : (
+          <LineChart emptyLabel={emptyLabel} series={series} title={title} />
+        )}
+      </div>
+      <ChartLegend series={series} />
+    </section>
+  );
+}
+
+function LineChart({
+  emptyLabel,
+  series,
+  title,
+}: {
+  emptyLabel: string;
+  series: ChartSeries[];
+  title: string;
+}) {
+  const values = series.flatMap((item) =>
+    item.points.flatMap((point) =>
+      typeof point.value === "number" ? [point.value] : [],
+    ),
+  );
+
+  if (values.length === 0) {
+    return (
+      <div className="flex h-48 items-center justify-center rounded bg-[#0f151d] text-sm text-slate-500">
+        {emptyLabel}
+      </div>
+    );
+  }
+
+  const width = 520;
+  const height = 180;
+  const paddingX = 28;
+  const paddingY = 18;
+  const minValue = Math.min(...values);
+  const maxValue = Math.max(...values);
+  const spread = Math.max(1, maxValue - minValue);
+  const chartMin = Math.max(0, minValue - spread * 0.18);
+  const chartMax = maxValue + spread * 0.18;
+  const chartHeight = height - paddingY * 2;
+  const chartWidth = width - paddingX * 2;
+
+  function getPointCoordinates(point: ChartPoint, index: number, total: number) {
+    const x =
+      paddingX + (total <= 1 ? chartWidth / 2 : (index / (total - 1)) * chartWidth);
+    const normalized =
+      typeof point.value === "number"
+        ? (point.value - chartMin) / Math.max(1, chartMax - chartMin)
+        : 0;
+    const y = height - paddingY - normalized * chartHeight;
+
+    return `${x},${y}`;
+  }
+
+  return (
+    <div className="overflow-hidden rounded bg-[#0f151d]">
+      <svg
+        aria-label={`${title} chart`}
+        className="h-48 w-full"
+        preserveAspectRatio="none"
+        role="img"
+        viewBox={`0 0 ${width} ${height}`}
+      >
+        {[0, 0.33, 0.66, 1].map((ratio) => (
+          <line
+            className="stroke-slate-700/80"
+            key={ratio}
+            strokeWidth="1"
+            x1={paddingX}
+            x2={width - paddingX}
+            y1={paddingY + ratio * chartHeight}
+            y2={paddingY + ratio * chartHeight}
+          />
+        ))}
+        {series.map((item) => {
+          const definedPoints = item.points.filter(
+            (point) => typeof point.value === "number",
+          );
+
+          if (definedPoints.length === 0) {
+            return null;
+          }
+
+          return (
+            <polyline
+              fill="none"
+              key={item.label}
+              points={item.points
+                .map((point, index) =>
+                  typeof point.value === "number"
+                    ? getPointCoordinates(point, index, item.points.length)
+                    : "",
+                )
+                .filter(Boolean)
+                .join(" ")}
+              stroke={item.color}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="3"
+            />
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+function StackedBarChart({
+  emptyLabel,
+  series,
+  title,
+}: {
+  emptyLabel: string;
+  series: ChartSeries[];
+  title: string;
+}) {
+  const pointCount = Math.max(...series.map((item) => item.points.length), 0);
+  const totals = Array.from({ length: pointCount }, (_, index) =>
+    series.reduce((sum, item) => sum + (item.points[index]?.value ?? 0), 0),
+  );
+  const maxTotal = Math.max(...totals, 0);
+
+  if (pointCount === 0 || maxTotal === 0) {
+    return (
+      <div className="flex h-48 items-center justify-center rounded bg-[#0f151d] text-sm text-slate-500">
+        {emptyLabel}
+      </div>
+    );
+  }
+
+  const width = 520;
+  const height = 180;
+  const paddingX = 28;
+  const paddingY = 18;
+  const chartWidth = width - paddingX * 2;
+  const chartHeight = height - paddingY * 2;
+  const step = chartWidth / Math.max(1, pointCount);
+  const barWidth = Math.min(16, step * 0.48);
+
+  return (
+    <div className="overflow-hidden rounded bg-[#0f151d]">
+      <svg
+        aria-label={`${title} chart`}
+        className="h-48 w-full"
+        preserveAspectRatio="none"
+        role="img"
+        viewBox={`0 0 ${width} ${height}`}
+      >
+        {[0, 0.5, 1].map((ratio) => (
+          <line
+            className="stroke-slate-700/80"
+            key={ratio}
+            strokeWidth="1"
+            x1={paddingX}
+            x2={width - paddingX}
+            y1={paddingY + ratio * chartHeight}
+            y2={paddingY + ratio * chartHeight}
+          />
+        ))}
+        {totals.map((_, index) => {
+          let y = height - paddingY;
+          const x = paddingX + index * step + step / 2 - barWidth / 2;
+
+          return series.map((item) => {
+            const value = item.points[index]?.value ?? 0;
+            const segmentHeight = (value / maxTotal) * chartHeight;
+
+            y -= segmentHeight;
+
+            return value > 0 ? (
+              <rect
+                fill={item.color}
+                height={Math.max(2, segmentHeight)}
+                key={`${item.label}-${index}`}
+                rx="2"
+                width={barWidth}
+                x={x}
+                y={y}
+              />
+            ) : null;
+          });
+        })}
+      </svg>
+    </div>
+  );
+}
+
+function ChartLegend({ series }: { series: ChartSeries[] }) {
+  const visibleSeries = series.filter((item) =>
+    item.points.some((point) => typeof point.value === "number" && point.value > 0),
+  );
+
+  if (visibleSeries.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-4 flex flex-wrap gap-x-7 gap-y-2 text-sm text-slate-400">
+      {visibleSeries.map((item) => (
+        <span className="inline-flex items-center gap-2" key={item.label}>
+          <span className="h-0.5 w-6 rounded" style={{ backgroundColor: item.color }} />
+          {item.label}
+        </span>
+      ))}
     </div>
   );
 }
@@ -611,6 +950,176 @@ function filterRuns(
   });
 }
 
+function buildPerformanceAnalytics(runs: DashboardRunRow[]): PerformanceAnalyticsView {
+  const chronologicalRuns = [...runs].reverse();
+  const durationValues = chronologicalRuns
+    .map((run) => run.durationMs)
+    .filter((value): value is number => typeof value === "number");
+  const ttfbValue = getLatestTimingValue(runs, "ttfbMs");
+  const fcpValue = getLatestTimingValue(runs, "fcpMs");
+  const lcpValue = getLatestTimingValue(runs, "lcpMs");
+  const loadedValue = getLatestTimingValue(runs, "loadedMs");
+  const dclValue = getLatestTimingValue(runs, "dclMs");
+  const tbtValue = getLatestTimingValue(runs, "tbtMs");
+  const consoleErrors = sumErrors(runs, "consoleErrors");
+  const networkErrors = sumErrors(runs, "networkErrors");
+  const scriptErrors = sumErrors(runs, "scriptErrors");
+  const documentErrors = sumErrors(runs, "documentErrors");
+
+  return {
+    duration: {
+      p50: formatAnalyticsDuration(percentile(durationValues, 0.5)),
+      p95: formatAnalyticsDuration(percentile(durationValues, 0.95)),
+      p99: formatAnalyticsDuration(percentile(durationValues, 0.99)),
+      series: [
+        {
+          color: "#10b981",
+          label: "P50",
+          points: buildRollingPercentilePoints(chronologicalRuns, 0.5),
+        },
+        {
+          color: "#3b82f6",
+          label: "P95",
+          points: buildRollingPercentilePoints(chronologicalRuns, 0.95),
+        },
+        {
+          color: "#f59e0b",
+          label: "P99",
+          points: buildRollingPercentilePoints(chronologicalRuns, 0.99),
+        },
+      ],
+    },
+    errors: {
+      consoleErrors,
+      documentErrors,
+      networkErrors,
+      scriptErrors,
+      series: [
+        {
+          color: "#10b981",
+          label: "Console Errors",
+          points: buildErrorPoints(chronologicalRuns, "consoleErrors"),
+        },
+        {
+          color: "#3b82f6",
+          label: "Network Errors",
+          points: buildErrorPoints(chronologicalRuns, "networkErrors"),
+        },
+        {
+          color: "#f59e0b",
+          label: "Script Errors",
+          points: buildErrorPoints(chronologicalRuns, "scriptErrors"),
+        },
+        {
+          color: "#d946ef",
+          label: "Document Errors",
+          points: buildErrorPoints(chronologicalRuns, "documentErrors"),
+        },
+      ],
+    },
+    interactivity: {
+      series: [
+        {
+          color: "#10b981",
+          label: "TBT",
+          points: buildTimingPoints(chronologicalRuns, "tbtMs"),
+        },
+      ],
+      tbt: formatAnalyticsDuration(tbtValue),
+    },
+    loading: {
+      dcl: formatAnalyticsDuration(dclValue),
+      fcp: formatAnalyticsDuration(fcpValue),
+      lcp: formatAnalyticsDuration(lcpValue),
+      loaded: formatAnalyticsDuration(loadedValue),
+      series: [
+        {
+          color: "#10b981",
+          label: "TTFB",
+          points: buildTimingPoints(chronologicalRuns, "ttfbMs"),
+        },
+        {
+          color: "#3b82f6",
+          label: "FCP",
+          points: buildTimingPoints(chronologicalRuns, "fcpMs"),
+        },
+        {
+          color: "#f59e0b",
+          label: "LCP",
+          points: buildTimingPoints(chronologicalRuns, "lcpMs"),
+        },
+        {
+          color: "#d946ef",
+          label: "Loaded",
+          points: buildTimingPoints(chronologicalRuns, "loadedMs"),
+        },
+        {
+          color: "#e11d48",
+          label: "DOMContentLoaded",
+          points: buildTimingPoints(chronologicalRuns, "dclMs"),
+        },
+      ],
+      ttfb: formatAnalyticsDuration(ttfbValue),
+    },
+  };
+}
+
+function buildRollingPercentilePoints(
+  runs: DashboardRunRow[],
+  ratio: number,
+): ChartPoint[] {
+  const values: number[] = [];
+
+  return runs.map((run) => {
+    if (typeof run.durationMs === "number") {
+      values.push(run.durationMs);
+    }
+
+    return {
+      id: run.id,
+      label: run.occurredAt,
+      value: percentile(values, ratio),
+    };
+  });
+}
+
+function buildTimingPoints(
+  runs: DashboardRunRow[],
+  key: keyof NonNullable<NonNullable<DashboardRunRow["performance"]>["timings"]>,
+): ChartPoint[] {
+  return runs.map((run) => ({
+    id: run.id,
+    label: run.occurredAt,
+    value: run.performance?.timings?.[key],
+  }));
+}
+
+function buildErrorPoints(
+  runs: DashboardRunRow[],
+  key: keyof NonNullable<NonNullable<DashboardRunRow["performance"]>["errors"]>,
+): ChartPoint[] {
+  return runs.map((run) => ({
+    id: run.id,
+    label: run.occurredAt,
+    value: run.performance?.errors?.[key] ?? 0,
+  }));
+}
+
+function getLatestTimingValue(
+  runs: DashboardRunRow[],
+  key: keyof NonNullable<NonNullable<DashboardRunRow["performance"]>["timings"]>,
+) {
+  return runs.find((run) => typeof run.performance?.timings?.[key] === "number")
+    ?.performance?.timings?.[key];
+}
+
+function sumErrors(
+  runs: DashboardRunRow[],
+  key: keyof NonNullable<NonNullable<DashboardRunRow["performance"]>["errors"]>,
+) {
+  return runs.reduce((sum, run) => sum + (run.performance?.errors?.[key] ?? 0), 0);
+}
+
 function calculateRunStats(runs: DashboardRunRow[]): RunStatsView {
   const durations = runs
     .map((run) => run.durationMs)
@@ -665,6 +1174,22 @@ function percentile(values: number[], ratio: number): number | undefined {
 function formatClientDuration(value: number | undefined) {
   if (typeof value !== "number") {
     return "-";
+  }
+
+  if (value >= 1000) {
+    return `${(value / 1000).toFixed(2)} s`;
+  }
+
+  return `${Math.round(value)} ms`;
+}
+
+function formatAnalyticsDuration(value: number | undefined) {
+  if (typeof value !== "number") {
+    return "-";
+  }
+
+  if (value >= 60_000) {
+    return `${(value / 60_000).toFixed(2)} min`;
   }
 
   if (value >= 1000) {
@@ -736,8 +1261,8 @@ function ArtifactList({ artifacts }: { artifacts: DashboardRunArtifact[] }) {
               aria-label={`View ${artifact.name}`}
               className="flex h-6 w-6 items-center justify-center rounded text-slate-400 hover:bg-slate-800 hover:text-slate-100"
               href={artifact.viewUrl}
-              rel="noreferrer"
-              target="_blank"
+              rel={artifact.type === "trace" ? undefined : "noreferrer"}
+              target={artifact.type === "trace" ? undefined : "_blank"}
               title="View"
             >
               <ExternalLink className="h-3.5 w-3.5" />

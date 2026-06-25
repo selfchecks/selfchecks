@@ -61,7 +61,7 @@ const detail: CheckDetailData = {
             name: "trace.zip",
             size: "42 KB",
             type: "trace",
-            viewUrl: "/api/runs/run_1/artifacts/artifact_1",
+            viewUrl: "/runs/run_1/artifacts/artifact_1/trace",
           },
         ],
         createdAt: nowIso,
@@ -70,6 +70,22 @@ const detail: CheckDetailData = {
         hasRetries: false,
         id: "run_1",
         occurredAt: "Jun 24 12:00 (UTC+3)",
+        performance: {
+          errors: {
+            consoleErrors: 0,
+            documentErrors: 0,
+            networkErrors: 7,
+            scriptErrors: 0,
+          },
+          timings: {
+            dclMs: 5120,
+            fcpMs: 6600,
+            lcpMs: 7010,
+            loadedMs: 6180,
+            tbtMs: 1870,
+            ttfbMs: 239,
+          },
+        },
         runner: "Local runner",
         runState: "passed",
         status: "passing",
@@ -83,6 +99,22 @@ const detail: CheckDetailData = {
         hasRetries: true,
         id: "run_2",
         occurredAt: "Jun 22 12:00 (UTC+3)",
+        performance: {
+          errors: {
+            consoleErrors: 1,
+            documentErrors: 2,
+            networkErrors: 5,
+            scriptErrors: 1,
+          },
+          timings: {
+            dclMs: 5400,
+            fcpMs: 6900,
+            lcpMs: 7300,
+            loadedMs: 6500,
+            tbtMs: 2100,
+            ttfbMs: 260,
+          },
+        },
         runner: "Local runner",
         runState: "failed",
         status: "failing",
@@ -142,10 +174,23 @@ describe("CheckDetailClient", () => {
     ).toBeGreaterThan(1);
     expect(screen.getByText("Run results")).toBeTruthy();
     expect(screen.getByText("Run history")).toBeTruthy();
+    expect(screen.getByText("Performance")).toBeTruthy();
+    expect(screen.getByText("Check duration")).toBeTruthy();
+    expect(screen.getByText("Loading")).toBeTruthy();
+    expect(screen.getByText("Errors")).toBeTruthy();
+    expect(screen.getByText("Interactivity")).toBeTruthy();
+    expect(screen.getAllByText("TTFB").length).toBeGreaterThan(1);
+    expect(screen.getByText("239 ms")).toBeTruthy();
+    expect(screen.getAllByText("Network Errors").length).toBeGreaterThan(1);
+    expect(screen.getByText("12")).toBeTruthy();
+    expect(screen.getAllByText("TBT").length).toBeGreaterThan(1);
+    expect(screen.getByText("1.87 s")).toBeTruthy();
     expect(
-      (screen.getByRole("link", {
-        name: "Open run result Jun 24 12:00 (UTC+3)",
-      }) as HTMLAnchorElement).href,
+      (
+        screen.getByRole("link", {
+          name: "Open run result Jun 24 12:00 (UTC+3)",
+        }) as HTMLAnchorElement
+      ).href,
     ).toContain("/checks/check_1/runs/run_1");
     expect(
       (screen.getByRole("link", { name: "Jun 24 12:00 (UTC+3)" }) as HTMLAnchorElement)
@@ -154,7 +199,7 @@ describe("CheckDetailClient", () => {
     expect(screen.getByText("Trace · 42 KB")).toBeTruthy();
     expect(
       (screen.getByRole("link", { name: "View trace.zip" }) as HTMLAnchorElement).href,
-    ).toContain("/api/runs/run_1/artifacts/artifact_1");
+    ).toContain("/runs/run_1/artifacts/artifact_1/trace");
     expect(
       (screen.getByRole("link", { name: "Download trace.zip" }) as HTMLAnchorElement)
         .href,
@@ -179,9 +224,7 @@ describe("CheckDetailClient", () => {
 
     await user.click(screen.getByRole("button", { name: "Has retries" }));
     expect(
-      screen
-        .getByRole("button", { name: "Has retries" })
-        .getAttribute("aria-pressed"),
+      screen.getByRole("button", { name: "Has retries" }).getAttribute("aria-pressed"),
     ).toBe("true");
     expect(screen.getByText("Expected status 200")).toBeTruthy();
 

@@ -35,7 +35,7 @@ const detail: RunDetailData = {
         name: "trace.zip",
         size: "42 KB",
         type: "trace",
-        viewUrl: "/api/runs/run_1/artifacts/artifact_1",
+        viewUrl: "/runs/run_1/artifacts/artifact_1/trace",
       },
     ],
     createdAt: "2026-06-24T13:20:03.000Z",
@@ -116,7 +116,7 @@ describe("RunDetailView", () => {
     expect(screen.getByText("Trace · 42 KB")).toBeTruthy();
     expect(
       (screen.getByRole("link", { name: "View trace.zip" }) as HTMLAnchorElement).href,
-    ).toContain("/api/runs/run_1/artifacts/artifact_1");
+    ).toContain("/runs/run_1/artifacts/artifact_1/trace");
     expect(
       (screen.getByRole("link", { name: "Download trace.zip" }) as HTMLAnchorElement)
         .href,

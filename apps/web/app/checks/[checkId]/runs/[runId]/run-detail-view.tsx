@@ -438,8 +438,8 @@ function ArtifactList({ artifacts }: { artifacts: DashboardRunArtifact[] }) {
               aria-label={`View ${artifact.name}`}
               className="flex h-6 w-6 items-center justify-center rounded text-slate-400 hover:bg-slate-800 hover:text-slate-100"
               href={artifact.viewUrl}
-              rel="noreferrer"
-              target="_blank"
+              rel={artifact.type === "trace" ? undefined : "noreferrer"}
+              target={artifact.type === "trace" ? undefined : "_blank"}
               title="View"
             >
               <ExternalLink className="h-3.5 w-3.5" />

@@ -5,6 +5,7 @@ import type {
   DashboardCheckRow,
   DashboardGroupRow,
   DashboardRunArtifact,
+  DashboardRunPerformance,
   DashboardRunRow,
   DashboardRunState,
   DashboardStatus,
@@ -361,10 +362,114 @@ function mapRun(run: CheckWithRuns["runs"][number]): DashboardRunRow {
     hasRetries: hasRunRetries(run.result),
     id: run.id,
     occurredAt: formatBarTimestamp(run),
+    performance: mapRunPerformance(run.result),
     runner: "Local runner",
     runState: mapRunState(run.status),
     status: mapRunStatus(run.status),
   };
+}
+
+function mapRunPerformance(result: unknown): DashboardRunPerformance | undefined {
+  const root = asRecord(result);
+  const performance = firstRecord(
+    root.performance,
+    root.metrics,
+    root.timings,
+    root.webVitals,
+    root.browser,
+  );
+  const timingsSource = firstRecord(
+    performance.timings,
+    performance.metrics,
+    root.timings,
+    root.metrics,
+    root.webVitals,
+    root.browser,
+    performance,
+  );
+  const errors = firstRecord(root.errors, performance.errors);
+  const timings: DashboardRunPerformance["timings"] = {
+    dclMs: readMetricNumber(
+      timingsSource,
+      root,
+      "dclMs",
+      "dcl",
+      "domContentLoadedMs",
+      "domContentLoaded",
+      "DOMContentLoaded",
+    ),
+    fcpMs: readMetricNumber(
+      timingsSource,
+      root,
+      "fcpMs",
+      "fcp",
+      "firstContentfulPaint",
+    ),
+    lcpMs: readMetricNumber(
+      timingsSource,
+      root,
+      "lcpMs",
+      "lcp",
+      "largestContentfulPaint",
+    ),
+    loadedMs: readMetricNumber(
+      timingsSource,
+      root,
+      "loadedMs",
+      "loaded",
+      "load",
+      "loadMs",
+    ),
+    tbtMs: readMetricNumber(timingsSource, root, "tbtMs", "tbt", "totalBlockingTime"),
+    ttfbMs: readMetricNumber(timingsSource, root, "ttfbMs", "ttfb", "timeToFirstByte"),
+  };
+  const errorCounts: NonNullable<DashboardRunPerformance["errors"]> = {
+    consoleErrors: readMetricNumber(errors, root, "consoleErrors", "console") ?? 0,
+    documentErrors: readMetricNumber(errors, root, "documentErrors", "document") ?? 0,
+    networkErrors: readMetricNumber(errors, root, "networkErrors", "network") ?? 0,
+    scriptErrors: readMetricNumber(errors, root, "scriptErrors", "script") ?? 0,
+  };
+  const hasTiming = Object.values(timings).some((value) => typeof value === "number");
+  const hasErrors = Object.values(errorCounts).some((value) => value > 0);
+
+  if (!hasTiming && !hasErrors) {
+    return undefined;
+  }
+
+  return {
+    ...(hasErrors ? { errors: errorCounts } : {}),
+    ...(hasTiming ? { timings } : {}),
+  };
+}
+
+function firstRecord(...values: unknown[]): Record<string, unknown> {
+  return values.map(asRecord).find((value) => Object.keys(value).length > 0) ?? {};
+}
+
+function readMetricNumber(
+  primary: Record<string, unknown>,
+  secondary: Record<string, unknown>,
+  ...keys: string[]
+): number | undefined {
+  for (const source of [primary, secondary]) {
+    for (const key of keys) {
+      const value = source[key];
+
+      if (typeof value === "number" && Number.isFinite(value)) {
+        return value;
+      }
+
+      if (typeof value === "string") {
+        const parsedValue = Number.parseFloat(value);
+
+        if (Number.isFinite(parsedValue)) {
+          return parsedValue;
+        }
+      }
+    }
+  }
+
+  return undefined;
 }
 
 async function cancelStaleQueuedRuns(now = new Date()) {
@@ -454,7 +559,8 @@ function formatRunRequest(
 
   return {
     assertions: formatAssertionRows(value.assertions, result),
-    body: typeof value.body === "string" && value.body.length > 0 ? value.body : undefined,
+    body:
+      typeof value.body === "string" && value.body.length > 0 ? value.body : undefined,
     headers: formatHeaderRows(value.headers),
     method: value.method,
     queryParams: formatQueryParams(value.url),
@@ -566,9 +672,7 @@ function formatQueryParams(url: string): Array<{ name: string; value: string }> 
   }
 }
 
-function formatResultFields(
-  result: unknown,
-): RunDetailData["run"]["resultFields"] {
+function formatResultFields(result: unknown): RunDetailData["run"]["resultFields"] {
   const record = asRecord(result);
 
   return Object.entries(record).map(([label, value]) => ({
@@ -648,7 +752,7 @@ function mapRunArtifacts(run: CheckWithRuns["runs"][number]): DashboardRunArtifa
     name: path.basename(artifact.path),
     size: formatBytes(artifact.sizeBytes ?? undefined),
     type: artifact.type.toLowerCase() as DashboardRunArtifact["type"],
-    viewUrl: buildArtifactUrl(run.id, artifact.id),
+    viewUrl: buildArtifactViewUrl(run.id, artifact.id, artifact.type),
   }));
 
   if (run.logsPath && !artifacts.some((artifact) => artifact.type === "log")) {
@@ -664,6 +768,16 @@ function mapRunArtifacts(run: CheckWithRuns["runs"][number]): DashboardRunArtifa
   }
 
   return artifacts;
+}
+
+function buildArtifactViewUrl(runId: string, artifactId: string, type: string): string {
+  if (type === "TRACE") {
+    return `/runs/${encodeURIComponent(runId)}/artifacts/${encodeURIComponent(
+      artifactId,
+    )}/trace`;
+  }
+
+  return buildArtifactUrl(runId, artifactId);
 }
 
 function buildArtifactUrl(runId: string, artifactId: string, download = false): string {

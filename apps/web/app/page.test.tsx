@@ -122,7 +122,7 @@ function createCheck(overrides: Partial<DashboardCheckRow>): DashboardCheckRow {
           name: `${name}-trace.zip`,
           size: "42 KB",
           type: "trace" as const,
-          viewUrl: `/api/runs/run-${name}/artifacts/artifact-${name}`,
+          viewUrl: `/runs/run-${name}/artifacts/artifact-${name}/trace`,
         },
       ]
     : [];
