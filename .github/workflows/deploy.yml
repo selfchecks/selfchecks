@@ -273,6 +273,76 @@ jobs:
           set -euo pipefail
           cd "${DEPLOY_PATH}"
 
+          SUDO=""
+          if [ "$(id -u)" -ne 0 ]; then
+            if command -v sudo >/dev/null 2>&1; then
+              SUDO="sudo"
+            else
+              echo "Docker is missing and deploy user is not root or sudo-capable." >&2
+              exit 1
+            fi
+          fi
+
+          docker_cmd() {
+            if [ -n "${SUDO}" ]; then
+              "${SUDO}" docker "$@"
+              return
+            fi
+
+            docker "$@"
+          }
+
+          as_root() {
+            if [ -n "${SUDO}" ]; then
+              "${SUDO}" "$@"
+              return
+            fi
+
+            "$@"
+          }
+
+          install_base_packages() {
+            if command -v apt-get >/dev/null 2>&1; then
+              as_root apt-get update
+              as_root apt-get install -y ca-certificates curl
+              return
+            fi
+
+            if command -v dnf >/dev/null 2>&1; then
+              as_root dnf install -y ca-certificates curl
+              return
+            fi
+
+            if command -v yum >/dev/null 2>&1; then
+              as_root yum install -y ca-certificates curl
+              return
+            fi
+
+            echo "Unsupported Linux distribution. Install Docker manually." >&2
+            exit 1
+          }
+
+          if ! command -v docker >/dev/null 2>&1; then
+            install_base_packages
+            curl -fsSL https://get.docker.com | as_root sh
+          fi
+
+          if command -v systemctl >/dev/null 2>&1; then
+            as_root systemctl enable --now docker || true
+          fi
+
+          if ! docker_cmd compose version >/dev/null 2>&1; then
+            compose_version="v2.39.4"
+            os="$(uname -s)"
+            arch="$(uname -m)"
+
+            as_root mkdir -p /usr/local/lib/docker/cli-plugins
+            as_root curl -fsSL \
+              "https://github.com/docker/compose/releases/download/${compose_version}/docker-compose-${os}-${arch}" \
+              -o /usr/local/lib/docker/cli-plugins/docker-compose
+            as_root chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+          fi
+
           mkdir -p runtime/artifacts runtime/caddy-data runtime/caddy-config runtime/logs
 
           if [ ! -f runtime/selfchecks.config.json ]; then
@@ -285,7 +355,7 @@ jobs:
             chmod 600 runtime/Caddyfile
           fi
 
-          docker compose --env-file .env -f docker-compose.prod.yml pull
-          docker compose --env-file .env -f docker-compose.prod.yml up -d --remove-orphans
-          docker compose --env-file .env -f docker-compose.prod.yml ps
+          docker_cmd compose --env-file .env -f docker-compose.prod.yml pull
+          docker_cmd compose --env-file .env -f docker-compose.prod.yml up -d --remove-orphans
+          docker_cmd compose --env-file .env -f docker-compose.prod.yml ps
           EOF
