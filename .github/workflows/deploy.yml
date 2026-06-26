@@ -120,6 +120,9 @@ jobs:
     needs: build-images
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
     environment:
       name: production
     env:
@@ -264,6 +267,25 @@ jobs:
           sed -i 's/^          //' .env.production
           scp -P "${DEPLOY_PORT:-22}" .env.production "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/.env"
 
+      - name: Upload GHCR pull credentials
+        shell: bash
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USERNAME: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+
+          tmp_dir="$(mktemp -d)"
+          trap 'rm -rf "${tmp_dir}"' EXIT
+
+          printf '%s' "${GHCR_USERNAME}" > "${tmp_dir}/.ghcr-username"
+          printf '%s' "${GHCR_TOKEN}" > "${tmp_dir}/.ghcr-token"
+
+          scp -P "${DEPLOY_PORT:-22}" \
+            "${tmp_dir}/.ghcr-username" \
+            "${tmp_dir}/.ghcr-token" \
+            "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/"
+
       - name: Deploy on server
         shell: bash
         run: |
@@ -272,6 +294,16 @@ jobs:
           ssh -p "${DEPLOY_PORT:-22}" "${DEPLOY_USER}@${DEPLOY_HOST}" "DEPLOY_PATH='${DEPLOY_PATH}' bash -s" <<'EOF'
           set -euo pipefail
           cd "${DEPLOY_PATH}"
+
+          cleanup_ghcr_credentials() {
+            if [ "${GHCR_LOGGED_IN:-0}" = "1" ]; then
+              docker_cmd logout ghcr.io || true
+            fi
+
+            rm -f .ghcr-token .ghcr-username
+          }
+          trap cleanup_ghcr_credentials EXIT
+          GHCR_LOGGED_IN=0
 
           SUDO=""
           if [ "$(id -u)" -ne 0 ]; then
@@ -343,6 +375,11 @@ jobs:
             as_root chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
           fi
 
+          if [ -f .ghcr-token ] && [ -f .ghcr-username ]; then
+            docker_cmd login ghcr.io -u "$(cat .ghcr-username)" --password-stdin < .ghcr-token
+            GHCR_LOGGED_IN=1
+          fi
+
           mkdir -p runtime/artifacts runtime/caddy-data runtime/caddy-config runtime/logs
 
           if [ ! -f runtime/selfchecks.config.json ]; then
@@ -356,6 +393,8 @@ jobs:
           fi
 
           docker_cmd compose --env-file .env -f docker-compose.prod.yml pull
+          docker_cmd logout ghcr.io || true
+          GHCR_LOGGED_IN=0
           docker_cmd compose --env-file .env -f docker-compose.prod.yml up -d --remove-orphans
           docker_cmd compose --env-file .env -f docker-compose.prod.yml ps
           EOF

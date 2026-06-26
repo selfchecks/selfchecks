@@ -341,7 +341,9 @@ Configure these GitHub Actions repository secrets:
 
 The GHCR packages are intended to be public. If GitHub creates the first package
 as private, switch `selfchecks-web` and `selfchecks-worker` to public in the
-organization package settings before relying on server deploys.
+organization package settings. The deploy workflow still logs in with the
+short-lived workflow `GITHUB_TOKEN` before pulling images, so deploys can proceed
+while visibility is being corrected.
 
 Useful commands:
 
