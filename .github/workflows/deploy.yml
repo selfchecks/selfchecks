@@ -133,7 +133,6 @@ jobs:
       POSTGRES_DB: ${{ vars.POSTGRES_DB }}
       POSTGRES_USER: ${{ vars.POSTGRES_USER }}
       POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
       NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
       NEXTAUTH_URL: ${{ vars.NEXTAUTH_URL }}
       SELFCHECKS_SETUP_TOKEN: ${{ secrets.SELFCHECKS_SETUP_TOKEN }}
@@ -154,7 +153,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          for required in DEPLOY_HOST DEPLOY_USER DEPLOY_PATH DEPLOY_SSH_KEY POSTGRES_PASSWORD DATABASE_URL NEXTAUTH_SECRET; do
+          for required in DEPLOY_HOST DEPLOY_USER DEPLOY_PATH DEPLOY_SSH_KEY POSTGRES_PASSWORD NEXTAUTH_SECRET; do
             if [ -z "${!required:-}" ]; then
               echo "Missing required GitHub variable/secret: ${required}" >&2
               exit 1
@@ -220,6 +219,18 @@ jobs:
 
           POSTGRES_DB="${POSTGRES_DB:-selfchecks}"
           POSTGRES_USER="${POSTGRES_USER:-selfchecks}"
+          DATABASE_URL="$(
+            POSTGRES_DB="${POSTGRES_DB}" POSTGRES_USER="${POSTGRES_USER}" POSTGRES_PASSWORD="${POSTGRES_PASSWORD}" python3 - <<'PY'
+          import os
+          from urllib.parse import quote
+
+          database = quote(os.environ["POSTGRES_DB"], safe="")
+          password = quote(os.environ["POSTGRES_PASSWORD"], safe="")
+          user = quote(os.environ["POSTGRES_USER"], safe="")
+
+          print(f"postgresql://{user}:{password}@postgres:5432/{database}?schema=public")
+          PY
+          )"
           NEXTAUTH_URL="${NEXTAUTH_URL:-}"
           SELFCHECKS_ADMIN_LOGIN="${SELFCHECKS_ADMIN_LOGIN:-}"
           SELFCHECKS_ADMIN_PASSWORD="${SELFCHECKS_ADMIN_PASSWORD:-}"
