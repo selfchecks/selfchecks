@@ -1,5 +1,8 @@
 name: selfchecks-prod
 
+x-selfchecks-web-image: &selfchecks-web-image ghcr.io/selfchecks/selfchecks-web:${SELFCHECKS_IMAGE_TAG:-stable}
+x-selfchecks-worker-image: &selfchecks-worker-image ghcr.io/selfchecks/selfchecks-worker:${SELFCHECKS_IMAGE_TAG:-stable}
+
 services:
   postgres:
     container_name: selfchecks-prod-postgres
@@ -43,10 +46,7 @@ services:
       - selfchecks-prod-redis-data:/data
 
   migrate:
-    build:
-      context: .
-      dockerfile: docker/selfchecks/Dockerfile
-      target: web
+    image: *selfchecks-web-image
     command: ["yarn", "workspace", "@selfchecks/db", "prisma", "migrate", "deploy"]
     container_name: selfchecks-prod-migrate
     depends_on:
@@ -59,10 +59,7 @@ services:
     restart: "no"
 
   web:
-    build:
-      context: .
-      dockerfile: docker/selfchecks/Dockerfile
-      target: web
+    image: *selfchecks-web-image
     container_name: selfchecks-prod-web
     depends_on:
       migrate:
@@ -94,10 +91,7 @@ services:
       - ./runtime:/app/runtime
 
   worker:
-    build:
-      context: .
-      dockerfile: docker/selfchecks/Dockerfile
-      target: worker
+    image: *selfchecks-worker-image
     container_name: selfchecks-prod-worker
     depends_on:
       migrate:

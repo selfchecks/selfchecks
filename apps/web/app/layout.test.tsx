@@ -7,6 +7,9 @@ describe("metadata", () => {
   it("describes the product", () => {
     expect(metadata).toMatchObject({
       description: "Self-hosted synthetic checks runner and dashboard.",
+      icons: {
+        icon: [{ type: "image/svg+xml", url: "/favicon.svg" }],
+      },
       title: "selfchecks",
     });
   });

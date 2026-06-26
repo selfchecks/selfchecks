@@ -253,13 +253,14 @@ write_env_file "${INSTALL_DIR}"
 
 if [ "${SKIP_START}" = "1" ]; then
   log "Install files are ready in ${INSTALL_DIR}."
-  log "Start manually with: docker compose --env-file .env -f docker-compose.prod.yml up -d --build"
+  log "Start manually with: docker compose --env-file .env -f docker-compose.prod.yml pull && docker compose --env-file .env -f docker-compose.prod.yml up -d"
   exit 0
 fi
 
 log "Starting selfchecks stack"
 cd "${INSTALL_DIR}"
-docker_compose --env-file .env -f docker-compose.prod.yml up -d --build
+docker_compose --env-file .env -f docker-compose.prod.yml pull
+docker_compose --env-file .env -f docker-compose.prod.yml up -d
 
 log "Install complete"
 printf '\n'

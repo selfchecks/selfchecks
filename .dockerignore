@@ -1,9 +1,14 @@
 node_modules/
+**/node_modules/
 .git/
 .next/
+**/.next/
 coverage/
+**/coverage/
 dist/
+**/dist/
 out/
+**/out/
 output/
 .playwright-cli/
 .selfchecks/
@@ -11,3 +16,4 @@ runtime/
 .env
 .env.*
 *.tsbuildinfo
+**/*.tsbuildinfo

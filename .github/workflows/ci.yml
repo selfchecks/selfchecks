@@ -2,22 +2,50 @@ name: CI
 
 on:
   pull_request:
-  push:
     branches:
       - stable
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   checks:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
         with:
           node-version: 20
-          cache: yarn
-      - run: corepack enable
-      - run: yarn install --immutable
-      - run: yarn format:check
-      - run: yarn lint
-      - run: yarn typecheck
-      - run: yarn test
+
+      - name: Enable Corepack
+        run: |
+          corepack enable
+          corepack prepare yarn@4.13.0 --activate
+          yarn --version
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Format check
+        run: yarn format:check
+
+      - name: Lint
+        run: yarn lint
+
+      - name: Typecheck
+        run: yarn typecheck
+
+      - name: Unit tests
+        run: yarn test
+
+      - name: Build
+        run: yarn build
+
+      - name: Validate production compose
+        run: docker compose --env-file .env.production.example -f docker-compose.prod.yml config

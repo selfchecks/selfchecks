@@ -278,7 +278,8 @@ cp .env.production.example .env.production
 mkdir -p runtime
 cp bootstrap/selfchecks.config.template.json runtime/selfchecks.config.json
 cp bootstrap/Caddyfile.template runtime/Caddyfile
-docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+docker compose --env-file .env.production -f docker-compose.prod.yml pull
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d
 ```
 
 Production resource names:
@@ -303,6 +304,44 @@ then configure the domain, certificate email, admin login, and admin password.
 After setup, Caddy reloads its generated config and requests a public TLS
 certificate for the configured domain. DNS for that domain must already point to
 the server, and ports `80` and `443` must be reachable from the internet.
+
+## CI/CD
+
+Pushes to `stable` run `.github/workflows/deploy.yml`. The workflow runs the
+same repository checks as CI, builds `ghcr.io/selfchecks/selfchecks-web:stable`
+and `ghcr.io/selfchecks/selfchecks-worker:stable`, then connects to the
+production server over SSH, syncs deployment files, uploads `.env`, pulls the
+fresh public GHCR images anonymously, and runs the production Compose stack.
+
+Configure these GitHub Actions repository variables:
+
+- `DEPLOY_HOST`: production server hostname or IP.
+- `DEPLOY_USER`: SSH user for deployment.
+- `DEPLOY_PATH`: install path on the server, for example `/opt/selfchecks`.
+- `DEPLOY_PORT`: optional SSH port, defaults to `22`.
+- `POSTGRES_DB`: optional database name, defaults to `selfchecks`.
+- `POSTGRES_USER`: optional database user, defaults to `selfchecks`.
+- `NEXTAUTH_URL`: public dashboard URL after DNS is ready.
+- `SELFCHECKS_QUEUE_NAME`: optional queue name, defaults to `selfchecks-checks`.
+- `SELFCHECKS_WEBHOOK_TIMEOUT_MS`: optional webhook timeout, defaults to `5000`.
+
+Configure these GitHub Actions repository secrets:
+
+- `DEPLOY_SSH_KEY`: private SSH key accepted by the production server.
+- `DEPLOY_KNOWN_HOSTS`: optional pinned `known_hosts` entry. If omitted, the
+  workflow uses `ssh-keyscan`.
+- `POSTGRES_PASSWORD`: PostgreSQL password used by the Compose stack.
+- `DATABASE_URL`: PostgreSQL URL for app and migrations.
+- `NEXTAUTH_SECRET`: session secret.
+- `SELFCHECKS_ADMIN_LOGIN` and `SELFCHECKS_ADMIN_PASSWORD`: optional initial
+  admin credentials.
+- `SELFCHECKS_SETUP_TOKEN`: optional first-launch setup token override. If
+  omitted, deploy preserves the current server token or generates one on first
+  deploy.
+
+The GHCR packages are intended to be public. If GitHub creates the first package
+as private, switch `selfchecks-web` and `selfchecks-worker` to public in the
+organization package settings before relying on server deploys.
 
 Useful commands:
 
