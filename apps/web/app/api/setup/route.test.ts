@@ -52,7 +52,7 @@ describe("setup route", () => {
 
     expect(response.status).toBe(303);
     expect(response.headers.get("location")).toBe(
-      "http://localhost/login?setup=complete",
+      "https://checks.example.com/login?setup=complete",
     );
 
     const config = JSON.parse(fs.readFileSync(configPath, "utf8")) as {

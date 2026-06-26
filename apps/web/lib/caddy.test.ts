@@ -25,9 +25,11 @@ describe("caddy helpers", () => {
 
   it("generates initial setup Caddyfile without automatic HTTPS", () => {
     const caddyfile = generateInitialCaddyfile({
+      SELFCHECKS_CADDY_ADMIN_URL: "http://caddy:2019",
       SELFCHECKS_CADDY_UPSTREAM: "selfchecks:3000",
     });
 
+    expect(caddyfile).toContain("origins http://0.0.0.0:2019 http://caddy:2019");
     expect(caddyfile).toContain("auto_https off");
     expect(caddyfile).toContain("reverse_proxy selfchecks:3000");
   });
@@ -37,10 +39,12 @@ describe("caddy helpers", () => {
       caddyEmail: "ops@example.com",
       domain: "checks.example.com",
       env: {
+        SELFCHECKS_CADDY_ADMIN_URL: "http://caddy:2019",
         SELFCHECKS_CADDY_UPSTREAM: "web:3000",
       },
     });
 
+    expect(caddyfile).toContain("origins http://0.0.0.0:2019 http://caddy:2019");
     expect(caddyfile).toContain("email ops@example.com");
     expect(caddyfile).toContain("checks.example.com {");
     expect(caddyfile).toContain("reverse_proxy web:3000");
@@ -62,6 +66,10 @@ describe("caddy helpers", () => {
       "http://caddy:2019/load",
       expect.objectContaining({
         body: "checks.example.com { reverse_proxy web:3000 }",
+        headers: {
+          "Content-Type": "text/caddyfile",
+          Origin: "http://0.0.0.0:2019",
+        },
         method: "POST",
       }),
     );

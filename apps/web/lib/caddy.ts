@@ -4,6 +4,7 @@ import path from "node:path";
 export type CaddyEnv = {
   [key: string]: string | undefined;
   SELFCHECKS_CADDY_ADMIN_URL?: string;
+  SELFCHECKS_CADDY_ADMIN_ORIGIN?: string;
   SELFCHECKS_CADDY_CONFIG_PATH?: string;
   SELFCHECKS_CADDY_UPSTREAM?: string;
   SELFCHECKS_SKIP_CADDY_RELOAD?: string;
@@ -45,11 +46,30 @@ export function getCaddyUpstream(env: CaddyEnv = process.env) {
   return env.SELFCHECKS_CADDY_UPSTREAM || "web:3000";
 }
 
+export function getCaddyAdminOrigin(env: CaddyEnv = process.env) {
+  return env.SELFCHECKS_CADDY_ADMIN_ORIGIN || "http://0.0.0.0:2019";
+}
+
+export function getCaddyAdminOrigins(env: CaddyEnv = process.env) {
+  const origins = [getCaddyAdminOrigin(env)];
+
+  if (env.SELFCHECKS_CADDY_ADMIN_URL) {
+    origins.push(new URL(env.SELFCHECKS_CADDY_ADMIN_URL).origin);
+  } else {
+    origins.push("http://caddy:2019");
+  }
+
+  return [...new Set(origins)].join(" ");
+}
+
 export function generateInitialCaddyfile(env: CaddyEnv = process.env) {
   const upstream = getCaddyUpstream(env);
+  const adminOrigins = getCaddyAdminOrigins(env);
 
   return `{
-    admin 0.0.0.0:2019
+    admin 0.0.0.0:2019 {
+        origins ${adminOrigins}
+    }
     auto_https off
 }
 
@@ -70,9 +90,12 @@ export function generateConfiguredCaddyfile({
   env?: CaddyEnv;
 }) {
   const upstream = getCaddyUpstream(env);
+  const adminOrigins = getCaddyAdminOrigins(env);
 
   return `{
-    admin 0.0.0.0:2019
+    admin 0.0.0.0:2019 {
+        origins ${adminOrigins}
+    }
     email ${caddyEmail}
 }
 
@@ -116,11 +139,14 @@ export async function reloadCaddy(
     return;
   }
 
+  const headers = {
+    "Content-Type": "text/caddyfile",
+    Origin: getCaddyAdminOrigin(env),
+  };
+
   const response = await fetchImpl(`${env.SELFCHECKS_CADDY_ADMIN_URL}/load`, {
     body: caddyfile,
-    headers: {
-      "Content-Type": "text/caddyfile",
-    },
+    headers,
     method: "POST",
   });
 

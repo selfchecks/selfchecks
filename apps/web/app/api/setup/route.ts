@@ -96,7 +96,10 @@ export async function POST(request: Request) {
     await reloadCaddy(caddyfile);
     writeRuntimeConfig(runtimeConfig);
 
-    return NextResponse.redirect(new URL("/login?setup=complete", request.url), 303);
+    return NextResponse.redirect(
+      new URL("/login?setup=complete", runtimeConfig.server.publicUrl),
+      303,
+    );
   } catch (error) {
     return redirectWithError(request, error);
   }

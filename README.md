@@ -344,6 +344,10 @@ Configure these GitHub Actions repository secrets:
 `POSTGRES_USER`, and `POSTGRES_PASSWORD` so it cannot drift from the bundled
 PostgreSQL container credentials.
 
+The deploy workflow sets `SELFCHECKS_CADDY_ADMIN_ORIGIN` to
+`http://0.0.0.0:2019` for Caddy's local admin API origin checks. Keep this value
+unless you also change the Caddy admin listen address.
+
 The GHCR packages are intended to be public. If GitHub creates the first package
 as private, switch `selfchecks-web` and `selfchecks-worker` to public in the
 organization package settings. The deploy workflow still logs in with the
