@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { authOptions, authorizeAdminCredentials } from "./auth";
+import { authOptions, authorizeAdminCredentials, hasAdminEnvCredentials } from "./auth";
 import { hashAdminPassword, writeRuntimeConfig } from "./runtime-config";
 
 describe("authorizeAdminCredentials", () => {
@@ -104,6 +104,27 @@ describe("authorizeAdminCredentials", () => {
         env,
       ),
     ).toBeNull();
+  });
+});
+
+describe("hasAdminEnvCredentials", () => {
+  it("requires both admin login and password", () => {
+    expect(
+      hasAdminEnvCredentials({
+        SELFCHECKS_ADMIN_LOGIN: "admin",
+        SELFCHECKS_ADMIN_PASSWORD: "secret",
+      }),
+    ).toBe(true);
+    expect(
+      hasAdminEnvCredentials({
+        SELFCHECKS_ADMIN_LOGIN: "admin",
+      }),
+    ).toBe(false);
+    expect(
+      hasAdminEnvCredentials({
+        SELFCHECKS_ADMIN_PASSWORD: "secret",
+      }),
+    ).toBe(false);
   });
 });
 

@@ -195,22 +195,21 @@ jobs:
         run: |
           set -euo pipefail
 
+          tmp_dir="$(mktemp -d)"
+          trap 'rm -rf "${tmp_dir}"' EXIT
+
+          mkdir -p "${tmp_dir}/bootstrap"
+          cp docker-compose.prod.yml "${tmp_dir}/docker-compose.prod.yml"
+          cp bootstrap/Caddyfile.template "${tmp_dir}/bootstrap/Caddyfile.template"
+          cp bootstrap/selfchecks.config.template.json "${tmp_dir}/bootstrap/selfchecks.config.template.json"
+
           rsync -az --delete \
-            --exclude '.git/' \
-            --exclude '.github/' \
-            --exclude 'node_modules/' \
-            --exclude '.next/' \
-            --exclude 'coverage/' \
-            --exclude 'dist/' \
-            --exclude 'out/' \
-            --exclude 'output/' \
-            --exclude '.playwright-cli/' \
-            --exclude '.selfchecks/' \
             --exclude 'runtime/' \
             --exclude '.env' \
-            --exclude '.env.*' \
+            --exclude '.ghcr-token' \
+            --exclude '.ghcr-username' \
             -e "ssh -p ${DEPLOY_PORT:-22}" \
-            ./ "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/"
+            "${tmp_dir}/" "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/"
 
       - name: Upload production env
         shell: bash

@@ -2,10 +2,11 @@ import { Suspense } from "react";
 import { redirect } from "next/navigation";
 
 import { LoginForm } from "@/components/auth/login-form";
+import { hasAdminEnvCredentials } from "@/lib/auth";
 import { isSetupRequired } from "@/lib/runtime-config";
 
 export default function LoginPage() {
-  if (isSetupRequired()) {
+  if (isSetupRequired() && !hasAdminEnvCredentials()) {
     redirect("/setup");
   }
 

@@ -18,6 +18,10 @@ export type AdminAuthEnv = {
   SELFCHECKS_ADMIN_PASSWORD?: string;
 } & RuntimeConfigEnv;
 
+export function hasAdminEnvCredentials(env: AdminAuthEnv = process.env) {
+  return Boolean(env.SELFCHECKS_ADMIN_LOGIN && env.SELFCHECKS_ADMIN_PASSWORD);
+}
+
 export function authorizeAdminCredentials(
   credentials: AdminCredentials | undefined,
   env: AdminAuthEnv = process.env,

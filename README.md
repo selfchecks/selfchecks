@@ -310,8 +310,9 @@ the server, and ports `80` and `443` must be reachable from the internet.
 Pushes to `stable` run `.github/workflows/deploy.yml`. The workflow runs the
 same repository checks as CI, builds `ghcr.io/selfchecks/selfchecks-web:stable`
 and `ghcr.io/selfchecks/selfchecks-worker:stable`, then connects to the
-production server over SSH, syncs deployment files, uploads `.env`, pulls the
-fresh public GHCR images anonymously, and runs the production Compose stack.
+production server over SSH, syncs only the Compose file and bootstrap templates,
+uploads `.env`, pulls the fresh GHCR images, and runs the production Compose
+stack.
 
 Configure these GitHub Actions repository variables:
 
@@ -333,7 +334,8 @@ Configure these GitHub Actions repository secrets:
 - `POSTGRES_PASSWORD`: PostgreSQL password used by the Compose stack.
 - `NEXTAUTH_SECRET`: session secret.
 - `SELFCHECKS_ADMIN_LOGIN` and `SELFCHECKS_ADMIN_PASSWORD`: optional initial
-  admin credentials.
+  admin credentials. When both are configured, `/login` can be used before the
+  first-launch setup writes runtime admin credentials.
 - `SELFCHECKS_SETUP_TOKEN`: optional first-launch setup token override. If
   omitted, deploy preserves the current server token or generates one on first
   deploy.
