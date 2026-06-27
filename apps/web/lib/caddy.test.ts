@@ -47,6 +47,8 @@ describe("caddy helpers", () => {
     expect(caddyfile).toContain("origins http://0.0.0.0:2019 http://caddy:2019");
     expect(caddyfile).toContain("email ops@example.com");
     expect(caddyfile).toContain("checks.example.com {");
+    expect(caddyfile).toContain('X-Frame-Options "SAMEORIGIN"');
+    expect(caddyfile).not.toContain('X-Frame-Options "DENY"');
     expect(caddyfile).toContain("reverse_proxy web:3000");
     expect(caddyfile).toContain("redir https://checks.example.com{uri} 308");
   });

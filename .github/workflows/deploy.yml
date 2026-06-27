@@ -403,9 +403,18 @@ jobs:
             chmod 600 runtime/Caddyfile
           fi
 
+          CADDY_RESTART_REQUIRED=0
+          if as_root grep -q 'X-Frame-Options "DENY"' runtime/Caddyfile; then
+            as_root sed -i 's/X-Frame-Options "DENY"/X-Frame-Options "SAMEORIGIN"/g' runtime/Caddyfile
+            CADDY_RESTART_REQUIRED=1
+          fi
+
           docker_cmd compose --env-file .env -f docker-compose.prod.yml pull
           docker_cmd logout ghcr.io || true
           GHCR_LOGGED_IN=0
           docker_cmd compose --env-file .env -f docker-compose.prod.yml up -d --remove-orphans
+          if [ "${CADDY_RESTART_REQUIRED}" = "1" ]; then
+            docker_cmd compose --env-file .env -f docker-compose.prod.yml restart caddy
+          fi
           docker_cmd compose --env-file .env -f docker-compose.prod.yml ps
           EOF
