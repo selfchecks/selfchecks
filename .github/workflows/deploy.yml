@@ -409,6 +409,11 @@ jobs:
             CADDY_RESTART_REQUIRED=1
           fi
 
+          if docker_cmd ps --format '{{.Names}}' | grep -qx 'selfchecks-prod-caddy'; then
+            docker_cmd restart selfchecks-prod-caddy
+          fi
+
+          docker_cmd system prune -af || true
           docker_cmd compose --env-file .env -f docker-compose.prod.yml pull
           docker_cmd logout ghcr.io || true
           GHCR_LOGGED_IN=0
