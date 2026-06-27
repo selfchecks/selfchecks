@@ -12,7 +12,9 @@ import {
   type SelfchecksRuntimeConfig,
   writeRuntimeConfig,
 } from "./runtime-config";
-import { decryptSecretValue, encryptSecretValue } from "./secret-store";
+import { encryptSecretValue } from "./secret-store";
+
+export { getRunEnvironment } from "@selfchecks/cli/environment";
 
 export type BasicSettingsData = {
   domain: string;
@@ -240,48 +242,6 @@ export async function updateRuntimeEnvironmentSettings(input: RuntimeSettingsInp
   ]);
 
   return readRuntimeEnvironmentSettings(project.id, environmentName);
-}
-
-export async function getRunEnvironment(projectSlug: string) {
-  const project = await prisma.project.findUnique({
-    select: {
-      id: true,
-    },
-    where: {
-      slug: projectSlug,
-    },
-  });
-
-  if (!project) {
-    return [];
-  }
-
-  const [runtimeEnvironment, secrets] = await Promise.all([
-    prisma.runtimeEnvironment.findUnique({
-      where: {
-        projectId_name: {
-          name: DEFAULT_ENVIRONMENT_NAME,
-          projectId: project.id,
-        },
-      },
-    }),
-    prisma.secret.findMany({
-      orderBy: {
-        name: "asc",
-      },
-      where: {
-        projectId: project.id,
-      },
-    }),
-  ]);
-
-  return [
-    ...parseVariables(runtimeEnvironment?.variables),
-    ...secrets.map((secret) => ({
-      name: secret.name,
-      value: decryptSecretValue(secret.valueCiphertext),
-    })),
-  ];
 }
 
 function mapBasicSettings(config: SelfchecksRuntimeConfig): BasicSettingsData {

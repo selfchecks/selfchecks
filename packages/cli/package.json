@@ -16,6 +16,10 @@
     "./runner": {
       "import": "./dist/runner.js",
       "types": "./dist/runner.d.ts"
+    },
+    "./environment": {
+      "import": "./dist/environment.js",
+      "types": "./dist/environment.d.ts"
     }
   },
   "scripts": {

@@ -29,7 +29,7 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-vi.mock("@/lib/settings-data", () => ({
+vi.mock("@selfchecks/cli/environment", () => ({
   getRunEnvironment: mocks.getRunEnvironment,
 }));
 

@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.3",
+    "@selfchecks/cli": "workspace:*",
     "@selfchecks/core": "workspace:*",
     "bullmq": "^5.56.4",
     "class-variance-authority": "^0.7.1",

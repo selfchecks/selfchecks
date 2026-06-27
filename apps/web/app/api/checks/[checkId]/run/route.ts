@@ -1,10 +1,10 @@
 import { Queue } from "bullmq";
 import { NextResponse } from "next/server";
 
+import { getRunEnvironment } from "@selfchecks/cli/environment";
 import { type CheckType } from "@selfchecks/core";
 
 import { prisma } from "@/lib/prisma";
-import { getRunEnvironment } from "@/lib/settings-data";
 
 export const runtime = "nodejs";
 
