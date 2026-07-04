@@ -323,7 +323,19 @@ Configure these GitHub Actions repository variables:
 - `POSTGRES_DB`: optional database name, defaults to `selfchecks`.
 - `POSTGRES_USER`: optional database user, defaults to `selfchecks`.
 - `NEXTAUTH_URL`: public dashboard URL after DNS is ready.
+- `SELFCHECKS_CHECKS_ROOT`: optional source root override available inside the
+  web and worker containers.
 - `SELFCHECKS_QUEUE_NAME`: optional queue name, defaults to `selfchecks-checks`.
+- `SELFCHECKS_QUEUED_RUN_TIMEOUT_MINUTES`: optional timeout for queued runs,
+  defaults to `30`.
+- `SELFCHECKS_RUNNING_RUN_TIMEOUT_MINUTES`: optional timeout for running checks
+  that never finish, defaults to `120`.
+- `SELFCHECKS_SCHEDULER_ENABLED`: optional worker scheduler toggle, defaults to
+  `1`.
+- `SELFCHECKS_SCHEDULER_INTERVAL_MS`: optional worker scheduler poll interval,
+  defaults to `60000`.
+- `SELFCHECKS_SCHEDULER_REPORTER`: optional reporter for scheduled browser
+  checks, defaults to `list`.
 - `SELFCHECKS_WEBHOOK_TIMEOUT_MS`: optional webhook timeout, defaults to `5000`.
 
 Configure these GitHub Actions repository secrets:

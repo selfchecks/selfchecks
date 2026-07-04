@@ -1437,6 +1437,7 @@ __metadata:
     "@selfchecks/db": "workspace:*"
     commander: "npm:^14.0.0"
     tsx: "npm:^4.20.3"
+    typescript: "npm:^5.8.3"
   bin:
     selfchecks: ./dist/index.js
   languageName: unknown
@@ -1457,6 +1458,7 @@ __metadata:
   dependencies:
     "@prisma/client": "npm:^6.10.1"
     prisma: "npm:^6.10.1"
+    typescript: "npm:^5.8.3"
   languageName: unknown
   linkType: soft
 
@@ -1484,6 +1486,7 @@ __metadata:
     react-dom: "npm:^19.0.0"
     tailwind-merge: "npm:^3.3.1"
     tailwindcss: "npm:^3.4.17"
+    typescript: "npm:^5.8.3"
   languageName: unknown
   linkType: soft
 
@@ -1497,6 +1500,7 @@ __metadata:
     bullmq: "npm:^5.56.4"
     ioredis: "npm:^5.6.1"
     tsx: "npm:^4.20.3"
+    typescript: "npm:^5.8.3"
   languageName: unknown
   linkType: soft
 
