@@ -231,6 +231,13 @@ export default function DashboardClient({
       ),
     [groups],
   );
+  const failedChecks = useMemo(
+    () =>
+      groups
+        .flatMap((group) => group.children ?? [])
+        .filter((check) => check.status === "failing"),
+    [groups],
+  );
   const summaryCards = useMemo(
     () =>
       [
@@ -477,9 +484,9 @@ export default function DashboardClient({
     await runCheckNow(check);
   }
 
-  async function runAllFirewatchChecks() {
-    for (const row of firewatch.rows) {
-      await runFirewatchCheck(row);
+  async function runAllFailedChecks() {
+    for (const check of failedChecks) {
+      await runCheckNow(check);
     }
   }
 
@@ -535,10 +542,11 @@ export default function DashboardClient({
               </div>
 
               <FirewatchPanel
+                failedChecksCount={failedChecks.length}
                 firewatch={firewatch}
                 onOpenChange={setFirewatchOpen}
                 onOpenCheck={toggleCheck}
-                onRunAll={() => void runAllFirewatchChecks()}
+                onRunFailedChecks={() => void runAllFailedChecks()}
                 onRunCheck={(row) => void runFirewatchCheck(row)}
                 open={firewatchOpen}
               />
@@ -827,17 +835,19 @@ function summarizeDashboardStatus(statuses: Status[]): Status {
 }
 
 function FirewatchPanel({
+  failedChecksCount,
   firewatch,
   onOpenChange,
   onOpenCheck,
-  onRunAll,
+  onRunFailedChecks,
   onRunCheck,
   open,
 }: {
+  failedChecksCount: number;
   firewatch: DashboardFirewatch;
   onOpenChange: (open: boolean) => void;
   onOpenCheck: (checkId: string) => void;
-  onRunAll: () => void;
+  onRunFailedChecks: () => void;
   onRunCheck: (row: DashboardFirewatchRow) => void;
   open: boolean;
 }) {
@@ -966,22 +976,24 @@ function FirewatchPanel({
                   </tbody>
                 </table>
               </div>
-              <div className="mt-3 flex justify-end">
-                <button
-                  className="inline-flex h-10 items-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-500"
-                  onClick={onRunAll}
-                  type="button"
-                >
-                  <Zap className="h-4 w-4" />
-                  Schedule all failing checks
-                </button>
-              </div>
             </>
           ) : (
             <div className="rounded-md border border-slate-700 bg-[#0f151d] px-4 py-5 text-sm text-slate-400">
               No newly failing checks in the last {firewatch.lookbackDays} days.
             </div>
           )}
+          {failedChecksCount > 0 ? (
+            <div className="mt-3 flex justify-end">
+              <button
+                className="inline-flex h-10 items-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-500"
+                onClick={onRunFailedChecks}
+                type="button"
+              >
+                <Zap className="h-4 w-4" />
+                Restart all failed checks
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </section>

@@ -381,7 +381,7 @@ describe("DashboardPage", () => {
       screen.getByText("You have 1 check that started failing in the last 7 days"),
     ).toBeTruthy();
     expect(
-      screen.getByRole("button", { name: "Schedule all failing checks" }),
+      screen.getByRole("button", { name: "Restart all failed checks" }),
     ).toBeTruthy();
 
     await user.click(screen.getByRole("link", { name: "API / Bff / bff-health" }));
@@ -398,6 +398,112 @@ describe("DashboardPage", () => {
     expect(
       screen.getByText("No newly failing checks in the last 7 days."),
     ).toBeTruthy();
+  });
+
+  it("queues all failed checks from Firewatch even when no rows are newly failing", async () => {
+    const user = userEvent.setup();
+    const failedApiCheck = createCheck({
+      name: "bff-gtm-js",
+      runState: "failed",
+      status: "failing",
+    });
+    const failedBrowserCheck = createCheck({
+      name: "signin.browser",
+      runState: "timed_out",
+      status: "failing",
+      type: "browser",
+    });
+    const passingCheck = createCheck({
+      name: "bff-health",
+      runState: "passed",
+      status: "passing",
+    });
+    const groups: DashboardGroupRow[] = [
+      {
+        checks: "2 checks",
+        children: [failedApiCheck, passingCheck],
+        expanded: true,
+        name: "API / Bff",
+        status: "failing",
+        updated: "about 1 hour ago",
+      },
+      {
+        checks: "1 checks",
+        children: [failedBrowserCheck],
+        expanded: true,
+        name: "App / Smoke",
+        status: "failing",
+        updated: "about 2 hours ago",
+      },
+    ];
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        return Promise.resolve(
+          new Response(JSON.stringify({ runId: "run_queued", status: "queued" }), {
+            headers: {
+              "content-type": "application/json",
+            },
+            status: 202,
+          }),
+        );
+      }
+
+      expect(input).toBe("/api/dashboard");
+
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            firewatch: emptyFirewatch,
+            groups,
+            summary: {
+              degraded: 0,
+              failing: 2,
+              passing: 1,
+              running: 0,
+            },
+          }),
+          {
+            headers: {
+              "content-type": "application/json",
+            },
+            status: 200,
+          },
+        ),
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <DashboardClient
+        initialFirewatch={emptyFirewatch}
+        initialGroups={groups}
+        initialSettings={fixtureSettings}
+        initialSummary={{
+          degraded: 0,
+          failing: 2,
+          passing: 1,
+          running: 0,
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByText("No newly failing checks in the last 7 days."),
+    ).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Restart all failed checks" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/checks/check-bff-gtm-js/run", {
+        method: "POST",
+      });
+      expect(fetchMock).toHaveBeenCalledWith("/api/checks/check-signin.browser/run", {
+        method: "POST",
+      });
+    });
+    expect(fetchMock).not.toHaveBeenCalledWith("/api/checks/check-bff-health/run", {
+      method: "POST",
+    });
   });
 
   it("explains check status icons", () => {
