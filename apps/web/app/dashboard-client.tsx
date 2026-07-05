@@ -2406,6 +2406,7 @@ function SparkBars({ bars }: { bars: CheckRow["bars"] }) {
               className={cn(
                 "block w-1 rounded-sm transition",
                 bar.tone === "active" && "bg-blue-400",
+                bar.tone === "bad" && "bg-red-500",
                 bar.tone === "warn" && "bg-amber-400",
                 (!bar.tone || bar.tone === "good") && "bg-emerald-400",
               )}

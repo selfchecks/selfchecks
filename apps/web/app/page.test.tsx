@@ -305,6 +305,53 @@ describe("DashboardPage", () => {
     expect(screen.getAllByText("Local runner").length).toBeGreaterThan(0);
   });
 
+  it("renders failed result bars in red", () => {
+    render(
+      <DashboardClient
+        initialGroups={[
+          {
+            checks: "1 checks",
+            children: [
+              createCheck({
+                bars: [
+                  {
+                    duration: "6 ms",
+                    occurredAt: "Jul 05 09:37 (UTC+0)",
+                    runner: "Local runner",
+                    runState: "failed",
+                    status: "failing",
+                    tone: "bad",
+                    value: 8,
+                  },
+                ],
+                name: "bff-health",
+                status: "failing",
+              }),
+            ],
+            expanded: true,
+            name: "API / Bff",
+            status: "failing",
+            updated: "3 minutes ago",
+          },
+        ]}
+        initialSettings={fixtureSettings}
+        initialSummary={{
+          degraded: 0,
+          failing: 1,
+          passing: 0,
+        }}
+      />,
+    );
+
+    const failedBar = screen.getByLabelText(
+      "Failing Local runner 6 ms Jul 05 09:37 (UTC+0)",
+    );
+
+    expect(failedBar.querySelector("[aria-hidden='true']")?.className).toContain(
+      "bg-red-500",
+    );
+  });
+
   it("filters checks from the search field", async () => {
     const user = userEvent.setup();
 

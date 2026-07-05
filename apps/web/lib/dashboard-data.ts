@@ -8,6 +8,7 @@ import type {
   DashboardRunPerformance,
   DashboardRunRow,
   DashboardRunState,
+  DashboardResultBar,
   DashboardStatus,
   DashboardSummary,
 } from "./dashboard-types";
@@ -994,10 +995,25 @@ function buildBars(runs: CheckWithRuns["runs"]): DashboardCheckRow["bars"] {
     runner: "Local runner",
     runState: mapRunState(run.status),
     status: mapRunStatus(run.status),
-    tone:
-      run.status === "RUNNING" ? "active" : run.status === "PASSED" ? "good" : "warn",
+    tone: mapRunTone(run.status),
     value: Math.max(8, Math.min(44, Math.round((run.durationMs ?? 500) / 40))),
   }));
+}
+
+function mapRunTone(status: string | undefined): NonNullable<DashboardResultBar["tone"]> {
+  if (status === "RUNNING") {
+    return "active";
+  }
+
+  if (status === "PASSED") {
+    return "good";
+  }
+
+  if (status === "FAILED" || status === "TIMED_OUT" || status === "CANCELLED") {
+    return "bad";
+  }
+
+  return "warn";
 }
 
 function average(values: number[]): number | undefined {

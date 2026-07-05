@@ -14,7 +14,7 @@ export type DashboardResultBar = {
   runner: string;
   runState: DashboardRunState;
   status: DashboardStatus;
-  tone?: "active" | "good" | "warn";
+  tone?: "active" | "bad" | "good" | "warn";
   value: number;
 };
 

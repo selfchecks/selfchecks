@@ -2,27 +2,31 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   checkFindFirst: vi.fn(),
+  checkFindMany: vi.fn(),
   checkRunFindFirst: vi.fn(),
   checkRunUpdateMany: vi.fn(),
+  projectFindFirst: vi.fn(),
+  projectFindUnique: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     check: {
       findFirst: mocks.checkFindFirst,
+      findMany: mocks.checkFindMany,
     },
     checkRun: {
       findFirst: mocks.checkRunFindFirst,
       updateMany: mocks.checkRunUpdateMany,
     },
     project: {
-      findFirst: vi.fn(),
-      findUnique: vi.fn(),
+      findFirst: mocks.projectFindFirst,
+      findUnique: mocks.projectFindUnique,
     },
   },
 }));
 
-import { getCheckDetailData, getRunDetailData } from "./dashboard-data";
+import { getCheckDetailData, getDashboardData, getRunDetailData } from "./dashboard-data";
 
 describe("dashboard data", () => {
   afterEach(() => {
@@ -223,5 +227,74 @@ describe("dashboard data", () => {
       type: "trace",
       viewUrl: "/runs/run_1/artifacts/artifact_1/trace",
     });
+  });
+
+  it("marks failed historical result bars as bad when the latest run is queued", async () => {
+    mocks.checkRunUpdateMany.mockResolvedValue({ count: 0 });
+    mocks.projectFindUnique.mockResolvedValue({
+      id: "project_1",
+      slug: "default",
+    });
+    mocks.checkFindMany.mockResolvedValue([
+      {
+        enabled: true,
+        entrypoint: null,
+        frequencyMinutes: 180,
+        group: {
+          name: "API / Bff",
+        },
+        id: "check_1",
+        key: "bff-health",
+        name: "bff-health",
+        request: {
+          assertions: [],
+          headers: {},
+          method: "GET",
+          url: "https://example.test/health",
+        },
+        runs: [
+          {
+            artifacts: [],
+            createdAt: new Date("2026-07-05T09:40:00.000Z"),
+            durationMs: null,
+            id: "run_queued",
+            logsPath: null,
+            result: null,
+            status: "QUEUED",
+          },
+          {
+            artifacts: [],
+            createdAt: new Date("2026-07-05T09:37:00.000Z"),
+            durationMs: 6,
+            id: "run_failed",
+            logsPath: null,
+            result: null,
+            status: "FAILED",
+          },
+        ],
+        tags: ["api", "bff"],
+        type: "API",
+      },
+    ]);
+
+    const dashboard = await getDashboardData("default");
+    const check = dashboard.groups[0]?.children?.[0];
+
+    expect(check).toMatchObject({
+      runState: "queued",
+      status: "degraded",
+    });
+    expect(check?.bars).toEqual([
+      expect.objectContaining({
+        runState: "failed",
+        status: "failing",
+        tone: "bad",
+      }),
+      expect.objectContaining({
+        runState: "queued",
+        status: "degraded",
+        tone: "warn",
+      }),
+    ]);
   });
 });
