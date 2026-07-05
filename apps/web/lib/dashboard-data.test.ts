@@ -238,7 +238,7 @@ describe("dashboard data", () => {
     });
   });
 
-  it("marks failed historical result bars as bad when the latest run is queued", async () => {
+  it("marks failed and cancelled historical result bars with distinct tones", async () => {
     mocks.checkRunUpdateMany.mockResolvedValue({ count: 0 });
     mocks.projectFindUnique.mockResolvedValue({
       id: "project_1",
@@ -273,12 +273,21 @@ describe("dashboard data", () => {
           },
           {
             artifacts: [],
-            createdAt: new Date("2026-07-05T09:37:00.000Z"),
+            createdAt: new Date("2026-07-05T09:38:00.000Z"),
             durationMs: 6,
             id: "run_failed",
             logsPath: null,
             result: null,
             status: "FAILED",
+          },
+          {
+            artifacts: [],
+            createdAt: new Date("2026-07-05T09:37:00.000Z"),
+            durationMs: null,
+            id: "run_cancelled",
+            logsPath: null,
+            result: null,
+            status: "CANCELLED",
           },
         ],
         tags: ["api", "bff"],
@@ -300,6 +309,11 @@ describe("dashboard data", () => {
       running: 0,
     });
     expect(check?.bars).toEqual([
+      expect.objectContaining({
+        runState: "cancelled",
+        status: "failing",
+        tone: "muted",
+      }),
       expect.objectContaining({
         runState: "failed",
         status: "failing",

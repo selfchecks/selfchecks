@@ -41,7 +41,7 @@ const detail: CheckDetailData = {
         runner: "Local runner",
         runState: "failed",
         status: "failing",
-        tone: "warn",
+        tone: "bad",
         value: 34,
       },
     ],
@@ -118,6 +118,21 @@ const detail: CheckDetailData = {
         runner: "Local runner",
         runState: "failed",
         status: "failing",
+        tone: "bad",
+      },
+      {
+        artifacts: [],
+        createdAt: twoDaysAgoIso,
+        duration: "-",
+        durationMs: undefined,
+        errorMessage: "Run was cancelled.",
+        hasRetries: false,
+        id: "run_3",
+        occurredAt: "Jun 22 13:00 (UTC+3)",
+        runner: "Local runner",
+        runState: "cancelled",
+        status: "failing",
+        tone: "muted",
       },
     ],
     settings: {
@@ -134,10 +149,10 @@ const detail: CheckDetailData = {
     },
     stats: {
       averageDuration: "2.34 s",
-      failedRuns: "1",
+      failedRuns: "2",
       p95Duration: "2.79 s",
       passedRuns: "5",
-      totalRuns: "6",
+      totalRuns: "7",
     },
     status: "passing",
     tags: ["api", "bff"],
@@ -240,12 +255,24 @@ describe("CheckDetailClient", () => {
     expect(chart.getAttribute("style")).toContain("column-gap: 4px");
   });
 
+  it("renders failed and cancelled run chart bars with dashboard matching colors", () => {
+    renderDetail();
+
+    const failedBar = screen.getByLabelText("Failed 2.79 s Jun 22 12:00 (UTC+3)");
+
+    expect(failedBar.querySelector("span")?.className).toContain("bg-red-500");
+
+    const cancelledBar = screen.getByLabelText("Cancelled - Jun 22 13:00 (UTC+3)");
+
+    expect(cancelledBar.querySelector("span")?.className).toContain("bg-slate-500");
+  });
+
   it("filters run results from the segment controls", async () => {
     const user = userEvent.setup();
 
     renderDetail();
 
-    expect(screen.getByText("Last 2 runs")).toBeTruthy();
+    expect(screen.getByText("Last 3 runs")).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "Failed" }));
 
@@ -253,7 +280,7 @@ describe("CheckDetailClient", () => {
       screen.getByRole("button", { name: "Failed" }).getAttribute("aria-pressed"),
     ).toBe("true");
     expect(screen.getByText("Expected status 200")).toBeTruthy();
-    expect(screen.getByText("Last 1 runs")).toBeTruthy();
+    expect(screen.getByText("Last 2 runs")).toBeTruthy();
     expect(screen.queryByText("Trace · 42 KB")).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Has retries" }));

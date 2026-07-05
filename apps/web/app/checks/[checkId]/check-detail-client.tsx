@@ -33,6 +33,10 @@ import type {
   DashboardRunState,
   DashboardStatus,
 } from "@/lib/dashboard-types";
+import {
+  getRunResultTone,
+  getRunResultToneClassName,
+} from "@/lib/run-result-tone";
 import { cn } from "@/lib/utils";
 import { DetailSidebar } from "../detail-sidebar";
 
@@ -468,9 +472,7 @@ function ResultChart({ runs }: { runs: DashboardRunRow[] }) {
               <span
                 className={cn(
                   "block w-full max-w-4 rounded-t-sm",
-                  bar.status === "passing" && "bg-emerald-500",
-                  bar.status === "degraded" && "bg-amber-400",
-                  bar.status === "failing" && "bg-red-500",
+                  getRunResultToneClassName(bar.tone),
                 )}
                 style={{ height: `${bar.value}px` }}
               />
@@ -1143,6 +1145,12 @@ function buildRunBars(runs: DashboardRunRow[]) {
     occurredAt: run.occurredAt,
     runState: run.runState,
     status: run.status,
+    tone:
+      run.tone ??
+      getRunResultTone({
+        runState: run.runState,
+        status: run.status,
+      }),
     value: Math.max(8, Math.min(88, Math.round((run.durationMs ?? 500) / 20))),
   }));
 }

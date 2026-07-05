@@ -308,7 +308,7 @@ describe("DashboardPage", () => {
     expect(screen.getAllByText("Local runner").length).toBeGreaterThan(0);
   });
 
-  it("renders failed result bars in red", () => {
+  it("renders failed and cancelled result bars with matching status colors", () => {
     render(
       <DashboardClient
         initialGroups={[
@@ -324,6 +324,15 @@ describe("DashboardPage", () => {
                     runState: "failed",
                     status: "failing",
                     tone: "bad",
+                    value: 8,
+                  },
+                  {
+                    duration: "-",
+                    occurredAt: "Jul 05 09:38 (UTC+0)",
+                    runner: "Local runner",
+                    runState: "cancelled",
+                    status: "failing",
+                    tone: "muted",
                     value: 8,
                   },
                 ],
@@ -353,6 +362,14 @@ describe("DashboardPage", () => {
 
     expect(failedBar.querySelector("[aria-hidden='true']")?.className).toContain(
       "bg-red-500",
+    );
+
+    const cancelledBar = screen.getByLabelText(
+      "Cancelled Local runner - Jul 05 09:38 (UTC+0)",
+    );
+
+    expect(cancelledBar.querySelector("[aria-hidden='true']")?.className).toContain(
+      "bg-slate-500",
     );
   });
 

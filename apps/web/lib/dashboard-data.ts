@@ -8,11 +8,12 @@ import type {
   DashboardRunPerformance,
   DashboardRunRow,
   DashboardRunState,
-  DashboardResultBar,
+  DashboardResultTone,
   DashboardStatus,
   DashboardSummary,
 } from "./dashboard-types";
 import { prisma } from "./prisma";
+import { getRunResultTone } from "./run-result-tone";
 
 const DEFAULT_QUEUED_RUN_TIMEOUT_MINUTES = 30;
 const MAX_LOG_PREVIEW_CHARS = 12_000;
@@ -749,6 +750,7 @@ function mapRun(run: MappableRun): DashboardRunRow {
     runner: "Local runner",
     runState: mapRunState(run.status),
     status: mapRunStatus(run.status),
+    tone: mapRunTone(run.status),
   };
 }
 
@@ -1367,20 +1369,11 @@ function buildBars(runs: CheckWithRuns["runs"]): DashboardCheckRow["bars"] {
   }));
 }
 
-function mapRunTone(status: string | undefined): NonNullable<DashboardResultBar["tone"]> {
-  if (status === "RUNNING") {
-    return "active";
-  }
-
-  if (status === "PASSED") {
-    return "good";
-  }
-
-  if (status === "FAILED" || status === "TIMED_OUT" || status === "CANCELLED") {
-    return "bad";
-  }
-
-  return "warn";
+function mapRunTone(status: string | undefined): DashboardResultTone {
+  return getRunResultTone({
+    runState: mapRunState(status),
+    status: mapRunStatus(status),
+  });
 }
 
 function average(values: number[]): number | undefined {

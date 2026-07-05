@@ -57,6 +57,7 @@ import type {
   DashboardStatus,
   DashboardSummary,
 } from "@/lib/dashboard-types";
+import { getRunResultToneClassName } from "@/lib/run-result-tone";
 import type {
   DashboardSettingsData,
   RuntimeEnvironmentSettingsData,
@@ -2390,10 +2391,7 @@ function SparkBars({ bars }: { bars: CheckRow["bars"] }) {
               aria-hidden="true"
               className={cn(
                 "block w-1 rounded-sm transition",
-                bar.tone === "active" && "bg-blue-400",
-                bar.tone === "bad" && "bg-red-500",
-                bar.tone === "warn" && "bg-amber-400",
-                (!bar.tone || bar.tone === "good") && "bg-emerald-400",
+                getRunResultToneClassName(bar.tone),
               )}
               style={{ height: `${bar.value}px` }}
             />
