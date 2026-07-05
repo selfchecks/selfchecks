@@ -263,7 +263,7 @@ describe("DashboardPage", () => {
     expect(screen.queryByText("account")).toBeNull();
     expect(screen.getByText("PASSING")).toBeTruthy();
     expect(screen.getByText("RUNNING")).toBeTruthy();
-    expect(screen.getByText("DEGRADED")).toBeTruthy();
+    expect(screen.getByText("DEGRADED / QUEUED")).toBeTruthy();
     expect(screen.getByText("FAILING")).toBeTruthy();
     expect(screen.getByText("Firewatch")).toBeTruthy();
     expect(
@@ -436,15 +436,20 @@ describe("DashboardPage", () => {
         updated: "about 2 hours ago",
       },
     ];
+    const postResolvers: Array<() => void> = [];
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       if (init?.method === "POST") {
-        return Promise.resolve(
-          new Response(JSON.stringify({ runId: "run_queued", status: "queued" }), {
-            headers: {
-              "content-type": "application/json",
-            },
-            status: 202,
-          }),
+        return new Promise<Response>((resolve) =>
+          postResolvers.push(() =>
+            resolve(
+              new Response(JSON.stringify({ runId: "run_queued", status: "queued" }), {
+                headers: {
+                  "content-type": "application/json",
+                },
+                status: 202,
+              }),
+            ),
+          ),
         );
       }
 
@@ -501,9 +506,20 @@ describe("DashboardPage", () => {
         method: "POST",
       });
     });
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("button", { name: "Restart all failed checks" }),
+      ).toBeNull();
+      expect(screen.getAllByText("queued").length).toBeGreaterThan(0);
+      expect(screen.getByRole("button", { name: /DEGRADED \/ QUEUED 2/ })).toBeTruthy();
+    });
     expect(fetchMock).not.toHaveBeenCalledWith("/api/checks/check-bff-health/run", {
       method: "POST",
     });
+
+    for (const resolvePost of postResolvers) {
+      resolvePost();
+    }
   });
 
   it("explains check status icons", () => {

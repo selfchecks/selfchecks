@@ -209,6 +209,7 @@ export default function DashboardClient({
   }));
   const [settings, setSettings] = useState<DashboardSettingsData>(initialSettings);
   const { firewatch, groups, summary } = dashboard;
+  const optimisticQueuedCheckIdsRef = useRef<Set<string>>(new Set());
   const router = useRouter();
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
@@ -254,7 +255,7 @@ export default function DashboardClient({
           value: String(summary.running),
         },
         {
-          label: "DEGRADED",
+          label: "DEGRADED / QUEUED",
           status: "degraded",
           tone: "border-amber-950/80 bg-amber-950/75 text-amber-400 shadow-amber-950/20",
           value: String(summary.degraded),
@@ -333,7 +334,16 @@ export default function DashboardClient({
         const nextDashboard = await fetchDashboardSnapshot();
 
         if (!cancelled) {
-          setDashboard(nextDashboard);
+          optimisticQueuedCheckIdsRef.current = retainOptimisticQueuedCheckIds(
+            nextDashboard.groups,
+            optimisticQueuedCheckIdsRef.current,
+          );
+          setDashboard(
+            applyOptimisticQueuedSnapshot(
+              nextDashboard,
+              optimisticQueuedCheckIdsRef.current,
+            ),
+          );
         }
       } catch {
         if (!cancelled) {
@@ -436,29 +446,42 @@ export default function DashboardClient({
     router.push(`/checks/${encodeURIComponent(checkId)}`);
   }
 
+  async function queueCheckRun(check: CheckRow) {
+    const response = await fetch(`/api/checks/${encodeURIComponent(check.id)}/run`, {
+      method: "POST",
+    });
+    const payload = (await response.json().catch(() => ({}))) as {
+      error?: string;
+      runId?: string;
+    };
+
+    if (!response.ok) {
+      throw new Error(payload.error ?? "Unable to queue check run.");
+    }
+  }
+
+  function markChecksQueued(checkIds: string[]) {
+    const checkIdSet = new Set(checkIds);
+
+    optimisticQueuedCheckIdsRef.current = new Set([
+      ...optimisticQueuedCheckIdsRef.current,
+      ...checkIdSet,
+    ]);
+    setDashboard((current) => {
+      const nextGroups = markDashboardChecksQueued(current.groups, checkIdSet);
+
+      return {
+        firewatch: removeFirewatchRows(current.firewatch, checkIdSet),
+        groups: nextGroups,
+        summary: summarizeDashboardGroups(nextGroups),
+      };
+    });
+  }
+
   async function runCheckNow(check: CheckRow) {
     try {
-      const response = await fetch(`/api/checks/${encodeURIComponent(check.id)}/run`, {
-        method: "POST",
-      });
-      const payload = (await response.json().catch(() => ({}))) as {
-        error?: string;
-        runId?: string;
-      };
-
-      if (!response.ok) {
-        throw new Error(payload.error ?? "Unable to queue check run.");
-      }
-
-      setDashboard((current) => {
-        const nextGroups = markCheckQueued(current.groups, check.id);
-
-        return {
-          firewatch: removeFirewatchRow(current.firewatch, check.id),
-          groups: nextGroups,
-          summary: summarizeDashboardGroups(nextGroups),
-        };
-      });
+      await queueCheckRun(check);
+      markChecksQueued([check.id]);
       setNotice("");
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -485,8 +508,32 @@ export default function DashboardClient({
   }
 
   async function runAllFailedChecks() {
-    for (const check of failedChecks) {
-      await runCheckNow(check);
+    const checksToRun = failedChecks;
+
+    if (checksToRun.length === 0) {
+      return;
+    }
+
+    markChecksQueued(checksToRun.map((check) => check.id));
+    setNotice("");
+
+    const failedQueues = (
+      await Promise.all(
+        checksToRun.map(async (check) => {
+          try {
+            await queueCheckRun(check);
+            return undefined;
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+
+            return `${check.name}: ${message}`;
+          }
+        }),
+      )
+    ).filter((message): message is string => Boolean(message));
+
+    if (failedQueues.length > 0) {
+      setNotice(`Failed to queue ${failedQueues.join("; ")}`);
     }
   }
 
@@ -726,33 +773,76 @@ function createEmptyFirewatchSnapshot(): DashboardFirewatch {
   };
 }
 
-function removeFirewatchRow(
+function removeFirewatchRows(
   firewatch: DashboardFirewatch,
-  checkId: string,
+  checkIds: Set<string>,
 ): DashboardFirewatch {
   return {
     ...firewatch,
-    rows: firewatch.rows.filter((row) => row.checkId !== checkId),
+    rows: firewatch.rows.filter((row) => !checkIds.has(row.checkId)),
   };
 }
 
-function markCheckQueued(groups: GroupRow[], checkId: string): GroupRow[] {
+function applyOptimisticQueuedSnapshot(
+  dashboard: DashboardSnapshot,
+  checkIds: Set<string>,
+): DashboardSnapshot {
+  if (checkIds.size === 0) {
+    return dashboard;
+  }
+
+  const groups = markDashboardChecksQueued(dashboard.groups, checkIds);
+
+  return {
+    firewatch: removeFirewatchRows(dashboard.firewatch, checkIds),
+    groups,
+    summary: summarizeDashboardGroups(groups),
+  };
+}
+
+function retainOptimisticQueuedCheckIds(
+  groups: GroupRow[],
+  checkIds: Set<string>,
+): Set<string> {
+  if (checkIds.size === 0) {
+    return checkIds;
+  }
+
+  const retainedIds = new Set<string>();
+  const checksById = new Map(
+    groups.flatMap((group) => group.children ?? []).map((check) => [check.id, check]),
+  );
+
+  for (const checkId of checkIds) {
+    const check = checksById.get(checkId);
+
+    if (check?.status === "failing") {
+      retainedIds.add(checkId);
+    }
+  }
+
+  return retainedIds;
+}
+
+function markDashboardChecksQueued(
+  groups: GroupRow[],
+  checkIds: Set<string>,
+): GroupRow[] {
   return groups.map((group) => {
     if (!group.children) {
       return group;
     }
 
     const children = group.children.map((check) =>
-      check.id === checkId ? markQueuedCheck(check) : check,
+      checkIds.has(check.id) ? markQueuedCheck(check) : check,
     );
+    const groupHasQueuedCheck = children.some((check) => checkIds.has(check.id));
 
     return {
       ...group,
       children,
       status: summarizeDashboardStatus(children.map((check) => check.status)),
-      updated: children.some((check) => check.id === checkId)
-        ? "queued"
-        : group.updated,
+      updated: groupHasQueuedCheck ? "queued" : group.updated,
     };
   });
 }
@@ -859,7 +949,7 @@ function FirewatchPanel({
 
   return (
     <section className="overflow-hidden rounded-md border border-slate-800 bg-[#11161d]">
-      <div className="flex items-center justify-between gap-3 px-4 py-4 sm:px-5">
+      <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
         <button
           aria-controls="firewatch-panel"
           aria-expanded={open}
@@ -879,11 +969,23 @@ function FirewatchPanel({
             Firewatch
           </span>
         </button>
-        {count > 0 ? (
-          <span className="rounded-md border border-red-500/30 bg-red-500/10 px-2 py-1 text-xs font-semibold text-red-300">
-            {count}
-          </span>
-        ) : null}
+        <div className="flex flex-wrap items-center gap-2">
+          {count > 0 ? (
+            <span className="rounded-md border border-red-500/30 bg-red-500/10 px-2 py-1 text-xs font-semibold text-red-300">
+              {count}
+            </span>
+          ) : null}
+          {failedChecksCount > 0 ? (
+            <button
+              className="inline-flex h-9 items-center gap-2 rounded-md bg-blue-600 px-3 text-sm font-semibold text-white hover:bg-blue-500"
+              onClick={onRunFailedChecks}
+              type="button"
+            >
+              <Zap className="h-4 w-4" />
+              Restart all failed checks
+            </button>
+          ) : null}
+        </div>
       </div>
 
       {open ? (
@@ -982,18 +1084,6 @@ function FirewatchPanel({
               No newly failing checks in the last {firewatch.lookbackDays} days.
             </div>
           )}
-          {failedChecksCount > 0 ? (
-            <div className="mt-3 flex justify-end">
-              <button
-                className="inline-flex h-10 items-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-500"
-                onClick={onRunFailedChecks}
-                type="button"
-              >
-                <Zap className="h-4 w-4" />
-                Restart all failed checks
-              </button>
-            </div>
-          ) : null}
         </div>
       ) : null}
     </section>
