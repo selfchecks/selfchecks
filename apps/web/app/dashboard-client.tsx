@@ -99,6 +99,7 @@ type RuntimeSecretDraft = {
   name: string;
   updatedAt?: string;
   value: string;
+  valueMasked?: string;
 };
 
 const AI_CUSTOM_ENDPOINT_VALUE = "__custom__";
@@ -1548,7 +1549,9 @@ function SettingsScreen({
                         ),
                       )
                     }
-                    placeholder={row.hasValue ? "Keep existing value" : "value"}
+                    placeholder={
+                      row.valueMasked ?? (row.hasValue ? "********" : "value")
+                    }
                     type="password"
                     value={row.value}
                   />
@@ -1626,6 +1629,7 @@ function createSecretDraft(
     name: secret.name ?? "",
     updatedAt: secret.updatedAt,
     value: "",
+    valueMasked: secret.valueMasked,
   };
 }
 

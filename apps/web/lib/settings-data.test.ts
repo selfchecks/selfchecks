@@ -4,6 +4,12 @@ const mocks = vi.hoisted(() => ({
   aiSettingsFindUnique: vi.fn(),
   aiSettingsUpsert: vi.fn(),
   projectUpsert: vi.fn(),
+  runtimeEnvironmentFindUnique: vi.fn(),
+  runtimeEnvironmentUpsert: vi.fn(),
+  secretDeleteMany: vi.fn(),
+  secretFindMany: vi.fn(),
+  secretUpsert: vi.fn(),
+  transaction: vi.fn(),
   storedAiSettings: undefined as
     | {
         apiEndpoint: string;
@@ -12,6 +18,12 @@ const mocks = vi.hoisted(() => ({
         responseLanguage: string;
       }
     | undefined,
+  storedRuntimeVariables: {} as Record<string, string>,
+  storedSecrets: [] as Array<{
+    name: string;
+    updatedAt: Date;
+    valueCiphertext: string;
+  }>,
 }));
 
 vi.mock("./prisma", () => ({
@@ -23,16 +35,32 @@ vi.mock("./prisma", () => ({
     project: {
       upsert: mocks.projectUpsert,
     },
+    runtimeEnvironment: {
+      findUnique: mocks.runtimeEnvironmentFindUnique,
+      upsert: mocks.runtimeEnvironmentUpsert,
+    },
+    secret: {
+      deleteMany: mocks.secretDeleteMany,
+      findMany: mocks.secretFindMany,
+      upsert: mocks.secretUpsert,
+    },
+    $transaction: mocks.transaction,
   },
 }));
 
 import { encryptSecretValue } from "./secret-store";
-import { AI_CUSTOM_ENDPOINT_VALUE, updateAiSettings } from "./settings-data";
+import {
+  AI_CUSTOM_ENDPOINT_VALUE,
+  updateAiSettings,
+  updateRuntimeEnvironmentSettings,
+} from "./settings-data";
 
 describe("settings data", () => {
   beforeEach(() => {
     vi.stubEnv("SELFCHECKS_SECRET_KEY", "settings-test-secret");
     mocks.storedAiSettings = undefined;
+    mocks.storedRuntimeVariables = {};
+    mocks.storedSecrets = [];
     mocks.projectUpsert.mockResolvedValue({
       id: "project_1",
       slug: "default",
@@ -50,6 +78,53 @@ describe("settings data", () => {
 
       return Promise.resolve(mocks.storedAiSettings ?? null);
     });
+    mocks.runtimeEnvironmentFindUnique.mockImplementation(() =>
+      Promise.resolve({
+        variables: mocks.storedRuntimeVariables,
+      }),
+    );
+    mocks.runtimeEnvironmentUpsert.mockImplementation((args) => {
+      mocks.storedRuntimeVariables = args.update.variables ?? args.create.variables;
+
+      return Promise.resolve({
+        name: args.create.name,
+        variables: mocks.storedRuntimeVariables,
+      });
+    });
+    mocks.secretFindMany.mockImplementation(() =>
+      Promise.resolve([...mocks.storedSecrets]),
+    );
+    mocks.secretDeleteMany.mockImplementation((args) => {
+      const keepNames = args.where.name?.notIn;
+
+      mocks.storedSecrets = Array.isArray(keepNames)
+        ? mocks.storedSecrets.filter((secret) => keepNames.includes(secret.name))
+        : [];
+
+      return Promise.resolve({
+        count: 0,
+      });
+    });
+    mocks.secretUpsert.mockImplementation((args) => {
+      const name = args.where.projectId_name.name;
+      const existingIndex = mocks.storedSecrets.findIndex(
+        (secret) => secret.name === name,
+      );
+      const nextSecret = {
+        name,
+        updatedAt: new Date("2026-06-24T10:00:00.000Z"),
+        valueCiphertext: args.update.valueCiphertext ?? args.create.valueCiphertext,
+      };
+
+      if (existingIndex === -1) {
+        mocks.storedSecrets.push(nextSecret);
+      } else {
+        mocks.storedSecrets[existingIndex] = nextSecret;
+      }
+
+      return Promise.resolve(nextSecret);
+    });
+    mocks.transaction.mockImplementation((operations) => Promise.all(operations));
     mocks.aiSettingsUpsert.mockImplementation((args) => {
       mocks.storedAiSettings = {
         apiEndpoint: args.create.apiEndpoint,
@@ -162,5 +237,34 @@ describe("settings data", () => {
     ).rejects.toThrow("AI API endpoint must be a valid URL.");
 
     expect(mocks.aiSettingsUpsert).not.toHaveBeenCalled();
+  });
+
+  it("returns masked runtime secret values after saving secrets", async () => {
+    const settings = await updateRuntimeEnvironmentSettings({
+      environmentName: "default",
+      projectSlug: "default",
+      secrets: [
+        {
+          name: "API_TOKEN",
+          value: "super-secret-cdef",
+        },
+      ],
+      variables: [],
+    });
+
+    const upsertArgs = mocks.secretUpsert.mock.calls[0]?.[0];
+
+    expect(upsertArgs.create.valueCiphertext).toMatch(/^v1:/);
+    expect(upsertArgs.create.valueCiphertext).not.toBe("super-secret-cdef");
+    expect(settings.secrets).toEqual([
+      {
+        currentName: "API_TOKEN",
+        hasValue: true,
+        name: "API_TOKEN",
+        updatedAt: "2026-06-24T10:00:00.000Z",
+        value: "",
+        valueMasked: "************cdef",
+      },
+    ]);
   });
 });

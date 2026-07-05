@@ -124,6 +124,7 @@ const fixtureSettings: DashboardSettingsData = {
         name: "API_TOKEN",
         updatedAt: "2026-06-24T10:00:00.000Z",
         value: "",
+        valueMasked: "************cdef",
       },
     ],
     variables: [
@@ -620,6 +621,9 @@ describe("DashboardPage", () => {
     expect((screen.getByLabelText("Secret 1 name") as HTMLInputElement).value).toBe(
       "API_TOKEN",
     );
+    expect(
+      (screen.getByLabelText("Secret 1 value") as HTMLInputElement).placeholder,
+    ).toBe("************cdef");
 
     await user.clear(screen.getByLabelText("Domain"));
     await user.type(screen.getByLabelText("Domain"), "checks2.example.com");

@@ -131,6 +131,7 @@ export type RuntimeSecretData = {
   name: string;
   updatedAt: string;
   value?: string;
+  valueMasked?: string;
 };
 
 export type RuntimeEnvironmentSettingsData = {
@@ -552,6 +553,7 @@ async function readRuntimeEnvironmentSettings(
       select: {
         name: true,
         updatedAt: true,
+        valueCiphertext: true,
       },
       where: {
         projectId,
@@ -567,6 +569,7 @@ async function readRuntimeEnvironmentSettings(
       name: secret.name,
       updatedAt: secret.updatedAt.toISOString(),
       value: "",
+      valueMasked: maskSecret(secret.valueCiphertext),
     })),
     variables: parseVariables(runtimeEnvironment?.variables),
   };
