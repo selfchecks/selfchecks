@@ -24,9 +24,9 @@ describe("AppSidebar", () => {
       "/journal",
     );
     expect(screen.getByRole("button", { name: "Settings" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Journal" }).getAttribute("aria-current")).toBe(
-      "page",
-    );
+    expect(
+      screen.getByRole("link", { name: "Journal" }).getAttribute("aria-current"),
+    ).toBe("page");
 
     await user.click(screen.getByRole("button", { name: "Home" }));
     await user.click(screen.getByRole("button", { name: "Settings" }));

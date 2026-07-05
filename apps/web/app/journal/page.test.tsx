@@ -120,13 +120,12 @@ describe("JournalPage", () => {
       (screen.getByRole("combobox", { name: "Status" }) as HTMLSelectElement).value,
     ).toBe("passed");
     expect(
-      (screen.getByRole("combobox", { name: "Check type" }) as HTMLSelectElement)
-        .value,
+      (screen.getByRole("combobox", { name: "Check type" }) as HTMLSelectElement).value,
     ).toBe("api");
     expect(screen.getAllByText("11-12 of 12 runs").length).toBe(2);
-    expect(
-      screen.getByRole("link", { name: "bff-health" }).getAttribute("href"),
-    ).toBe("/checks/check_1");
+    expect(screen.getByRole("link", { name: "bff-health" }).getAttribute("href")).toBe(
+      "/checks/check_1",
+    );
     expect(
       screen.getByRole("link", { name: /Jul 05 14:20/ }).getAttribute("href"),
     ).toBe("/checks/check_1/runs/run_1");

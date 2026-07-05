@@ -431,9 +431,7 @@ export async function getJournalData(
   }
 }
 
-function normalizeJournalFilters(
-  options: JournalDataOptions,
-): JournalData["filters"] {
+function normalizeJournalFilters(options: JournalDataOptions): JournalData["filters"] {
   const pageSize = clampInteger(
     options.pageSize,
     JOURNAL_DEFAULT_PAGE_SIZE,
