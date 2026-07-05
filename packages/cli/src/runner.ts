@@ -79,6 +79,7 @@ export type CollectedRunArtifact = {
 };
 
 const MAX_RESPONSE_BODY_CHARS = 20_000;
+const DEFAULT_ARTIFACTS_DIR = ".selfchecks/artifacts";
 
 export async function runChecks(options: RunChecksOptions): Promise<RunChecksSummary> {
   const startedAt = Date.now();
@@ -353,6 +354,7 @@ async function runBrowserCheck(
   }
 
   const artifactStartedAt = Date.now();
+  const artifactPaths = createBrowserArtifactPaths(options.rootDir, run?.id);
   const logs = await runProcess({
     args: [
       "playwright",
@@ -360,18 +362,28 @@ async function runBrowserCheck(
       check.entrypoint,
       "--config",
       "playwright.config.ts",
+      "--output",
+      artifactPaths.testResultsDir,
       "--reporter",
       options.reporter,
     ],
     command: "npx",
     env: options.env,
+    processEnv: {
+      PLAYWRIGHT_BLOB_OUTPUT_DIR: artifactPaths.blobReportDir,
+      PLAYWRIGHT_HTML_OUTPUT_DIR: artifactPaths.htmlReportDir,
+    },
     rootDir: options.rootDir,
   });
   const logsPath = run
     ? await writeRunLog(options.rootDir, run.id, logs.output)
     : undefined;
   const artifacts = run
-    ? await collectRunArtifacts(options.rootDir, artifactStartedAt, logsPath)
+    ? await collectRunArtifacts(artifactStartedAt, logsPath, [
+        artifactPaths.testResultsDir,
+        artifactPaths.htmlReportDir,
+        artifactPaths.blobReportDir,
+      ])
     : [];
 
   return {
@@ -379,6 +391,7 @@ async function runBrowserCheck(
     errorMessage: logs.exitCode === 0 ? undefined : logs.output.slice(-4000),
     logsPath,
     resultJson: {
+      artifactOutputDir: artifactPaths.testResultsDir,
       command: `npx playwright test ${check.entrypoint}`,
       exitCode: logs.exitCode,
     },
@@ -436,11 +449,13 @@ async function runProcess({
   args,
   command,
   env,
+  processEnv,
   rootDir,
 }: {
   args: string[];
   command: string;
   env: EnvVar[];
+  processEnv?: Record<string, string>;
   rootDir: string;
 }): Promise<{ exitCode: number; output: string }> {
   return new Promise((resolve) => {
@@ -449,6 +464,7 @@ async function runProcess({
       env: {
         ...process.env,
         ...Object.fromEntries(env.map((item) => [item.name, item.value])),
+        ...processEnv,
       },
       shell: false,
     });
@@ -511,9 +527,9 @@ async function recordRunArtifacts(
 }
 
 async function collectRunArtifacts(
-  rootDir: string,
   startedAt: number,
   logsPath: string | undefined,
+  browserArtifactDirs: string[],
 ): Promise<CollectedRunArtifact[]> {
   const artifacts: CollectedRunArtifact[] = [];
 
@@ -526,7 +542,7 @@ async function collectRunArtifacts(
   }
 
   const discoveredArtifacts = await collectBrowserArtifactFiles(
-    rootDir,
+    browserArtifactDirs,
     startedAt,
   ).catch((error) => {
     console.warn("Unable to collect browser artifacts.", error);
@@ -539,13 +555,9 @@ async function collectRunArtifacts(
 }
 
 async function collectBrowserArtifactFiles(
-  rootDir: string,
+  directories: string[],
   startedAt: number,
 ): Promise<CollectedRunArtifact[]> {
-  const directories = [
-    path.join(rootDir, "test-results"),
-    path.join(rootDir, "playwright-report"),
-  ];
   const seen = new Set<string>();
   const artifacts = (
     await Promise.all(
@@ -554,6 +566,19 @@ async function collectBrowserArtifactFiles(
   ).flat();
 
   return artifacts.slice(0, 100);
+}
+
+function createBrowserArtifactPaths(rootDir: string, runId: string | undefined) {
+  const artifactRunId = runId ?? `local-${process.pid}-${Date.now()}`;
+  const artifactsDir =
+    process.env.SELFCHECKS_ARTIFACTS_DIR?.trim() || DEFAULT_ARTIFACTS_DIR;
+  const artifactRoot = path.resolve(rootDir, artifactsDir, artifactRunId);
+
+  return {
+    blobReportDir: path.join(artifactRoot, "blob-report"),
+    htmlReportDir: path.join(artifactRoot, "playwright-report"),
+    testResultsDir: path.join(artifactRoot, "test-results"),
+  };
 }
 
 async function walkArtifactDirectory(
