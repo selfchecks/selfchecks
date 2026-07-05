@@ -26,7 +26,6 @@ import {
   FileText,
   Folder,
   Gauge,
-  Home,
   History,
   KeyRound,
   LockKeyhole,
@@ -47,6 +46,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
+import { AppSidebar } from "@/components/app-sidebar";
 import { ServiceMark } from "@/components/service-mark";
 import { cn } from "@/lib/utils";
 import type {
@@ -74,12 +74,6 @@ type DashboardSnapshot = {
   summary: DashboardSummary;
 };
 
-type NavItem = {
-  id: ActiveView;
-  icon: LucideIcon;
-  label: string;
-};
-
 type CheckRow = DashboardCheckRow;
 type GroupRow = DashboardGroupRow;
 type FilterOption<T extends string> = {
@@ -103,11 +97,6 @@ type RuntimeSecretDraft = {
 };
 
 const AI_CUSTOM_ENDPOINT_VALUE = "__custom__";
-
-const sidebarItems: NavItem[] = [
-  { icon: Home, id: "dashboard", label: "Home" },
-  { icon: Settings2, id: "settings", label: "Settings" },
-];
 
 const dateRangeLabels: Record<DateRange, string> = {
   "24h": "Last 24 hours",
@@ -206,15 +195,17 @@ const traceFilterOptions = [
 ] satisfies Array<FilterOption<TraceFilter>>;
 
 export default function DashboardClient({
+  initialActiveView = "dashboard",
   initialGroups,
   initialSettings,
   initialSummary,
 }: {
+  initialActiveView?: ActiveView;
   initialGroups: GroupRow[];
   initialSettings: DashboardSettingsData;
   initialSummary: DashboardSummary;
 }) {
-  const [activeView, setActiveView] = useState<ActiveView>("dashboard");
+  const [activeView, setActiveView] = useState<ActiveView>(initialActiveView);
   const [dashboard, setDashboard] = useState<DashboardSnapshot>(() => ({
     groups: initialGroups,
     summary: initialSummary,
@@ -475,9 +466,9 @@ export default function DashboardClient({
   return (
     <main className="min-h-screen bg-[#0d1117] text-slate-200">
       <h1 className="sr-only">Synthetic checks dashboard</h1>
-      <Sidebar
-        activeView={activeView}
-        onDashboardClick={resetDashboard}
+      <AppSidebar
+        activeItem={activeView === "settings" ? "settings" : "home"}
+        onHomeClick={resetDashboard}
         onSettingsClick={openSettings}
       />
 
@@ -787,60 +778,6 @@ function summarizeDashboardStatus(statuses: Status[]): Status {
   }
 
   return "passing";
-}
-
-function Sidebar({
-  activeView,
-  onDashboardClick,
-  onSettingsClick,
-}: {
-  activeView: ActiveView;
-  onDashboardClick: () => void;
-  onSettingsClick: () => void;
-}) {
-  return (
-    <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 flex-col border-r border-slate-800 bg-[#12171f] xl:flex">
-      <button
-        className="flex h-16 w-full items-center gap-3 border-b border-slate-800 px-5 text-left hover:bg-slate-800/50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500/40"
-        onClick={onDashboardClick}
-        type="button"
-      >
-        <ServiceMark className="h-9 w-9 shrink-0 rounded-md" />
-        <div className="min-w-0">
-          <div className="truncate text-sm font-semibold text-slate-100">
-            SelfChecks
-          </div>
-          <div className="truncate text-xs text-slate-500">Synthetic monitoring</div>
-        </div>
-      </button>
-
-      <nav className="flex-1 overflow-y-auto px-4 py-5">
-        <div className="space-y-1">
-          {sidebarItems.map((item) => {
-            const Icon = item.icon;
-            const active = item.id === activeView;
-
-            return (
-              <button
-                className={cn(
-                  "flex h-9 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-medium",
-                  active
-                    ? "bg-slate-700 text-slate-100"
-                    : "text-slate-400 hover:bg-slate-800 hover:text-slate-200",
-                )}
-                key={item.label}
-                onClick={item.id === "dashboard" ? onDashboardClick : onSettingsClick}
-                type="button"
-              >
-                <Icon className="h-4 w-4 shrink-0" />
-                <span className="min-w-0 flex-1 truncate">{item.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </nav>
-    </aside>
-  );
 }
 
 function Topbar({

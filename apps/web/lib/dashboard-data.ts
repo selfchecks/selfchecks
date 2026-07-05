@@ -23,6 +23,63 @@ type DashboardData = {
   summary: DashboardSummary;
 };
 
+export type JournalRangeFilter = "24h" | "7d" | "30d" | "all";
+export type JournalRunStatusFilter =
+  | "all"
+  | "cancelled"
+  | "failed"
+  | "passed"
+  | "queued"
+  | "running"
+  | "timed_out";
+export type JournalRunTypeFilter = "all" | DashboardCheckRow["type"];
+
+export type JournalDataOptions = {
+  page?: number;
+  pageSize?: number;
+  query?: string;
+  range?: JournalRangeFilter;
+  status?: JournalRunStatusFilter;
+  type?: JournalRunTypeFilter;
+};
+
+export type JournalRunRow = DashboardRunRow & {
+  checkHref: string;
+  checkId: string;
+  checkKey: string;
+  checkName: string;
+  checkTags: string[];
+  checkType: DashboardCheckRow["type"];
+  createdAtLabel: string;
+  groupName: string;
+  runHref: string;
+  schedule: string;
+  sessionName?: string;
+};
+
+export type JournalData = {
+  filters: {
+    page: number;
+    pageSize: number;
+    query: string;
+    range: JournalRangeFilter;
+    status: JournalRunStatusFilter;
+    type: JournalRunTypeFilter;
+  };
+  pagination: {
+    from: number;
+    hasNext: boolean;
+    hasPrevious: boolean;
+    page: number;
+    pageSize: number;
+    to: number;
+    total: number;
+    totalPages: number;
+  };
+  projectSlug: string;
+  runs: JournalRunRow[];
+};
+
 export type CheckDetailData = {
   check: DashboardCheckRow;
   groupName: string;
@@ -93,6 +150,28 @@ export type RunDetailData = {
 };
 
 type CheckWithRuns = Awaited<ReturnType<typeof fetchChecks>>[number];
+type CheckRunWhere = NonNullable<
+  NonNullable<Parameters<typeof prisma.checkRun.findMany>[0]>["where"]
+>;
+type MappableRun = {
+  artifacts: Array<{
+    id: string;
+    mimeType: string | null;
+    path: string;
+    sizeBytes: number | null;
+    type: string;
+  }>;
+  createdAt: Date;
+  durationMs: number | null;
+  errorMessage: string | null;
+  id: string;
+  logsPath: string | null;
+  result: unknown;
+  status: string;
+};
+
+const JOURNAL_DEFAULT_PAGE_SIZE = 20;
+const JOURNAL_MAX_PAGE_SIZE = 100;
 
 export async function getDashboardData(projectSlug: string): Promise<DashboardData> {
   try {
@@ -264,6 +343,290 @@ export async function getRunDetailData(
   }
 }
 
+export async function getJournalData(
+  projectSlug: string,
+  options: JournalDataOptions = {},
+): Promise<JournalData> {
+  const filters = normalizeJournalFilters(options);
+
+  try {
+    await cancelStaleQueuedRuns();
+
+    const project =
+      (await prisma.project.findUnique({
+        select: {
+          id: true,
+          slug: true,
+        },
+        where: {
+          slug: projectSlug,
+        },
+      })) ??
+      (await prisma.project.findFirst({
+        orderBy: {
+          createdAt: "desc",
+        },
+        select: {
+          id: true,
+          slug: true,
+        },
+      }));
+
+    if (!project) {
+      return createEmptyJournal(projectSlug, filters);
+    }
+
+    const where = buildJournalWhere(project.id, filters);
+    const total = await prisma.checkRun.count({ where });
+    const totalPages = Math.max(1, Math.ceil(total / filters.pageSize));
+    const page = Math.min(filters.page, totalPages);
+    const skip = (page - 1) * filters.pageSize;
+    const runs = await prisma.checkRun.findMany({
+      include: {
+        artifacts: {
+          orderBy: {
+            createdAt: "desc",
+          },
+        },
+        check: {
+          include: {
+            group: true,
+          },
+        },
+        testSession: {
+          select: {
+            name: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      skip,
+      take: filters.pageSize,
+      where,
+    });
+
+    return {
+      filters: {
+        ...filters,
+        page,
+      },
+      pagination: {
+        from: total === 0 ? 0 : skip + 1,
+        hasNext: page < totalPages,
+        hasPrevious: page > 1,
+        page,
+        pageSize: filters.pageSize,
+        to: skip + runs.length,
+        total,
+        totalPages,
+      },
+      projectSlug: project.slug,
+      runs: runs.map(mapJournalRun),
+    };
+  } catch (error) {
+    console.warn("Unable to load journal data.", error);
+    return createEmptyJournal(projectSlug, filters);
+  }
+}
+
+function normalizeJournalFilters(
+  options: JournalDataOptions,
+): JournalData["filters"] {
+  const pageSize = clampInteger(
+    options.pageSize,
+    JOURNAL_DEFAULT_PAGE_SIZE,
+    1,
+    JOURNAL_MAX_PAGE_SIZE,
+  );
+
+  return {
+    page: clampInteger(options.page, 1, 1, Number.MAX_SAFE_INTEGER),
+    pageSize,
+    query: options.query?.trim() ?? "",
+    range: normalizeJournalRange(options.range),
+    status: normalizeJournalStatus(options.status),
+    type: normalizeJournalType(options.type),
+  };
+}
+
+function normalizeJournalRange(
+  value: JournalRangeFilter | undefined,
+): JournalRangeFilter {
+  return value === "24h" || value === "7d" || value === "30d" || value === "all"
+    ? value
+    : "7d";
+}
+
+function normalizeJournalStatus(
+  value: JournalRunStatusFilter | undefined,
+): JournalRunStatusFilter {
+  return value === "queued" ||
+    value === "running" ||
+    value === "passed" ||
+    value === "failed" ||
+    value === "timed_out" ||
+    value === "cancelled" ||
+    value === "all"
+    ? value
+    : "all";
+}
+
+function normalizeJournalType(
+  value: JournalRunTypeFilter | undefined,
+): JournalRunTypeFilter {
+  return value === "api" || value === "browser" || value === "all" ? value : "all";
+}
+
+function clampInteger(
+  value: number | undefined,
+  fallback: number,
+  min: number,
+  max: number,
+) {
+  if (typeof value !== "number" || !Number.isSafeInteger(value)) {
+    return fallback;
+  }
+
+  return Math.min(max, Math.max(min, value));
+}
+
+function buildJournalWhere(
+  projectId: string,
+  filters: JournalData["filters"],
+): CheckRunWhere {
+  const where: CheckRunWhere = {
+    check: {
+      enabled: true,
+      projectId,
+      ...(filters.type === "all"
+        ? {}
+        : { type: filters.type.toUpperCase() as "API" | "BROWSER" }),
+    },
+  };
+  const status = mapJournalStatusFilter(filters.status);
+  const cutoff = getJournalRangeCutoff(filters.range);
+  const query = filters.query.trim();
+
+  if (status) {
+    where.status = status;
+  }
+
+  if (cutoff) {
+    where.createdAt = {
+      gte: cutoff,
+    };
+  }
+
+  if (query) {
+    where.OR = [
+      {
+        id: {
+          contains: query,
+          mode: "insensitive",
+        },
+      },
+      {
+        errorMessage: {
+          contains: query,
+          mode: "insensitive",
+        },
+      },
+      {
+        check: {
+          key: {
+            contains: query,
+            mode: "insensitive",
+          },
+        },
+      },
+      {
+        check: {
+          name: {
+            contains: query,
+            mode: "insensitive",
+          },
+        },
+      },
+      {
+        check: {
+          tags: {
+            has: query,
+          },
+        },
+      },
+    ];
+  }
+
+  return where;
+}
+
+function mapJournalStatusFilter(
+  status: JournalRunStatusFilter,
+): "CANCELLED" | "FAILED" | "PASSED" | "QUEUED" | "RUNNING" | "TIMED_OUT" | undefined {
+  if (status === "all") {
+    return undefined;
+  }
+
+  return status.toUpperCase() as
+    | "CANCELLED"
+    | "FAILED"
+    | "PASSED"
+    | "QUEUED"
+    | "RUNNING"
+    | "TIMED_OUT";
+}
+
+function getJournalRangeCutoff(range: JournalRangeFilter): Date | undefined {
+  if (range === "all") {
+    return undefined;
+  }
+
+  const days = range === "24h" ? 1 : range === "7d" ? 7 : 30;
+
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+}
+
+function mapJournalRun(
+  run: MappableRun & {
+    check: {
+      frequencyMinutes: number | null;
+      group: {
+        name: string;
+      } | null;
+      id: string;
+      key: string;
+      name: string;
+      tags: string[];
+      type: string;
+    };
+    testSession: {
+      name: string | null;
+    } | null;
+  },
+): JournalRunRow {
+  return {
+    ...mapRun(run),
+    checkHref: `/checks/${encodeURIComponent(run.check.id)}`,
+    checkId: run.check.id,
+    checkKey: run.check.key,
+    checkName: run.check.name,
+    checkTags: run.check.tags,
+    checkType: run.check.type.toLowerCase() as DashboardCheckRow["type"],
+    createdAtLabel: formatRunTimestamp(run.createdAt),
+    groupName: run.check.group?.name ?? "Ungrouped",
+    runHref: `/checks/${encodeURIComponent(run.check.id)}/runs/${encodeURIComponent(
+      run.id,
+    )}`,
+    schedule:
+      typeof run.check.frequencyMinutes === "number"
+        ? `${run.check.frequencyMinutes} min`
+        : "manual",
+    sessionName: run.testSession?.name ?? undefined,
+  };
+}
+
 async function fetchChecks(projectId: string) {
   return prisma.check.findMany({
     include: {
@@ -374,7 +737,7 @@ function mapCheck(check: CheckWithRuns): DashboardCheckRow {
   };
 }
 
-function mapRun(run: CheckWithRuns["runs"][number]): DashboardRunRow {
+function mapRun(run: MappableRun): DashboardRunRow {
   return {
     artifacts: mapRunArtifacts(run),
     createdAt: run.createdAt.toISOString(),
@@ -831,7 +1194,7 @@ function formatSourceLabel(value: string): string {
   return formatOperatorLabel(value);
 }
 
-function mapRunArtifacts(run: CheckWithRuns["runs"][number]): DashboardRunArtifact[] {
+function mapRunArtifacts(run: MappableRun): DashboardRunArtifact[] {
   const artifacts = run.artifacts.map((artifact) => ({
     downloadUrl: buildArtifactUrl(run.id, artifact.id, true),
     id: artifact.id,
@@ -1079,7 +1442,7 @@ function formatBytes(value: number | undefined): string {
   return `${value} B`;
 }
 
-function formatRunAge(run: CheckWithRuns["runs"][number] | undefined): string {
+function formatRunAge(run: MappableRun | undefined): string {
   if (!run) {
     return "not run yet";
   }
@@ -1095,7 +1458,7 @@ function formatRunAge(run: CheckWithRuns["runs"][number] | undefined): string {
   return formatRelative(run.createdAt);
 }
 
-function formatBarTimestamp(run: CheckWithRuns["runs"][number]): string {
+function formatBarTimestamp(run: MappableRun): string {
   if (run.status === "QUEUED") {
     return "Queued";
   }
@@ -1182,5 +1545,26 @@ function createEmptyDashboard(projectSlug: string): DashboardData {
       passing: 0,
       running: 0,
     },
+  };
+}
+
+function createEmptyJournal(
+  projectSlug: string,
+  filters: JournalData["filters"],
+): JournalData {
+  return {
+    filters,
+    pagination: {
+      from: 0,
+      hasNext: false,
+      hasPrevious: false,
+      page: filters.page,
+      pageSize: filters.pageSize,
+      to: 0,
+      total: 0,
+      totalPages: 1,
+    },
+    projectSlug,
+    runs: [],
   };
 }

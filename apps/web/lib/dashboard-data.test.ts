@@ -3,7 +3,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   checkFindFirst: vi.fn(),
   checkFindMany: vi.fn(),
+  checkRunCount: vi.fn(),
   checkRunFindFirst: vi.fn(),
+  checkRunFindMany: vi.fn(),
   checkRunUpdateMany: vi.fn(),
   projectFindFirst: vi.fn(),
   projectFindUnique: vi.fn(),
@@ -16,7 +18,9 @@ vi.mock("@/lib/prisma", () => ({
       findMany: mocks.checkFindMany,
     },
     checkRun: {
+      count: mocks.checkRunCount,
       findFirst: mocks.checkRunFindFirst,
+      findMany: mocks.checkRunFindMany,
       updateMany: mocks.checkRunUpdateMany,
     },
     project: {
@@ -26,7 +30,12 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-import { getCheckDetailData, getDashboardData, getRunDetailData } from "./dashboard-data";
+import {
+  getCheckDetailData,
+  getDashboardData,
+  getJournalData,
+  getRunDetailData,
+} from "./dashboard-data";
 
 describe("dashboard data", () => {
   afterEach(() => {
@@ -355,6 +364,100 @@ describe("dashboard data", () => {
       failing: 0,
       passing: 0,
       running: 1,
+    });
+  });
+
+  it("loads journal rows with filters, links and pagination", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-05T12:00:00.000Z"));
+    mocks.checkRunUpdateMany.mockResolvedValue({ count: 0 });
+    mocks.projectFindUnique.mockResolvedValue({
+      id: "project_1",
+      slug: "default",
+    });
+    mocks.checkRunCount.mockResolvedValue(2);
+    mocks.checkRunFindMany.mockResolvedValue([
+      {
+        artifacts: [
+          {
+            createdAt: new Date("2026-07-05T11:20:00.000Z"),
+            id: "artifact_1",
+            mimeType: "application/zip",
+            path: "/tmp/trace.zip",
+            sizeBytes: 1024,
+            type: "TRACE",
+          },
+        ],
+        check: {
+          frequencyMinutes: 15,
+          group: {
+            name: "API / Bff",
+          },
+          id: "check_1",
+          key: "bff-health",
+          name: "bff-health",
+          tags: ["api", "bff"],
+          type: "API",
+        },
+        createdAt: new Date("2026-07-05T11:20:00.000Z"),
+        durationMs: 810,
+        errorMessage: null,
+        id: "run_1",
+        logsPath: null,
+        result: null,
+        status: "PASSED",
+        testSession: null,
+      },
+    ]);
+
+    const journal = await getJournalData("default", {
+      page: 2,
+      pageSize: 1,
+      query: "health",
+      range: "7d",
+      status: "passed",
+      type: "api",
+    });
+
+    expect(mocks.checkRunCount).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        check: expect.objectContaining({
+          enabled: true,
+          projectId: "project_1",
+          type: "API",
+        }),
+        createdAt: {
+          gte: new Date("2026-06-28T12:00:00.000Z"),
+        },
+        status: "PASSED",
+      }),
+    });
+    expect(mocks.checkRunFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: {
+          createdAt: "desc",
+        },
+        skip: 1,
+        take: 1,
+      }),
+    );
+    expect(journal.pagination).toMatchObject({
+      from: 2,
+      hasNext: false,
+      hasPrevious: true,
+      page: 2,
+      pageSize: 1,
+      to: 2,
+      total: 2,
+      totalPages: 2,
+    });
+    expect(journal.runs[0]).toMatchObject({
+      checkHref: "/checks/check_1",
+      checkName: "bff-health",
+      groupName: "API / Bff",
+      runHref: "/checks/check_1/runs/run_1",
+      schedule: "15 min",
+      status: "passing",
     });
   });
 });
