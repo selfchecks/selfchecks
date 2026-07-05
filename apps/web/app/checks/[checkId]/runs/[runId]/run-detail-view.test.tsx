@@ -145,6 +145,14 @@ const browserDetail: RunDetailData = {
   groupName: "App / Regress",
   run: {
     ...detail.run,
+    aiAnalysis: {
+      apiEndpoint: "https://openrouter.ai/api/v1",
+      content: "Вероятная причина: селектор поля поиска не найден.",
+      createdAt: "2026-06-24T13:21:00.000Z",
+      model: "openai/gpt-5-mini",
+      responseLanguage: "Russian",
+      status: "completed",
+    },
     request: undefined,
     response: undefined,
     resultFields: [
@@ -245,6 +253,10 @@ describe("RunDetailView", () => {
     expect(screen.queryByText("No assertions recorded for this run.")).toBeNull();
     expect(screen.queryByText("Request data")).toBeNull();
     expect(screen.queryByText("No request data recorded for this run.")).toBeNull();
+    expect(screen.getByText("AI analysis")).toBeTruthy();
+    expect(
+      screen.getByText("Вероятная причина: селектор поля поиска не найден."),
+    ).toBeTruthy();
     expect(screen.getByText("Result data")).toBeTruthy();
     expect(screen.getByText("trace.zip")).toBeTruthy();
   });

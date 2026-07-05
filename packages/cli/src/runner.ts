@@ -12,6 +12,8 @@ import {
   type TestSession,
 } from "@selfchecks/db";
 
+import { analyzeFailedCheck } from "./ai-analysis.js";
+
 export type EnvVar = {
   name: string;
   value: string;
@@ -61,7 +63,7 @@ type RunnableCheck = Check & {
   runs: CheckRun[];
 };
 
-type CheckExecutionResult = {
+export type CheckExecutionResult = {
   artifacts?: CollectedRunArtifact[];
   errorMessage?: string;
   logsPath?: string;
@@ -69,7 +71,7 @@ type CheckExecutionResult = {
   status: CheckRunStatus;
 };
 
-type CollectedRunArtifact = {
+export type CollectedRunArtifact = {
   mimeType?: string;
   path: string;
   sizeBytes?: number;
@@ -229,6 +231,22 @@ async function runCheck(
   const result = await executeCheck(check, options, run);
   const finishedAt = new Date();
   const durationMs = finishedAt.getTime() - startedAt.getTime();
+  let resultJson = result.resultJson;
+
+  if (run && result.status !== "passed") {
+    const aiAnalysis = await analyzeFailedCheck({
+      check,
+      options,
+      result,
+    });
+
+    if (aiAnalysis) {
+      resultJson = {
+        ...resultJson,
+        aiAnalysis,
+      };
+    }
+  }
 
   if (run) {
     await prisma.checkRun.update({
@@ -237,7 +255,7 @@ async function runCheck(
         errorMessage: result.errorMessage,
         finishedAt,
         logsPath: result.logsPath,
-        result: result.resultJson as Prisma.InputJsonValue,
+        result: resultJson as Prisma.InputJsonValue,
         status: toPrismaRunStatus(result.status),
       },
       where: {

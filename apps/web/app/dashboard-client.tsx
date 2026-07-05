@@ -10,6 +10,7 @@ import {
 } from "react";
 import {
   ArrowDownUp,
+  Bot,
   CalendarDays,
   Check,
   CheckCircle2,
@@ -99,6 +100,8 @@ type RuntimeSecretDraft = {
   updatedAt?: string;
   value: string;
 };
+
+const AI_CUSTOM_ENDPOINT_VALUE = "__custom__";
 
 const sidebarItems: NavItem[] = [
   { icon: Home, id: "dashboard", label: "Home" },
@@ -865,16 +868,25 @@ function SettingsScreen({
 }) {
   const [basicDraft, setBasicDraft] = useState(() => ({
     domain: settings.basic.domain,
-    login: settings.basic.login,
-    notificationEmail: settings.basic.notificationEmail,
+  }));
+  const [securityDraft, setSecurityDraft] = useState(() => ({
     password: "",
     passwordConfirm: "",
+  }));
+  const [aiDraft, setAiDraft] = useState(() => ({
+    apiEndpointOption: settings.ai.apiEndpointOption,
+    apiKey: "",
+    customEndpoint: settings.ai.customEndpoint,
+    model: settings.ai.model,
+    responseLanguage: settings.ai.responseLanguage,
   }));
   const [notice, setNotice] = useState("");
   const [secretRows, setSecretRows] = useState<RuntimeSecretDraft[]>(() =>
     settings.environment.secrets.map(createSecretDraft),
   );
+  const [savingAi, setSavingAi] = useState(false);
   const [savingBasic, setSavingBasic] = useState(false);
+  const [savingSecurity, setSavingSecurity] = useState(false);
   const [savingRuntime, setSavingRuntime] = useState(false);
   const [variableRows, setVariableRows] = useState<RuntimeVariableDraft[]>(() =>
     settings.environment.variables.map(createVariableDraft),
@@ -883,17 +895,53 @@ function SettingsScreen({
   useEffect(() => {
     setBasicDraft({
       domain: settings.basic.domain,
-      login: settings.basic.login,
-      notificationEmail: settings.basic.notificationEmail,
+    });
+    setSecurityDraft({
       password: "",
       passwordConfirm: "",
     });
   }, [settings.basic]);
 
   useEffect(() => {
+    setAiDraft({
+      apiEndpointOption: settings.ai.apiEndpointOption,
+      apiKey: "",
+      customEndpoint: settings.ai.customEndpoint,
+      model: settings.ai.model,
+      responseLanguage: settings.ai.responseLanguage,
+    });
+  }, [settings.ai]);
+
+  useEffect(() => {
     setSecretRows(settings.environment.secrets.map(createSecretDraft));
     setVariableRows(settings.environment.variables.map(createVariableDraft));
   }, [settings.environment]);
+
+  const selectedAiEndpoint =
+    aiDraft.apiEndpointOption === AI_CUSTOM_ENDPOINT_VALUE
+      ? aiDraft.customEndpoint
+      : (settings.ai.endpointOptions.find(
+          (option) => option.value === aiDraft.apiEndpointOption,
+        )?.value ?? "");
+
+  async function postBasicSettings(settingsPayload: {
+    domain: string;
+    login: string;
+    notificationEmail: string;
+    password?: string;
+    passwordConfirm?: string;
+  }) {
+    const payload = await postSettingsJson<{
+      error?: string;
+      settings?: DashboardSettingsData["basic"];
+    }>("/api/settings/basic", settingsPayload);
+
+    if (!payload.settings) {
+      throw new Error("Basic settings were not returned.");
+    }
+
+    return payload.settings;
+  }
 
   async function saveBasic(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -901,29 +949,91 @@ function SettingsScreen({
     setNotice("");
 
     try {
-      const payload = await postSettingsJson<{
-        error?: string;
-        settings?: DashboardSettingsData["basic"];
-      }>("/api/settings/basic", basicDraft);
-
-      if (!payload.settings) {
-        throw new Error("Basic settings were not returned.");
-      }
+      const basicSettings = await postBasicSettings({
+        domain: basicDraft.domain,
+        login: settings.basic.login,
+        notificationEmail: settings.basic.notificationEmail,
+      });
 
       onSettingsChange({
         ...settings,
-        basic: payload.settings,
+        basic: basicSettings,
       });
       setBasicDraft((current) => ({
         ...current,
-        password: "",
-        passwordConfirm: "",
+        domain: basicSettings.domain,
       }));
       setNotice("Basic settings saved.");
     } catch (error) {
       setNotice(getErrorMessage(error));
     } finally {
       setSavingBasic(false);
+    }
+  }
+
+  async function saveSecurity(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSavingSecurity(true);
+    setNotice("");
+
+    try {
+      await postBasicSettings({
+        domain: settings.basic.domain,
+        login: settings.basic.login,
+        notificationEmail: settings.basic.notificationEmail,
+        password: securityDraft.password,
+        passwordConfirm: securityDraft.passwordConfirm,
+      });
+
+      setSecurityDraft({
+        password: "",
+        passwordConfirm: "",
+      });
+      setNotice("Security settings saved.");
+    } catch (error) {
+      setNotice(getErrorMessage(error));
+    } finally {
+      setSavingSecurity(false);
+    }
+  }
+
+  async function saveAi(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSavingAi(true);
+    setNotice("");
+
+    try {
+      const payload = await postSettingsJson<{
+        error?: string;
+        settings?: DashboardSettingsData["ai"];
+      }>("/api/settings/ai", {
+        ...aiDraft,
+        projectSlug: settings.projectSlug,
+      });
+
+      if (!payload.settings) {
+        throw new Error("AI settings were not returned.");
+      }
+
+      const aiSettings = payload.settings;
+
+      onSettingsChange({
+        ...settings,
+        ai: aiSettings,
+      });
+      setAiDraft((current) => ({
+        ...current,
+        apiEndpointOption: aiSettings.apiEndpointOption,
+        apiKey: "",
+        customEndpoint: aiSettings.customEndpoint,
+        model: aiSettings.model,
+        responseLanguage: aiSettings.responseLanguage,
+      }));
+      setNotice("AI settings saved.");
+    } catch (error) {
+      setNotice(getErrorMessage(error));
+    } finally {
+      setSavingAi(false);
     }
   }
 
@@ -997,11 +1107,11 @@ function SettingsScreen({
           </span>
           <div>
             <h3 className="text-base font-semibold text-slate-100">Basic settings</h3>
-            <div className="text-xs text-slate-500">Domain, login, password, email</div>
+            <div className="text-xs text-slate-500">Domain</div>
           </div>
         </div>
 
-        <div className="grid gap-4 p-5 lg:grid-cols-2">
+        <div className="grid gap-4 p-5">
           <label
             className="grid gap-2 text-sm font-medium text-slate-200"
             htmlFor="settings-domain"
@@ -1021,29 +1131,35 @@ function SettingsScreen({
               value={basicDraft.domain}
             />
           </label>
+        </div>
 
-          <label
-            className="grid gap-2 text-sm font-medium text-slate-200"
-            htmlFor="settings-login"
+        <div className="flex justify-end border-t border-slate-800 px-5 py-4">
+          <button
+            className="inline-flex h-10 items-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={savingBasic}
+            type="submit"
           >
-            Login
-            <input
-              autoComplete="username"
-              className="h-10 rounded-md border border-slate-700 bg-[#0f151d] px-3 text-sm text-slate-100 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-              id="settings-login"
-              minLength={3}
-              onChange={(event) =>
-                setBasicDraft((current) => ({
-                  ...current,
-                  login: event.target.value,
-                }))
-              }
-              required
-              type="text"
-              value={basicDraft.login}
-            />
-          </label>
+            <Save className="h-4 w-4" />
+            {savingBasic ? "Saving..." : "Save basic settings"}
+          </button>
+        </div>
+      </form>
 
+      <form
+        className="rounded-md border border-slate-800 bg-[#11161d]"
+        onSubmit={(event) => void saveSecurity(event)}
+      >
+        <div className="flex items-center gap-3 border-b border-slate-800 px-5 py-4">
+          <span className="flex h-9 w-9 items-center justify-center rounded-md bg-amber-500/15 text-amber-300">
+            <LockKeyhole className="h-5 w-5" />
+          </span>
+          <div>
+            <h3 className="text-base font-semibold text-slate-100">Security</h3>
+            <div className="text-xs text-slate-500">Password</div>
+          </div>
+        </div>
+
+        <div className="grid gap-4 p-5 lg:grid-cols-2">
           <label
             className="grid gap-2 text-sm font-medium text-slate-200"
             htmlFor="settings-password"
@@ -1055,13 +1171,14 @@ function SettingsScreen({
               id="settings-password"
               minLength={8}
               onChange={(event) =>
-                setBasicDraft((current) => ({
+                setSecurityDraft((current) => ({
                   ...current,
                   password: event.target.value,
                 }))
               }
+              required
               type="password"
-              value={basicDraft.password}
+              value={securityDraft.password}
             />
           </label>
 
@@ -1076,34 +1193,14 @@ function SettingsScreen({
               id="settings-password-confirm"
               minLength={8}
               onChange={(event) =>
-                setBasicDraft((current) => ({
+                setSecurityDraft((current) => ({
                   ...current,
                   passwordConfirm: event.target.value,
                 }))
               }
-              type="password"
-              value={basicDraft.passwordConfirm}
-            />
-          </label>
-
-          <label
-            className="grid gap-2 text-sm font-medium text-slate-200 lg:col-span-2"
-            htmlFor="settings-notification-email"
-          >
-            Notification email
-            <input
-              autoComplete="email"
-              className="h-10 rounded-md border border-slate-700 bg-[#0f151d] px-3 text-sm text-slate-100 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-              id="settings-notification-email"
-              onChange={(event) =>
-                setBasicDraft((current) => ({
-                  ...current,
-                  notificationEmail: event.target.value,
-                }))
-              }
               required
-              type="email"
-              value={basicDraft.notificationEmail}
+              type="password"
+              value={securityDraft.passwordConfirm}
             />
           </label>
         </div>
@@ -1111,11 +1208,157 @@ function SettingsScreen({
         <div className="flex justify-end border-t border-slate-800 px-5 py-4">
           <button
             className="inline-flex h-10 items-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={savingBasic}
+            disabled={savingSecurity}
             type="submit"
           >
             <Save className="h-4 w-4" />
-            {savingBasic ? "Saving..." : "Save basic settings"}
+            {savingSecurity ? "Saving..." : "Save security"}
+          </button>
+        </div>
+      </form>
+
+      <form
+        className="rounded-md border border-slate-800 bg-[#11161d]"
+        onSubmit={(event) => void saveAi(event)}
+      >
+        <div className="flex items-center gap-3 border-b border-slate-800 px-5 py-4">
+          <span className="flex h-9 w-9 items-center justify-center rounded-md bg-cyan-500/15 text-cyan-300">
+            <Bot className="h-5 w-5" />
+          </span>
+          <div>
+            <h3 className="text-base font-semibold text-slate-100">AI / LLM</h3>
+            <div className="text-xs text-slate-500">
+              Failed run analysis and user-facing AI replies
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-4 p-5">
+          <label
+            className="grid gap-2 text-sm font-medium text-slate-200"
+            htmlFor="settings-ai-api-endpoint"
+          >
+            AI_API_ENDPOINT
+            <select
+              className="h-10 rounded-md border border-slate-700 bg-[#0f151d] px-3 text-sm text-slate-100 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              id="settings-ai-api-endpoint"
+              onChange={(event) =>
+                setAiDraft((current) => ({
+                  ...current,
+                  apiEndpointOption: event.target.value,
+                }))
+              }
+              value={aiDraft.apiEndpointOption}
+            >
+              {settings.ai.endpointOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div className="min-h-5 break-all text-sm text-slate-500">
+            {selectedAiEndpoint || "Set a custom endpoint URL."}
+          </div>
+
+          {aiDraft.apiEndpointOption === AI_CUSTOM_ENDPOINT_VALUE ? (
+            <label
+              className="grid gap-2 text-sm font-medium text-slate-200"
+              htmlFor="settings-ai-custom-endpoint"
+            >
+              Custom endpoint
+              <input
+                className="h-10 rounded-md border border-slate-700 bg-[#0f151d] px-3 text-sm text-slate-100 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                id="settings-ai-custom-endpoint"
+                onChange={(event) =>
+                  setAiDraft((current) => ({
+                    ...current,
+                    customEndpoint: event.target.value,
+                  }))
+                }
+                placeholder="https://example.com/v1"
+                required
+                type="url"
+                value={aiDraft.customEndpoint}
+              />
+            </label>
+          ) : null}
+
+          <label
+            className="grid gap-2 text-sm font-medium text-slate-200"
+            htmlFor="settings-ai-api-key"
+          >
+            AI_API_KEY
+            <input
+              autoComplete="off"
+              className="h-10 rounded-md border border-slate-700 bg-[#0f151d] px-3 text-sm text-slate-100 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              id="settings-ai-api-key"
+              onChange={(event) =>
+                setAiDraft((current) => ({
+                  ...current,
+                  apiKey: event.target.value,
+                }))
+              }
+              placeholder={settings.ai.apiKeyMasked ?? "Paste API key"}
+              required={!settings.ai.hasApiKey}
+              type="password"
+              value={aiDraft.apiKey}
+            />
+          </label>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <label
+              className="grid gap-2 text-sm font-medium text-slate-200"
+              htmlFor="settings-ai-model"
+            >
+              AI_MODEL
+              <input
+                className="h-10 rounded-md border border-slate-700 bg-[#0f151d] px-3 text-sm text-slate-100 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                id="settings-ai-model"
+                onChange={(event) =>
+                  setAiDraft((current) => ({
+                    ...current,
+                    model: event.target.value,
+                  }))
+                }
+                required
+                type="text"
+                value={aiDraft.model}
+              />
+            </label>
+
+            <label
+              className="grid gap-2 text-sm font-medium text-slate-200"
+              htmlFor="settings-ai-response-language"
+            >
+              AI_RESPONSE_LANGUAGE
+              <select
+                className="h-10 rounded-md border border-slate-700 bg-[#0f151d] px-3 text-sm text-slate-100 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                id="settings-ai-response-language"
+                onChange={(event) =>
+                  setAiDraft((current) => ({
+                    ...current,
+                    responseLanguage: event.target.value,
+                  }))
+                }
+                value={aiDraft.responseLanguage}
+              >
+                <option value="Russian">Russian</option>
+                <option value="English">English</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div className="flex justify-end border-t border-slate-800 px-5 py-4">
+          <button
+            className="inline-flex h-10 items-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={savingAi}
+            type="submit"
+          >
+            <Save className="h-4 w-4" />
+            {savingAi ? "Saving..." : "Save AI settings"}
           </button>
         </div>
       </form>

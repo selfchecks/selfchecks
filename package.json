@@ -14,6 +14,7 @@
     "build": "yarn workspace @selfchecks/core build && yarn workspace @selfchecks/db build && yarn workspace @selfchecks/cli build && yarn workspace @selfchecks/worker build && yarn workspace @selfchecks/web build",
     "db:generate": "yarn workspace @selfchecks/db prisma generate",
     "db:migrate": "yarn workspace @selfchecks/db prisma migrate dev",
+    "db:migrate:deploy": "yarn workspace @selfchecks/db prisma migrate deploy",
     "dev": "yarn dev:web",
     "dev:infra": "docker compose -f docker-compose.dev.yml up -d",
     "dev:infra:down": "docker compose -f docker-compose.dev.yml down",

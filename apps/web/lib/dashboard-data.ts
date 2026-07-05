@@ -40,6 +40,15 @@ export type RunDetailData = {
   groupName: string;
   projectSlug: string;
   run: DashboardRunRow & {
+    aiAnalysis?: {
+      apiEndpoint?: string;
+      content?: string;
+      createdAt?: string;
+      error?: string;
+      model?: string;
+      responseLanguage?: string;
+      status: "completed" | "failed";
+    };
     createdAtLabel: string;
     finishedAt: string;
     jobLog?: string;
@@ -237,6 +246,7 @@ export async function getRunDetailData(
       projectSlug: run.check.project.slug,
       run: {
         ...mapRun(run),
+        aiAnalysis: formatAiAnalysis(run.result),
         createdAtLabel: formatRunTimestamp(run.createdAt),
         finishedAt: run.finishedAt ? formatRunTimestamp(run.finishedAt) : "-",
         jobLog: await readRunLogPreview(run.logsPath),
@@ -727,10 +737,12 @@ function formatQueryParams(url: string): Array<{ name: string; value: string }> 
 function formatResultFields(result: unknown): RunDetailData["run"]["resultFields"] {
   const record = asRecord(result);
 
-  return Object.entries(record).map(([label, value]) => ({
-    label: formatSourceLabel(label),
-    value: formatUnknownValue(value),
-  }));
+  return Object.entries(record)
+    .filter(([label]) => label !== "aiAnalysis")
+    .map(([label, value]) => ({
+      label: formatSourceLabel(label),
+      value: formatUnknownValue(value),
+    }));
 }
 
 function formatResultJson(result: unknown): string {
@@ -739,6 +751,28 @@ function formatResultJson(result: unknown): string {
   }
 
   return JSON.stringify(result, null, 2);
+}
+
+function formatAiAnalysis(result: unknown): RunDetailData["run"]["aiAnalysis"] {
+  const value = asRecord(asRecord(result).aiAnalysis);
+  const status = value.status === "completed" ? "completed" : "failed";
+  const content = typeof value.content === "string" ? value.content : undefined;
+  const error = typeof value.error === "string" ? value.error : undefined;
+
+  if (!content && !error) {
+    return undefined;
+  }
+
+  return {
+    apiEndpoint: typeof value.apiEndpoint === "string" ? value.apiEndpoint : undefined,
+    content,
+    createdAt: typeof value.createdAt === "string" ? value.createdAt : undefined,
+    error,
+    model: typeof value.model === "string" ? value.model : undefined,
+    responseLanguage:
+      typeof value.responseLanguage === "string" ? value.responseLanguage : undefined,
+    status,
+  };
 }
 
 async function readRunLogPreview(logsPath: string | null): Promise<string | undefined> {

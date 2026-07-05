@@ -79,7 +79,35 @@ const fixtureSummary: DashboardSummary = {
   failing: 0,
   passing: 5,
 };
+const fixtureAiEndpointOptions = [
+  {
+    label: "OpenAI",
+    value: "https://api.openai.com/v1",
+  },
+  {
+    label: "OpenRouter",
+    value: "https://openrouter.ai/api/v1",
+  },
+  {
+    label: "Gemini",
+    value: "https://generativelanguage.googleapis.com/v1beta/openai",
+  },
+  {
+    label: "Custom",
+    value: "__custom__",
+  },
+];
 const fixtureSettings: DashboardSettingsData = {
+  ai: {
+    apiEndpoint: "https://openrouter.ai/api/v1",
+    apiEndpointOption: "https://openrouter.ai/api/v1",
+    apiKeyMasked: "************f7dd",
+    customEndpoint: "",
+    endpointOptions: fixtureAiEndpointOptions,
+    hasApiKey: true,
+    model: "openai/gpt-5-mini",
+    responseLanguage: "Russian",
+  },
   basic: {
     domain: "checks.example.com",
     login: "nikolaev@iprojects.ru",
@@ -363,16 +391,59 @@ describe("DashboardPage", () => {
 
   it("opens settings from the account menu and saves settings forms", async () => {
     const user = userEvent.setup();
-    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       if (input === "/api/settings/basic") {
+        const body = JSON.parse(String(init?.body ?? "{}")) as {
+          domain: string;
+          login: string;
+          notificationEmail: string;
+        };
+
         return Promise.resolve(
           new Response(
             JSON.stringify({
               settings: {
-                domain: "checks2.example.com",
-                login: "nikolaev@iprojects.ru",
-                notificationEmail: "alerts@example.com",
-                publicUrl: "https://checks2.example.com",
+                domain: body.domain,
+                login: body.login,
+                notificationEmail: body.notificationEmail,
+                publicUrl: `https://${body.domain}`,
+              },
+            }),
+            {
+              headers: {
+                "content-type": "application/json",
+              },
+              status: 200,
+            },
+          ),
+        );
+      }
+
+      if (input === "/api/settings/ai") {
+        const body = JSON.parse(String(init?.body ?? "{}")) as {
+          apiEndpointOption: string;
+          apiKey?: string;
+          customEndpoint: string;
+          model: string;
+          responseLanguage: string;
+        };
+
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              settings: {
+                apiEndpoint:
+                  body.apiEndpointOption === "__custom__"
+                    ? body.customEndpoint
+                    : body.apiEndpointOption,
+                apiEndpointOption: body.apiEndpointOption,
+                apiKeyMasked: body.apiKey ? "************f7dd" : undefined,
+                customEndpoint:
+                  body.apiEndpointOption === "__custom__" ? body.customEndpoint : "",
+                endpointOptions: fixtureAiEndpointOptions,
+                hasApiKey: Boolean(body.apiKey),
+                model: body.model,
+                responseLanguage: body.responseLanguage,
               },
             }),
             {
@@ -424,9 +495,21 @@ describe("DashboardPage", () => {
     expect((screen.getByLabelText("Domain") as HTMLInputElement).value).toBe(
       "checks.example.com",
     );
-    expect(
-      (screen.getByLabelText("Notification email") as HTMLInputElement).value,
-    ).toBe("ops@example.com");
+    expect(screen.queryByLabelText("Login")).toBeNull();
+    expect(screen.queryByLabelText("Notification email")).toBeNull();
+    expect(screen.getByRole("heading", { name: "Security" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "AI / LLM" })).toBeTruthy();
+    expect((screen.getByLabelText("AI_API_ENDPOINT") as HTMLSelectElement).value).toBe(
+      "https://openrouter.ai/api/v1",
+    );
+    expect(screen.getByText("https://openrouter.ai/api/v1")).toBeTruthy();
+    expect(screen.getByRole("option", { name: "Gemini" })).toBeTruthy();
+    expect((screen.getByLabelText("AI_API_KEY") as HTMLInputElement).placeholder).toBe(
+      "************f7dd",
+    );
+    expect((screen.getByLabelText("AI_MODEL") as HTMLInputElement).value).toBe(
+      "openai/gpt-5-mini",
+    );
     expect((screen.getByLabelText("Variable 1 name") as HTMLInputElement).value).toBe(
       "BASE_URL",
     );
@@ -436,19 +519,75 @@ describe("DashboardPage", () => {
 
     await user.clear(screen.getByLabelText("Domain"));
     await user.type(screen.getByLabelText("Domain"), "checks2.example.com");
-    await user.clear(screen.getByLabelText("Notification email"));
-    await user.type(screen.getByLabelText("Notification email"), "alerts@example.com");
     await user.click(screen.getByRole("button", { name: "Save basic settings" }));
 
     await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.filter(([input]) => input === "/api/settings/basic"),
+      ).toHaveLength(1);
+    });
+    const basicRequest = fetchMock.mock.calls.find(
+      ([input]) => input === "/api/settings/basic",
+    )?.[1] as RequestInit;
+    expect(JSON.parse(String(basicRequest.body))).toEqual({
+      domain: "checks2.example.com",
+      login: "nikolaev@iprojects.ru",
+      notificationEmail: "ops@example.com",
+    });
+    expect(screen.getByText("Basic settings saved.")).toBeTruthy();
+
+    await user.type(screen.getByLabelText("New password"), "supersecret");
+    await user.type(screen.getByLabelText("Confirm password"), "supersecret");
+    await user.click(screen.getByRole("button", { name: "Save security" }));
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.filter(([input]) => input === "/api/settings/basic"),
+      ).toHaveLength(2);
+    });
+    const securityRequest = fetchMock.mock.calls.filter(
+      ([input]) => input === "/api/settings/basic",
+    )[1]?.[1] as RequestInit;
+    expect(JSON.parse(String(securityRequest.body))).toEqual({
+      domain: "checks2.example.com",
+      login: "nikolaev@iprojects.ru",
+      notificationEmail: "ops@example.com",
+      password: "supersecret",
+      passwordConfirm: "supersecret",
+    });
+    expect(screen.getByText("Security settings saved.")).toBeTruthy();
+
+    await user.selectOptions(
+      screen.getByLabelText("AI_API_ENDPOINT"),
+      "https://generativelanguage.googleapis.com/v1beta/openai",
+    );
+    await user.clear(screen.getByLabelText("AI_API_KEY"));
+    await user.type(screen.getByLabelText("AI_API_KEY"), "new-ai-key-f7dd");
+    await user.clear(screen.getByLabelText("AI_MODEL"));
+    await user.type(screen.getByLabelText("AI_MODEL"), "gemini-2.5-pro");
+    await user.selectOptions(screen.getByLabelText("AI_RESPONSE_LANGUAGE"), "English");
+    await user.click(screen.getByRole("button", { name: "Save AI settings" }));
+
+    await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/settings/basic",
+        "/api/settings/ai",
         expect.objectContaining({
           method: "POST",
         }),
       );
     });
-    expect(screen.getByText("Basic settings saved.")).toBeTruthy();
+    const aiRequest = fetchMock.mock.calls.find(
+      ([input]) => input === "/api/settings/ai",
+    )?.[1] as RequestInit;
+    expect(JSON.parse(String(aiRequest.body))).toEqual({
+      apiEndpointOption: "https://generativelanguage.googleapis.com/v1beta/openai",
+      apiKey: "new-ai-key-f7dd",
+      customEndpoint: "",
+      model: "gemini-2.5-pro",
+      projectSlug: "default",
+      responseLanguage: "English",
+    });
+    expect(screen.getByText("AI settings saved.")).toBeTruthy();
 
     await user.clear(screen.getByLabelText("Variable 1 value"));
     await user.type(

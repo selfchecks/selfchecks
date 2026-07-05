@@ -279,6 +279,7 @@ mkdir -p runtime
 cp bootstrap/selfchecks.config.template.json runtime/selfchecks.config.json
 cp bootstrap/Caddyfile.template runtime/Caddyfile
 docker compose --env-file .env.production -f docker-compose.prod.yml pull
+docker compose --env-file .env.production -f docker-compose.prod.yml up --force-recreate --abort-on-container-exit --exit-code-from migrate migrate
 docker compose --env-file .env.production -f docker-compose.prod.yml up -d
 ```
 
@@ -311,7 +312,8 @@ Pushes to `stable` run `.github/workflows/deploy.yml`. The workflow runs the
 same repository checks as CI, builds `ghcr.io/selfchecks/selfchecks-web:stable`
 and `ghcr.io/selfchecks/selfchecks-worker:stable`, then connects to the
 production server over SSH, syncs only the Compose file and bootstrap templates,
-uploads `.env`, pulls the fresh GHCR images, and runs the production Compose
+uploads `.env`, pulls the fresh GHCR images, runs `prisma migrate deploy`
+through the production `migrate` service, and then starts the production Compose
 stack.
 
 Configure these GitHub Actions repository variables:

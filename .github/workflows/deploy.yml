@@ -433,6 +433,7 @@ jobs:
 
           docker_cmd system prune -af || true
           docker_cmd compose --env-file .env -f docker-compose.prod.yml pull
+          docker_cmd compose --env-file .env -f docker-compose.prod.yml up --force-recreate --abort-on-container-exit --exit-code-from migrate migrate
           docker_cmd logout ghcr.io || true
           GHCR_LOGGED_IN=0
           docker_cmd compose --env-file .env -f docker-compose.prod.yml up -d --remove-orphans

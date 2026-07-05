@@ -50,6 +50,7 @@ model Project {
   checks              Check[]
   deployments         Deployment[]
   groups              CheckGroup[]
+  aiSettings          AiSettings?
   runtimeEnvironments RuntimeEnvironment[]
   secrets             Secret[]
   webhookEndpoints    WebhookEndpoint[]
@@ -167,6 +168,18 @@ model Notification {
   responseStatus Int?
   error          String?
   createdAt      DateTime           @default(now())
+}
+
+model AiSettings {
+  id                String   @id @default(cuid())
+  projectId         String   @unique
+  apiEndpoint       String
+  apiKeyCiphertext  String?
+  model             String
+  responseLanguage  String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
 
 model RuntimeEnvironment {

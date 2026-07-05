@@ -132,6 +132,14 @@ describe("dashboard data", () => {
             ttfbMs: 239,
           },
         },
+        aiAnalysis: {
+          apiEndpoint: "https://openrouter.ai/api/v1",
+          content: "Вероятная причина: upstream вернул 500.",
+          createdAt: "2026-06-24T13:21:00.000Z",
+          model: "openai/gpt-5-mini",
+          responseLanguage: "Russian",
+          status: "completed",
+        },
         status: 200,
         statusText: "OK",
         url: "https://bff.sndsy.ru/gtm.js?id=GTM-MP43XM",
@@ -183,6 +191,17 @@ describe("dashboard data", () => {
     expect(detail?.run.resultFields).toContainEqual({
       label: "Status",
       value: "200",
+    });
+    expect(detail?.run.resultFields).not.toContainEqual(
+      expect.objectContaining({
+        label: "Ai Analysis",
+      }),
+    );
+    expect(detail?.run.aiAnalysis).toMatchObject({
+      apiEndpoint: "https://openrouter.ai/api/v1",
+      content: "Вероятная причина: upstream вернул 500.",
+      model: "openai/gpt-5-mini",
+      status: "completed",
     });
     expect(detail?.run.request?.queryParams).toEqual([
       {

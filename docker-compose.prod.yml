@@ -47,7 +47,7 @@ services:
 
   migrate:
     image: *selfchecks-web-image
-    command: ["yarn", "workspace", "@selfchecks/db", "prisma", "migrate", "deploy"]
+    command: ["yarn", "db:migrate:deploy"]
     container_name: selfchecks-prod-migrate
     depends_on:
       postgres:

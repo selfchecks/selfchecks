@@ -12,15 +12,112 @@ import {
   type SelfchecksRuntimeConfig,
   writeRuntimeConfig,
 } from "./runtime-config";
-import { encryptSecretValue } from "./secret-store";
+import { decryptSecretValue, encryptSecretValue } from "./secret-store";
 
 export { getRunEnvironment } from "@selfchecks/cli/environment";
+
+export const AI_CUSTOM_ENDPOINT_VALUE = "__custom__";
+
+export type AiEndpointOption = {
+  label: string;
+  value: string;
+};
+
+export const AI_ENDPOINT_OPTIONS: AiEndpointOption[] = [
+  {
+    label: "OpenAI",
+    value: "https://api.openai.com/v1",
+  },
+  {
+    label: "Claude",
+    value: "https://api.anthropic.com/v1",
+  },
+  {
+    label: "OpenRouter",
+    value: "https://openrouter.ai/api/v1",
+  },
+  {
+    label: "Gemini",
+    value: "https://generativelanguage.googleapis.com/v1beta/openai",
+  },
+  {
+    label: "Together AI",
+    value: "https://api.together.xyz/v1",
+  },
+  {
+    label: "Groq",
+    value: "https://api.groq.com/openai/v1",
+  },
+  {
+    label: "DeepInfra",
+    value: "https://api.deepinfra.com/v1/openai",
+  },
+  {
+    label: "xAI",
+    value: "https://api.x.ai/v1",
+  },
+  {
+    label: "Qwen (DashScope Intl)",
+    value: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+  },
+  {
+    label: "Qwen (DashScope CN)",
+    value: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  },
+  {
+    label: "Qwen (DashScope US)",
+    value: "https://dashscope-us.aliyuncs.com/compatible-mode/v1",
+  },
+  {
+    label: "Perplexity",
+    value: "https://api.perplexity.ai",
+  },
+  {
+    label: "Fireworks",
+    value: "https://api.fireworks.ai/inference/v1",
+  },
+  {
+    label: "SambaNova",
+    value: "https://api.sambanova.ai/v1",
+  },
+  {
+    label: "Hyperbolic",
+    value: "https://api.hyperbolic.xyz/v1",
+  },
+  {
+    label: "Kimi",
+    value: "https://api.moonshot.ai/v1",
+  },
+  {
+    label: "ProxyAPI",
+    value: "https://openai.api.proxyapi.ru/v1",
+  },
+  {
+    label: "Custom",
+    value: AI_CUSTOM_ENDPOINT_VALUE,
+  },
+];
+
+const DEFAULT_AI_ENDPOINT = "https://api.openai.com/v1";
+const DEFAULT_AI_MODEL = "gpt-5-mini";
+const DEFAULT_AI_RESPONSE_LANGUAGE = "Russian";
 
 export type BasicSettingsData = {
   domain: string;
   login: string;
   notificationEmail: string;
   publicUrl: string;
+};
+
+export type AiSettingsData = {
+  apiEndpoint: string;
+  apiEndpointOption: string;
+  apiKeyMasked?: string;
+  customEndpoint: string;
+  endpointOptions: AiEndpointOption[];
+  hasApiKey: boolean;
+  model: string;
+  responseLanguage: string;
 };
 
 export type RuntimeVariableData = {
@@ -43,6 +140,7 @@ export type RuntimeEnvironmentSettingsData = {
 };
 
 export type DashboardSettingsData = {
+  ai: AiSettingsData;
   basic: BasicSettingsData;
   environment: RuntimeEnvironmentSettingsData;
   projectSlug: string;
@@ -54,6 +152,15 @@ export type BasicSettingsInput = {
   notificationEmail?: unknown;
   password?: unknown;
   passwordConfirm?: unknown;
+};
+
+export type AiSettingsInput = {
+  apiEndpointOption?: unknown;
+  apiKey?: unknown;
+  customEndpoint?: unknown;
+  model?: unknown;
+  projectSlug?: unknown;
+  responseLanguage?: unknown;
 };
 
 export type RuntimeSettingsInput = {
@@ -81,6 +188,7 @@ export async function getDashboardSettingsData(
     const project = await findSettingsProject(projectSlug);
 
     return {
+      ai: project ? await readAiSettings(project.id) : createDefaultAiSettings(),
       basic: mapBasicSettings(runtimeConfig),
       environment: project
         ? await readRuntimeEnvironmentSettings(project.id)
@@ -91,6 +199,7 @@ export async function getDashboardSettingsData(
     console.warn("Unable to load settings data.", error);
 
     return {
+      ai: createDefaultAiSettings(),
       basic: mapBasicSettings(runtimeConfig),
       environment: createEmptyRuntimeEnvironmentSettings(),
       projectSlug,
@@ -153,6 +262,67 @@ export async function updateBasicSettings(input: BasicSettingsInput) {
   writeRuntimeConfig(runtimeConfig);
 
   return mapBasicSettings(runtimeConfig);
+}
+
+export async function updateAiSettings(input: AiSettingsInput) {
+  const projectSlug = readOptionalString(input.projectSlug) || "default";
+  const project = await prisma.project.upsert({
+    create: {
+      name: projectSlug,
+      slug: projectSlug,
+    },
+    update: {
+      name: projectSlug,
+    },
+    where: {
+      slug: projectSlug,
+    },
+  });
+  const apiEndpoint = resolveAiEndpoint(
+    readRequiredString(input.apiEndpointOption, "AI API endpoint"),
+    readOptionalString(input.customEndpoint),
+  );
+  const model = readRequiredString(input.model, "AI model");
+  const responseLanguage = readRequiredString(
+    input.responseLanguage,
+    "AI response language",
+  );
+  const apiKey = readOptionalString(input.apiKey);
+  const currentSettings = await prisma.aiSettings.findUnique({
+    select: {
+      apiKeyCiphertext: true,
+    },
+    where: {
+      projectId: project.id,
+    },
+  });
+
+  if (!apiKey && !currentSettings?.apiKeyCiphertext) {
+    throw new Error("AI API key is required.");
+  }
+
+  await prisma.aiSettings.upsert({
+    create: {
+      apiEndpoint,
+      apiKeyCiphertext: apiKey ? encryptSecretValue(apiKey) : undefined,
+      model,
+      projectId: project.id,
+      responseLanguage,
+    },
+    update: {
+      apiEndpoint,
+      apiKeyCiphertext: apiKey
+        ? encryptSecretValue(apiKey)
+        : currentSettings?.apiKeyCiphertext,
+      model,
+      responseLanguage,
+    },
+    where: {
+      projectId: project.id,
+    },
+  });
+
+  return readAiSettings(project.id);
 }
 
 export async function updateRuntimeEnvironmentSettings(input: RuntimeSettingsInput) {
@@ -274,6 +444,92 @@ async function findSettingsProject(projectSlug: string) {
       },
     }))
   );
+}
+
+async function readAiSettings(projectId: string): Promise<AiSettingsData> {
+  const settings = await prisma.aiSettings.findUnique({
+    where: {
+      projectId,
+    },
+  });
+
+  if (!settings) {
+    return createDefaultAiSettings();
+  }
+
+  const endpointOption = getAiEndpointOption(settings.apiEndpoint);
+
+  return {
+    apiEndpoint: settings.apiEndpoint,
+    apiEndpointOption: endpointOption,
+    apiKeyMasked: maskSecret(settings.apiKeyCiphertext),
+    customEndpoint:
+      endpointOption === AI_CUSTOM_ENDPOINT_VALUE ? settings.apiEndpoint : "",
+    endpointOptions: AI_ENDPOINT_OPTIONS,
+    hasApiKey: Boolean(settings.apiKeyCiphertext),
+    model: settings.model,
+    responseLanguage: settings.responseLanguage,
+  };
+}
+
+function createDefaultAiSettings(): AiSettingsData {
+  return {
+    apiEndpoint: DEFAULT_AI_ENDPOINT,
+    apiEndpointOption: DEFAULT_AI_ENDPOINT,
+    customEndpoint: "",
+    endpointOptions: AI_ENDPOINT_OPTIONS,
+    hasApiKey: false,
+    model: DEFAULT_AI_MODEL,
+    responseLanguage: DEFAULT_AI_RESPONSE_LANGUAGE,
+  };
+}
+
+function getAiEndpointOption(apiEndpoint: string) {
+  return AI_ENDPOINT_OPTIONS.some((option) => option.value === apiEndpoint)
+    ? apiEndpoint
+    : AI_CUSTOM_ENDPOINT_VALUE;
+}
+
+function resolveAiEndpoint(apiEndpointOption: string, customEndpoint: string) {
+  const selectedOption = AI_ENDPOINT_OPTIONS.find(
+    (option) => option.value === apiEndpointOption,
+  );
+  const endpoint =
+    selectedOption?.value === AI_CUSTOM_ENDPOINT_VALUE
+      ? customEndpoint
+      : selectedOption?.value;
+
+  if (!endpoint) {
+    throw new Error("AI API endpoint is required.");
+  }
+
+  try {
+    const url = new URL(endpoint);
+
+    if (!["http:", "https:"].includes(url.protocol)) {
+      throw new Error("AI API endpoint must be an HTTP URL.");
+    }
+
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    throw new Error("AI API endpoint must be a valid URL.");
+  }
+}
+
+function maskSecret(valueCiphertext: string | null) {
+  if (!valueCiphertext) {
+    return undefined;
+  }
+
+  try {
+    const value = decryptSecretValue(valueCiphertext);
+    const suffix = value.slice(-4);
+    const prefixLength = Math.max(8, Math.min(12, value.length - suffix.length));
+
+    return `${"*".repeat(prefixLength)}${suffix}`;
+  } catch {
+    return "********";
+  }
 }
 
 async function readRuntimeEnvironmentSettings(

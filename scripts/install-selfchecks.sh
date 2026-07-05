@@ -266,6 +266,7 @@ fi
 log "Starting selfchecks stack"
 cd "${INSTALL_DIR}"
 docker_compose --env-file .env -f docker-compose.prod.yml pull
+docker_compose --env-file .env -f docker-compose.prod.yml up --force-recreate --abort-on-container-exit --exit-code-from migrate migrate
 docker_compose --env-file .env -f docker-compose.prod.yml up -d
 
 log "Install complete"

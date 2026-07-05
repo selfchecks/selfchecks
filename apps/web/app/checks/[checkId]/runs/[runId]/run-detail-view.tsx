@@ -1,5 +1,6 @@
 import {
   ArrowLeft,
+  Bot,
   CheckCircle2,
   ChevronRight,
   CircleAlert,
@@ -222,6 +223,8 @@ export function RunDetailView({ accountLabel, detail }: RunDetailViewProps) {
                 </section>
               ) : null}
 
+              {run.aiAnalysis ? <AiAnalysisPanel analysis={run.aiAnalysis} /> : null}
+
               <PlaywrightReportPanel
                 checkName={check.name}
                 checkType={check.type}
@@ -258,6 +261,62 @@ export function RunDetailView({ accountLabel, detail }: RunDetailViewProps) {
         </div>
       </div>
     </main>
+  );
+}
+
+function AiAnalysisPanel({
+  analysis,
+}: {
+  analysis: NonNullable<RunDetailData["run"]["aiAnalysis"]>;
+}) {
+  const meta = [
+    analysis.model,
+    analysis.responseLanguage,
+    analysis.apiEndpoint,
+    analysis.createdAt,
+  ].filter(Boolean);
+
+  return (
+    <section
+      className={cn(
+        "rounded-md border bg-[#111821] p-5",
+        analysis.status === "completed" ? "border-cyan-900/70" : "border-amber-900/70",
+      )}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-100">
+            <Bot className="h-5 w-5 text-cyan-300" />
+            AI analysis
+          </h2>
+          {meta.length > 0 ? (
+            <div className="mt-1 break-all text-xs text-slate-500">
+              {meta.join(" · ")}
+            </div>
+          ) : null}
+        </div>
+        <span
+          className={cn(
+            "rounded px-2 py-1 text-xs font-semibold uppercase",
+            analysis.status === "completed"
+              ? "bg-cyan-950 text-cyan-200"
+              : "bg-amber-950 text-amber-200",
+          )}
+        >
+          {analysis.status}
+        </span>
+      </div>
+
+      {analysis.content ? (
+        <pre className="mt-4 max-h-[32rem] overflow-auto whitespace-pre-wrap break-words rounded bg-[#0b0f14] p-4 text-sm text-slate-200">
+          {analysis.content}
+        </pre>
+      ) : (
+        <div className="mt-4 rounded bg-[#0b0f14] p-4 text-sm text-amber-100">
+          {analysis.error}
+        </div>
+      )}
+    </section>
   );
 }
 
