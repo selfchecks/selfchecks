@@ -7,7 +7,13 @@ export type DashboardRunState =
   | "queued"
   | "running"
   | "timed_out";
-export type DashboardResultTone = "active" | "bad" | "good" | "muted" | "warn";
+export type DashboardResultTone =
+  | "active"
+  | "bad"
+  | "good"
+  | "muted"
+  | "queued"
+  | "warn";
 
 export type DashboardResultBar = {
   duration: string;
@@ -140,5 +146,6 @@ export type DashboardSummary = {
   degraded: number;
   failing: number;
   passing: number;
+  queued: number;
   running: number;
 };

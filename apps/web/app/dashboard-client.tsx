@@ -57,7 +57,7 @@ import type {
 
 type Status = DashboardStatus;
 type ActiveView = "dashboard" | "settings";
-type StatusFilter = Status | "running" | "all";
+type StatusFilter = Status | "queued" | "running" | "all";
 type TagFilter = "all" | "api" | "regress";
 type TypeFilter = "all" | "api" | "browser";
 type DateRange = "24h" | "7d" | "all";
@@ -103,6 +103,7 @@ const statusFilterLabels: Record<StatusFilter, string> = {
   degraded: "Degraded",
   failing: "Failing",
   passing: "Passing",
+  queued: "Queued",
   running: "Running",
 };
 
@@ -168,6 +169,7 @@ const statusFilterOptions = [
   { label: statusFilterLabels.passing, value: "passing" },
   { label: statusFilterLabels.running, value: "running" },
   { label: statusFilterLabels.degraded, value: "degraded" },
+  { label: statusFilterLabels.queued, value: "queued" },
   { label: statusFilterLabels.failing, value: "failing" },
 ] satisfies Array<FilterOption<StatusFilter>>;
 
@@ -255,10 +257,16 @@ export default function DashboardClient({
           value: String(summary.running),
         },
         {
-          label: "DEGRADED / QUEUED",
+          label: "DEGRADED",
           status: "degraded",
-          tone: "border-amber-950/80 bg-amber-950/75 text-amber-400 shadow-amber-950/20",
+          tone: "border-orange-950/80 bg-orange-950/75 text-orange-400 shadow-orange-950/20",
           value: String(summary.degraded),
+        },
+        {
+          label: "QUEUED",
+          status: "queued",
+          tone: "border-yellow-950/80 bg-yellow-950/75 text-yellow-400 shadow-yellow-950/20",
+          value: String(summary.queued),
         },
         {
           label: "FAILING",
@@ -557,7 +565,7 @@ export default function DashboardClient({
         <section className="mx-auto flex w-full max-w-[1760px] flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8">
           {activeView === "dashboard" ? (
             <>
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
                 {summaryCards.map((card) => (
                   <button
                     aria-pressed={statusFilter === card.status}
@@ -740,8 +748,16 @@ function doesCheckStatusMatch(check: CheckRow, statusFilter: StatusFilter) {
     return check.runState === "running";
   }
 
+  if (statusFilter === "queued") {
+    return check.runState === "queued";
+  }
+
   if (statusFilter === "degraded") {
-    return check.status === "degraded" && check.runState !== "running";
+    return (
+      check.status === "degraded" &&
+      check.runState !== "queued" &&
+      check.runState !== "running"
+    );
   }
 
   return check.status === statusFilter;
@@ -854,7 +870,7 @@ function markQueuedCheck(check: CheckRow): CheckRow {
     runner: "Local runner",
     runState: "queued" as const,
     status: "degraded" as const,
-    tone: "warn" as const,
+    tone: "queued" as const,
     value: 18,
   };
   const queuedRun = {
@@ -896,10 +912,12 @@ function summarizeDashboardGroups(groups: GroupRow[]): DashboardSummary {
     .reduce<DashboardSummary>(
       (summary, check) => {
         const isRunning = check.runState === "running";
+        const isQueued = check.runState === "queued";
 
         return {
           ...summary,
-          [check.status]: summary[check.status] + (isRunning ? 0 : 1),
+          [check.status]: summary[check.status] + (isRunning || isQueued ? 0 : 1),
+          queued: summary.queued + (isQueued ? 1 : 0),
           running: summary.running + (isRunning ? 1 : 0),
         };
       },
@@ -907,6 +925,7 @@ function summarizeDashboardGroups(groups: GroupRow[]): DashboardSummary {
         degraded: 0,
         failing: 0,
         passing: 0,
+        queued: 0,
         running: 0,
       },
     );

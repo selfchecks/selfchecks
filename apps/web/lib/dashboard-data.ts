@@ -1332,10 +1332,12 @@ function summarizeGroups(groups: DashboardGroupRow[]): DashboardSummary {
     .reduce<DashboardSummary>(
       (summary, check) => {
         const isRunning = check.runState === "running";
+        const isQueued = check.runState === "queued";
 
         return {
           ...summary,
-          [check.status]: summary[check.status] + (isRunning ? 0 : 1),
+          [check.status]: summary[check.status] + (isRunning || isQueued ? 0 : 1),
+          queued: summary.queued + (isQueued ? 1 : 0),
           running: summary.running + (isRunning ? 1 : 0),
         };
       },
@@ -1343,6 +1345,7 @@ function summarizeGroups(groups: DashboardGroupRow[]): DashboardSummary {
         degraded: 0,
         failing: 0,
         passing: 0,
+        queued: 0,
         running: 0,
       },
     );
@@ -1593,6 +1596,7 @@ function createEmptyDashboard(projectSlug: string): DashboardData {
       degraded: 0,
       failing: 0,
       passing: 0,
+      queued: 0,
       running: 0,
     },
   };

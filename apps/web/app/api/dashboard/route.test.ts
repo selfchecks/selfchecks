@@ -23,6 +23,7 @@ describe("dashboard route", () => {
         degraded: 0,
         failing: 0,
         passing: 0,
+        queued: 0,
         running: 0,
       },
     });
@@ -39,6 +40,7 @@ describe("dashboard route", () => {
         degraded: 0,
         failing: 0,
         passing: 0,
+        queued: 0,
         running: 0,
       },
     });
@@ -53,6 +55,7 @@ describe("dashboard route", () => {
         degraded: 0,
         failing: 0,
         passing: 0,
+        queued: 0,
         running: 0,
       },
     });

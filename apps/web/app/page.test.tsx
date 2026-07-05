@@ -79,6 +79,7 @@ const fixtureSummary: DashboardSummary = {
   degraded: 1,
   failing: 0,
   passing: 5,
+  queued: 0,
   running: 0,
 };
 const emptyFirewatch: DashboardFirewatch = {
@@ -263,7 +264,8 @@ describe("DashboardPage", () => {
     expect(screen.queryByText("account")).toBeNull();
     expect(screen.getByText("PASSING")).toBeTruthy();
     expect(screen.getByText("RUNNING")).toBeTruthy();
-    expect(screen.getByText("DEGRADED / QUEUED")).toBeTruthy();
+    expect(screen.getByText("DEGRADED")).toBeTruthy();
+    expect(screen.getByText("QUEUED")).toBeTruthy();
     expect(screen.getByText("FAILING")).toBeTruthy();
     expect(screen.getByText("Firewatch")).toBeTruthy();
     expect(
@@ -335,6 +337,7 @@ describe("DashboardPage", () => {
               degraded: 0,
               failing: 1,
               passing: 0,
+              queued: 0,
               running: 0,
             },
           }),
@@ -372,6 +375,7 @@ describe("DashboardPage", () => {
           degraded: 0,
           failing: 1,
           passing: 0,
+          queued: 0,
           running: 0,
         }}
       />,
@@ -464,6 +468,7 @@ describe("DashboardPage", () => {
               degraded: 0,
               failing: 2,
               passing: 1,
+              queued: 0,
               running: 0,
             },
           }),
@@ -487,6 +492,7 @@ describe("DashboardPage", () => {
           degraded: 0,
           failing: 2,
           passing: 1,
+          queued: 0,
           running: 0,
         }}
       />,
@@ -511,7 +517,8 @@ describe("DashboardPage", () => {
         screen.queryByRole("button", { name: "Restart all failed checks" }),
       ).toBeNull();
       expect(screen.getAllByText("queued").length).toBeGreaterThan(0);
-      expect(screen.getByRole("button", { name: /DEGRADED \/ QUEUED 2/ })).toBeTruthy();
+      expect(screen.getByRole("button", { name: /DEGRADED 0/ })).toBeTruthy();
+      expect(screen.getByRole("button", { name: /QUEUED 2/ })).toBeTruthy();
     });
     expect(fetchMock).not.toHaveBeenCalledWith("/api/checks/check-bff-health/run", {
       method: "POST",
@@ -588,6 +595,7 @@ describe("DashboardPage", () => {
           degraded: 0,
           failing: 1,
           passing: 0,
+          queued: 0,
           running: 0,
         }}
       />,
@@ -699,6 +707,7 @@ describe("DashboardPage", () => {
           degraded: 0,
           failing: 0,
           passing: 1,
+          queued: 0,
           running: 1,
         }}
       />,
@@ -1087,7 +1096,12 @@ describe("DashboardPage", () => {
     });
     expect(screen.queryByText("Queued issue.get.")).toBeNull();
     expect(screen.getAllByText("queued").length).toBeGreaterThan(0);
-    expect(screen.getByLabelText("Queued Local runner - Queued")).toBeTruthy();
+    const queuedBar = screen.getByLabelText("Queued Local runner - Queued");
+
+    expect(queuedBar).toBeTruthy();
+    expect(queuedBar.querySelector("[aria-hidden='true']")?.className).toContain(
+      "bg-yellow-400",
+    );
     expect(screen.queryByRole("button", { name: "Run now" })).toBeNull();
 
     resolveDashboard?.(
@@ -1098,6 +1112,7 @@ describe("DashboardPage", () => {
             degraded: 1,
             failing: 0,
             passing: 4,
+            queued: 0,
             running: 1,
           },
         }),

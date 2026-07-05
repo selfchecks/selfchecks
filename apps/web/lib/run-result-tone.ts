@@ -15,6 +15,10 @@ export function getRunResultTone({
     return "active";
   }
 
+  if (runState === "queued") {
+    return "queued";
+  }
+
   if (runState === "cancelled") {
     return "muted";
   }
@@ -43,8 +47,12 @@ export function getRunResultToneClassName(tone: DashboardResultTone | undefined)
     return "bg-slate-500";
   }
 
+  if (tone === "queued") {
+    return "bg-yellow-400";
+  }
+
   if (tone === "warn") {
-    return "bg-amber-400";
+    return "bg-orange-400";
   }
 
   return "bg-emerald-400";

@@ -303,9 +303,10 @@ describe("dashboard data", () => {
       status: "degraded",
     });
     expect(dashboard.summary).toMatchObject({
-      degraded: 1,
+      degraded: 0,
       failing: 0,
       passing: 0,
+      queued: 1,
       running: 0,
     });
     expect(check?.bars).toEqual([
@@ -322,7 +323,7 @@ describe("dashboard data", () => {
       expect.objectContaining({
         runState: "queued",
         status: "degraded",
-        tone: "warn",
+        tone: "queued",
       }),
     ]);
   });
@@ -390,6 +391,7 @@ describe("dashboard data", () => {
       degraded: 0,
       failing: 0,
       passing: 1,
+      queued: 0,
       running: 0,
     });
     expect(check?.bars).toEqual([
@@ -461,6 +463,7 @@ describe("dashboard data", () => {
       degraded: 0,
       failing: 0,
       passing: 0,
+      queued: 0,
       running: 1,
     });
   });
