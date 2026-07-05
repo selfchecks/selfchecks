@@ -327,7 +327,7 @@ describe("dashboard data", () => {
     ]);
   });
 
-  it("marks a check as failing when visible history contains failed runs", async () => {
+  it("marks a check as passing when the latest run passed after failed history", async () => {
     mocks.checkRunUpdateMany.mockResolvedValue({ count: 0 });
     mocks.projectFindUnique.mockResolvedValue({
       id: "project_1",
@@ -383,13 +383,13 @@ describe("dashboard data", () => {
     const check = dashboard.groups[0]?.children?.[0];
 
     expect(check).toMatchObject({
-      runState: "failed",
-      status: "failing",
+      runState: "passed",
+      status: "passing",
     });
     expect(dashboard.summary).toMatchObject({
       degraded: 0,
-      failing: 1,
-      passing: 0,
+      failing: 0,
+      passing: 1,
       running: 0,
     });
     expect(check?.bars).toEqual([
