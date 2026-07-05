@@ -1272,32 +1272,37 @@ function SettingsScreen({
         </div>
 
         <div className="grid gap-4 p-5">
-          <label
-            className="grid gap-2 text-sm font-medium text-slate-200"
-            htmlFor="settings-ai-api-endpoint"
-          >
-            AI_API_ENDPOINT
-            <select
-              className="h-10 rounded-md border border-slate-700 bg-[#0f151d] px-3 text-sm text-slate-100 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-              id="settings-ai-api-endpoint"
-              onChange={(event) =>
-                setAiDraft((current) => ({
-                  ...current,
-                  apiEndpointOption: event.target.value,
-                }))
-              }
-              value={aiDraft.apiEndpointOption}
+          <div className="grid gap-2 lg:w-1/2">
+            <label
+              className="grid gap-2 text-sm font-medium text-slate-200"
+              htmlFor="settings-ai-api-endpoint"
             >
-              {settings.ai.endpointOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+              AI_API_ENDPOINT
+              <span className="relative">
+                <select
+                  className="h-10 w-full appearance-none rounded-md border border-slate-700 bg-[#0f151d] px-3 pr-10 text-sm text-slate-100 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                  id="settings-ai-api-endpoint"
+                  onChange={(event) =>
+                    setAiDraft((current) => ({
+                      ...current,
+                      apiEndpointOption: event.target.value,
+                    }))
+                  }
+                  value={aiDraft.apiEndpointOption}
+                >
+                  {settings.ai.endpointOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              </span>
+            </label>
 
-          <div className="min-h-5 break-all text-sm text-slate-500">
-            {selectedAiEndpoint || "Set a custom endpoint URL."}
+            <div className="min-h-5 break-all text-sm text-slate-500">
+              {selectedAiEndpoint || "Set a custom endpoint URL."}
+            </div>
           </div>
 
           {aiDraft.apiEndpointOption === AI_CUSTOM_ENDPOINT_VALUE ? (
@@ -1345,34 +1350,34 @@ function SettingsScreen({
             />
           </label>
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            <label
-              className="grid gap-2 text-sm font-medium text-slate-200"
-              htmlFor="settings-ai-model"
-            >
-              AI_MODEL
-              <input
-                className="h-10 rounded-md border border-slate-700 bg-[#0f151d] px-3 text-sm text-slate-100 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                id="settings-ai-model"
-                onChange={(event) =>
-                  setAiDraft((current) => ({
-                    ...current,
-                    model: event.target.value,
-                  }))
-                }
-                required
-                type="text"
-                value={aiDraft.model}
-              />
-            </label>
+          <label
+            className="grid gap-2 text-sm font-medium text-slate-200 lg:w-1/2"
+            htmlFor="settings-ai-model"
+          >
+            AI_MODEL
+            <input
+              className="h-10 rounded-md border border-slate-700 bg-[#0f151d] px-3 text-sm text-slate-100 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              id="settings-ai-model"
+              onChange={(event) =>
+                setAiDraft((current) => ({
+                  ...current,
+                  model: event.target.value,
+                }))
+              }
+              required
+              type="text"
+              value={aiDraft.model}
+            />
+          </label>
 
-            <label
-              className="grid gap-2 text-sm font-medium text-slate-200"
-              htmlFor="settings-ai-response-language"
-            >
-              AI_RESPONSE_LANGUAGE
+          <label
+            className="grid gap-2 text-sm font-medium text-slate-200 lg:w-1/2"
+            htmlFor="settings-ai-response-language"
+          >
+            AI_RESPONSE_LANGUAGE
+            <span className="relative">
               <select
-                className="h-10 rounded-md border border-slate-700 bg-[#0f151d] px-3 text-sm text-slate-100 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                className="h-10 w-full appearance-none rounded-md border border-slate-700 bg-[#0f151d] px-3 pr-10 text-sm text-slate-100 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
                 id="settings-ai-response-language"
                 onChange={(event) =>
                   setAiDraft((current) => ({
@@ -1385,8 +1390,9 @@ function SettingsScreen({
                 <option value="Russian">Russian</option>
                 <option value="English">English</option>
               </select>
-            </label>
-          </div>
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            </span>
+          </label>
         </div>
 
         <div className="flex justify-end border-t border-slate-800 px-5 py-4">
