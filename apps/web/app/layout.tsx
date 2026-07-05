@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   icons: {
     icon: [{ type: "image/svg+xml", url: "/favicon.svg" }],
   },
-  title: "selfchecks",
+  title: "SelfChecks",
 };
 
 export default function RootLayout({

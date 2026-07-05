@@ -10,7 +10,7 @@ describe("metadata", () => {
       icons: {
         icon: [{ type: "image/svg+xml", url: "/favicon.svg" }],
       },
-      title: "selfchecks",
+      title: "SelfChecks",
     });
   });
 });

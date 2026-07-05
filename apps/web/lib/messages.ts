@@ -5,7 +5,7 @@ export const dashboardCopy = {
   },
   basic: {
     deploy: "Import Checkly-style manifests from the configured repository tree.",
-    description: "Initial commands for a fresh selfchecks installation.",
+    description: "Initial commands for a fresh SelfChecks installation.",
     migrate: "Create the PostgreSQL schema used by the dashboard and runner.",
     test: "Run a selected CI subset and persist report artifacts.",
     title: "Basic settings",
@@ -22,7 +22,7 @@ export const dashboardCopy = {
     search: "Search checks",
     title: "Checks",
   },
-  product: "selfchecks",
+  product: "SelfChecks",
   runner: {
     containerIsolation:
       "Browser and API checks are planned to run in isolated containers, not in the web process.",

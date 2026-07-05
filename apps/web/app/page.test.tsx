@@ -221,6 +221,8 @@ describe("DashboardPage", () => {
       screen.getByRole("heading", { name: "Synthetic checks dashboard" }),
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Home" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /SelfChecks/ })).toBeTruthy();
+    expect(screen.queryByText("Available now")).toBeNull();
     expect(screen.getByRole("button", { name: "Open account menu" })).toBeTruthy();
     expect(screen.queryByText("nikolaev@iprojects.ru")).toBeNull();
     expect(screen.queryByText("account")).toBeNull();
@@ -316,7 +318,8 @@ describe("DashboardPage", () => {
     expect(screen.getByText("group.list")).toBeTruthy();
     expect(screen.queryByText("issue.get")).toBeNull();
 
-    await user.click(screen.getByRole("button", { name: "Home" }));
+    await user.click(screen.getByRole("button", { name: /SelfChecks/ }));
+    expect(screen.getByText("Dashboard filters reset.")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Tags" }));
     await user.click(screen.getByRole("option", { name: "api" }));
 

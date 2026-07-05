@@ -164,7 +164,8 @@ describe("CheckDetailClient", () => {
     renderDetail();
 
     expect(screen.getByRole("heading", { name: "bff-gtm-js" })).toBeTruthy();
-    expect(screen.getByText("selfchecks")).toBeTruthy();
+    expect(screen.getByText("SelfChecks")).toBeTruthy();
+    expect(screen.queryByText("Available now")).toBeNull();
     expect(screen.getByRole("link", { name: "Home" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Settings" })).toBeTruthy();
     expect(screen.getByText("API / Bff")).toBeTruthy();

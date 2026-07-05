@@ -46,6 +46,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
+import { ServiceMark } from "@/components/service-mark";
 import { cn } from "@/lib/utils";
 import type {
   DashboardCheckRow,
@@ -757,22 +758,21 @@ function Sidebar({
 }) {
   return (
     <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 flex-col border-r border-slate-800 bg-[#12171f] xl:flex">
-      <div className="flex h-16 items-center gap-3 border-b border-slate-800 px-5">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-blue-600 text-white">
-          <Zap className="h-5 w-5" />
-        </div>
+      <button
+        className="flex h-16 w-full items-center gap-3 border-b border-slate-800 px-5 text-left hover:bg-slate-800/50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500/40"
+        onClick={onDashboardClick}
+        type="button"
+      >
+        <ServiceMark className="h-9 w-9 shrink-0 rounded-md" />
         <div className="min-w-0">
           <div className="truncate text-sm font-semibold text-slate-100">
-            selfchecks
+            SelfChecks
           </div>
           <div className="truncate text-xs text-slate-500">Synthetic monitoring</div>
         </div>
-      </div>
+      </button>
 
       <nav className="flex-1 overflow-y-auto px-4 py-5">
-        <div className="mb-2 px-1 text-xs font-semibold uppercase text-slate-500">
-          Available now
-        </div>
         <div className="space-y-1">
           {sidebarItems.map((item) => {
             const Icon = item.icon;
@@ -817,9 +817,7 @@ function Topbar({
   return (
     <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-slate-800 bg-[#12171f]/95 px-4 backdrop-blur sm:px-6 lg:px-8">
       <div className="flex min-w-0 items-center gap-3">
-        <div className="flex h-9 w-9 items-center justify-center rounded-md bg-blue-600 text-white xl:hidden">
-          <Zap className="h-5 w-5" />
-        </div>
+        <ServiceMark className="h-9 w-9 shrink-0 rounded-md xl:hidden" />
       </div>
 
       <div className="relative flex items-center">

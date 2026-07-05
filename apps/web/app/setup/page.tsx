@@ -26,7 +26,7 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
             First launch
           </p>
           <h1 className="mt-2 text-2xl font-semibold tracking-normal">
-            Configure selfchecks
+            Configure SelfChecks
           </h1>
           <p className="mt-2 text-sm text-slate-400">
             Create the admin account and enter the domain that will receive the

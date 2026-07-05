@@ -170,7 +170,7 @@ describe("RunDetailView", () => {
 
     render(<RunDetailView accountLabel="nikolaev@iprojects.ru" detail={detail} />);
 
-    expect(screen.getByText("selfchecks")).toBeTruthy();
+    expect(screen.getByText("SelfChecks")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Back to check" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "bff-gtm-js" })).toBeTruthy();
     expect(screen.getByText("Passed at Jun 24 16:20 (UTC+3)")).toBeTruthy();

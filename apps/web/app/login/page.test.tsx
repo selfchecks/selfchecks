@@ -11,7 +11,7 @@ describe("LoginPage", () => {
   it("renders the sign-in shell", () => {
     render(<LoginPage />);
 
-    expect(screen.getByText("selfchecks")).toBeTruthy();
+    expect(screen.getByText("SelfChecks")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Sign in" })).toBeTruthy();
     expect(screen.getByRole("form", { name: "login form" })).toBeTruthy();
   });

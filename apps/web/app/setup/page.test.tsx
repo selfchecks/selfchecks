@@ -11,7 +11,7 @@ describe("SetupPage", () => {
   it("renders first-launch setup form", async () => {
     render(await SetupPage({ searchParams: Promise.resolve({}) }));
 
-    expect(screen.getByRole("heading", { name: "Configure selfchecks" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Configure SelfChecks" })).toBeTruthy();
     expect(screen.getByLabelText("Login")).toBeTruthy();
     expect(screen.getByLabelText("Domain")).toBeTruthy();
     expect(screen.getByLabelText("Certificate email")).toBeTruthy();
