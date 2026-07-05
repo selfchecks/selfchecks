@@ -24,6 +24,7 @@ import {
   FileImage,
   FileJson,
   FileText,
+  Flame,
   Folder,
   Gauge,
   History,
@@ -51,6 +52,8 @@ import { ServiceMark } from "@/components/service-mark";
 import { cn } from "@/lib/utils";
 import type {
   DashboardCheckRow,
+  DashboardFirewatch,
+  DashboardFirewatchRow,
   DashboardGroupRow,
   DashboardRunArtifact,
   DashboardRunState,
@@ -71,6 +74,7 @@ type TypeFilter = "all" | "api" | "browser";
 type DateRange = "24h" | "7d" | "all";
 type TraceFilter = "all" | "with-traces";
 type DashboardSnapshot = {
+  firewatch: DashboardFirewatch;
   groups: GroupRow[];
   summary: DashboardSummary;
 };
@@ -197,28 +201,32 @@ const traceFilterOptions = [
 
 export default function DashboardClient({
   initialActiveView = "dashboard",
+  initialFirewatch = createEmptyFirewatchSnapshot(),
   initialGroups,
   initialSettings,
   initialSummary,
 }: {
   initialActiveView?: ActiveView;
+  initialFirewatch?: DashboardFirewatch;
   initialGroups: GroupRow[];
   initialSettings: DashboardSettingsData;
   initialSummary: DashboardSummary;
 }) {
   const [activeView, setActiveView] = useState<ActiveView>(initialActiveView);
   const [dashboard, setDashboard] = useState<DashboardSnapshot>(() => ({
+    firewatch: initialFirewatch,
     groups: initialGroups,
     summary: initialSummary,
   }));
   const [settings, setSettings] = useState<DashboardSettingsData>(initialSettings);
-  const { groups, summary } = dashboard;
+  const { firewatch, groups, summary } = dashboard;
   const router = useRouter();
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [activeActionMenu, setActiveActionMenu] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<DateRange>("24h");
   const [expandedChecks, setExpandedChecks] = useState<Record<string, boolean>>({});
+  const [firewatchOpen, setFirewatchOpen] = useState(true);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(groups.map((group) => [group.name, Boolean(group.expanded)])),
   );
@@ -452,6 +460,7 @@ export default function DashboardClient({
         const nextGroups = markCheckQueued(current.groups, check.id);
 
         return {
+          firewatch: removeFirewatchRow(current.firewatch, check.id),
           groups: nextGroups,
           summary: summarizeDashboardGroups(nextGroups),
         };
@@ -461,6 +470,29 @@ export default function DashboardClient({
       const message = error instanceof Error ? error.message : String(error);
 
       setNotice(`Failed to queue ${check.name}: ${message}`);
+    }
+  }
+
+  function findCheckById(checkId: string) {
+    return groups
+      .flatMap((group) => group.children ?? [])
+      .find((check) => check.id === checkId);
+  }
+
+  async function runFirewatchCheck(row: DashboardFirewatchRow) {
+    const check = findCheckById(row.checkId);
+
+    if (!check) {
+      setNotice(`Unable to find ${row.name}.`);
+      return;
+    }
+
+    await runCheckNow(check);
+  }
+
+  async function runAllFirewatchChecks() {
+    for (const row of firewatch.rows) {
+      await runFirewatchCheck(row);
     }
   }
 
@@ -514,6 +546,15 @@ export default function DashboardClient({
                   </button>
                 ))}
               </div>
+
+              <FirewatchPanel
+                firewatch={firewatch}
+                onOpenChange={setFirewatchOpen}
+                onOpenCheck={toggleCheck}
+                onRunAll={() => void runAllFirewatchChecks()}
+                onRunCheck={(row) => void runFirewatchCheck(row)}
+                open={firewatchOpen}
+              />
 
               <div className="flex flex-col gap-3">
                 <div className="relative">
@@ -678,8 +719,26 @@ async function fetchDashboardSnapshot(): Promise<DashboardSnapshot> {
   }
 
   return {
+    firewatch: payload.firewatch ?? createEmptyFirewatchSnapshot(),
     groups: payload.groups,
     summary: payload.summary,
+  };
+}
+
+function createEmptyFirewatchSnapshot(): DashboardFirewatch {
+  return {
+    lookbackDays: 7,
+    rows: [],
+  };
+}
+
+function removeFirewatchRow(
+  firewatch: DashboardFirewatch,
+  checkId: string,
+): DashboardFirewatch {
+  return {
+    ...firewatch,
+    rows: firewatch.rows.filter((row) => row.checkId !== checkId),
   };
 }
 
@@ -779,6 +838,176 @@ function summarizeDashboardStatus(statuses: Status[]): Status {
   }
 
   return "passing";
+}
+
+function FirewatchPanel({
+  firewatch,
+  onOpenChange,
+  onOpenCheck,
+  onRunAll,
+  onRunCheck,
+  open,
+}: {
+  firewatch: DashboardFirewatch;
+  onOpenChange: (open: boolean) => void;
+  onOpenCheck: (checkId: string) => void;
+  onRunAll: () => void;
+  onRunCheck: (row: DashboardFirewatchRow) => void;
+  open: boolean;
+}) {
+  const count = firewatch.rows.length;
+  const alertText =
+    count === 1
+      ? `You have 1 check that started failing in the last ${firewatch.lookbackDays} days`
+      : `You have ${count} checks that started failing in the last ${firewatch.lookbackDays} days`;
+
+  return (
+    <section className="overflow-hidden rounded-md border border-slate-800 bg-[#11161d]">
+      <div className="flex items-center justify-between gap-3 px-4 py-4 sm:px-5">
+        <button
+          aria-controls="firewatch-panel"
+          aria-expanded={open}
+          className="inline-flex min-w-0 items-center gap-2 text-left"
+          onClick={() => onOpenChange(!open)}
+          type="button"
+        >
+          {open ? (
+            <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
+          ) : (
+            <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
+          )}
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-red-500/10 text-red-400">
+            <Flame className="h-4 w-4" />
+          </span>
+          <span className="truncate text-lg font-semibold text-slate-100">
+            Firewatch
+          </span>
+        </button>
+        {count > 0 ? (
+          <span className="rounded-md border border-red-500/30 bg-red-500/10 px-2 py-1 text-xs font-semibold text-red-300">
+            {count}
+          </span>
+        ) : null}
+      </div>
+
+      {open ? (
+        <div id="firewatch-panel" className="px-4 pb-4 sm:px-5">
+          {count > 0 ? (
+            <>
+              <div className="mb-4 flex items-center gap-2 text-sm font-medium text-red-400">
+                <Flame className="h-4 w-4 shrink-0" />
+                <span>{alertText}</span>
+              </div>
+              <div className="overflow-x-auto rounded-md border border-slate-700">
+                <table className="w-full min-w-[860px] table-fixed text-left text-sm">
+                  <thead className="border-b border-slate-700 bg-[#121820] text-xs font-semibold uppercase text-slate-400">
+                    <tr>
+                      <th className="w-[46%] px-4 py-3">
+                        <span className="inline-flex items-center gap-2">
+                          Name
+                          <ArrowDownUp className="h-3.5 w-3.5 text-slate-600" />
+                        </span>
+                      </th>
+                      <th className="w-[10%] px-4 py-3">
+                        <span className="inline-flex items-center gap-2">
+                          Type
+                          <ArrowDownUp className="h-3.5 w-3.5 text-slate-600" />
+                        </span>
+                      </th>
+                      <th className="w-[14%] px-4 py-3">
+                        <span className="inline-flex items-center gap-2">
+                          First Seen
+                          <ArrowDownUp className="h-3.5 w-3.5 text-slate-600" />
+                        </span>
+                      </th>
+                      <th className="w-[14%] px-4 py-3">
+                        <span className="inline-flex items-center gap-2">
+                          Last Seen
+                          <ArrowDownUp className="h-3.5 w-3.5 text-slate-600" />
+                        </span>
+                      </th>
+                      <th className="w-[16%] px-4 py-3" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {firewatch.rows.map((row) => (
+                      <tr
+                        className="border-b border-slate-800 last:border-b-0"
+                        key={row.checkId}
+                      >
+                        <td className="px-4 py-3">
+                          <div className="flex min-w-0 items-center gap-3">
+                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-red-500 text-white">
+                              <CircleX className="h-3.5 w-3.5" />
+                            </span>
+                            <div className="min-w-0">
+                              <button
+                                className="max-w-full truncate text-left font-medium text-blue-400 underline decoration-blue-500/60 underline-offset-2 hover:text-blue-300"
+                                onClick={() => onOpenCheck(row.checkId)}
+                                role="link"
+                                title={`${row.groupName} / ${row.name}`}
+                                type="button"
+                              >
+                                {row.groupName} / {row.name}
+                              </button>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <CheckTypeBadge type={row.type} />
+                        </td>
+                        <td
+                          className="px-4 py-3 text-slate-300"
+                          title={row.firstSeenAt}
+                        >
+                          {row.firstSeen}
+                        </td>
+                        <td className="px-4 py-3 text-slate-300" title={row.lastSeenAt}>
+                          {row.lastSeen}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-sm font-medium text-blue-400 hover:bg-blue-500/10 hover:text-blue-300"
+                            onClick={() => onRunCheck(row)}
+                            type="button"
+                          >
+                            <Zap className="h-4 w-4" />
+                            Schedule now
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-3 flex justify-end">
+                <button
+                  className="inline-flex h-10 items-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-500"
+                  onClick={onRunAll}
+                  type="button"
+                >
+                  <Zap className="h-4 w-4" />
+                  Schedule all failing checks
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="rounded-md border border-slate-700 bg-[#0f151d] px-4 py-5 text-sm text-slate-400">
+              No newly failing checks in the last {firewatch.lookbackDays} days.
+            </div>
+          )}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function CheckTypeBadge({ type }: { type: CheckRow["type"] }) {
+  return (
+    <span className="inline-flex h-5 items-center rounded border border-slate-500 px-1 text-[10px] font-bold uppercase text-slate-400">
+      {type}
+    </span>
+  );
 }
 
 function Topbar({

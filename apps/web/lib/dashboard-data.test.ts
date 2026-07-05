@@ -381,6 +381,157 @@ describe("dashboard data", () => {
     });
   });
 
+  it("lists Firewatch rows for current failures that started within seven days", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-05T12:00:00.000Z"));
+    mocks.checkRunUpdateMany.mockResolvedValue({ count: 0 });
+    mocks.projectFindUnique.mockResolvedValue({
+      id: "project_1",
+      slug: "default",
+    });
+    mocks.checkFindMany.mockResolvedValue([
+      {
+        enabled: true,
+        entrypoint: null,
+        frequencyMinutes: 180,
+        group: {
+          name: "API / Bff",
+        },
+        id: "check_recent",
+        key: "bff-health",
+        name: "bff-health",
+        request: {
+          assertions: [],
+          headers: {},
+          method: "GET",
+          url: "https://example.test/health",
+        },
+        runs: [
+          {
+            artifacts: [],
+            createdAt: new Date("2026-07-05T11:00:00.000Z"),
+            durationMs: 9,
+            id: "run_recent_latest",
+            logsPath: null,
+            result: null,
+            status: "FAILED",
+          },
+          {
+            artifacts: [],
+            createdAt: new Date("2026-07-05T09:00:00.000Z"),
+            durationMs: 8,
+            id: "run_recent_first",
+            logsPath: null,
+            result: null,
+            status: "FAILED",
+          },
+          {
+            artifacts: [],
+            createdAt: new Date("2026-07-04T09:00:00.000Z"),
+            durationMs: 6,
+            id: "run_recent_previous_pass",
+            logsPath: null,
+            result: null,
+            status: "PASSED",
+          },
+        ],
+        tags: ["api", "bff"],
+        type: "API",
+      },
+      {
+        enabled: true,
+        entrypoint: null,
+        frequencyMinutes: 180,
+        group: {
+          name: "API / Core",
+        },
+        id: "check_old",
+        key: "core-errors",
+        name: "core-errors",
+        request: {
+          assertions: [],
+          headers: {},
+          method: "GET",
+          url: "https://example.test/core",
+        },
+        runs: [
+          {
+            artifacts: [],
+            createdAt: new Date("2026-07-05T10:00:00.000Z"),
+            durationMs: 9,
+            id: "run_old_latest",
+            logsPath: null,
+            result: null,
+            status: "FAILED",
+          },
+          {
+            artifacts: [],
+            createdAt: new Date("2026-06-27T10:00:00.000Z"),
+            durationMs: 8,
+            id: "run_old_first",
+            logsPath: null,
+            result: null,
+            status: "FAILED",
+          },
+        ],
+        tags: ["api"],
+        type: "API",
+      },
+      {
+        enabled: true,
+        entrypoint: null,
+        frequencyMinutes: 180,
+        group: {
+          name: "Browser",
+        },
+        id: "check_recovered",
+        key: "signin",
+        name: "signin",
+        request: null,
+        runs: [
+          {
+            artifacts: [],
+            createdAt: new Date("2026-07-05T10:30:00.000Z"),
+            durationMs: 920,
+            id: "run_recovered_latest",
+            logsPath: null,
+            result: null,
+            status: "PASSED",
+          },
+          {
+            artifacts: [],
+            createdAt: new Date("2026-07-05T09:30:00.000Z"),
+            durationMs: 810,
+            id: "run_recovered_failed",
+            logsPath: null,
+            result: null,
+            status: "FAILED",
+          },
+        ],
+        tags: ["browser"],
+        type: "BROWSER",
+      },
+    ]);
+
+    const dashboard = await getDashboardData("default");
+
+    expect(dashboard.firewatch).toEqual({
+      lookbackDays: 7,
+      rows: [
+        {
+          checkId: "check_recent",
+          firstSeen: "about 3 hours ago",
+          firstSeenAt: "2026-07-05T09:00:00.000Z",
+          groupName: "API / Bff",
+          lastSeen: "about 1 hours ago",
+          lastSeenAt: "2026-07-05T11:00:00.000Z",
+          name: "bff-health",
+          type: "api",
+        },
+      ],
+    });
+  });
+
   it("loads journal rows with filters, links and pagination", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-05T12:00:00.000Z"));

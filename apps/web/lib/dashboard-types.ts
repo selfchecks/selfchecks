@@ -111,6 +111,22 @@ export type DashboardCheckRow = {
   type: "api" | "browser";
 };
 
+export type DashboardFirewatchRow = {
+  checkId: string;
+  firstSeen: string;
+  firstSeenAt: string;
+  groupName: string;
+  lastSeen: string;
+  lastSeenAt: string;
+  name: string;
+  type: DashboardCheckRow["type"];
+};
+
+export type DashboardFirewatch = {
+  lookbackDays: number;
+  rows: DashboardFirewatchRow[];
+};
+
 export type DashboardGroupRow = {
   checks: string;
   children?: DashboardCheckRow[];

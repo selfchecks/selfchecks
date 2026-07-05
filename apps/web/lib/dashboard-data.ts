@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 
 import type {
   DashboardCheckRow,
+  DashboardFirewatch,
+  DashboardFirewatchRow,
   DashboardGroupRow,
   DashboardRunArtifact,
   DashboardRunPerformance,
@@ -16,9 +18,11 @@ import { prisma } from "./prisma";
 import { getRunResultTone } from "./run-result-tone";
 
 const DEFAULT_QUEUED_RUN_TIMEOUT_MINUTES = 30;
+const FIREWATCH_LOOKBACK_DAYS = 7;
 const MAX_LOG_PREVIEW_CHARS = 12_000;
 
 type DashboardData = {
+  firewatch: DashboardFirewatch;
   groups: DashboardGroupRow[];
   projectSlug: string;
   summary: DashboardSummary;
@@ -206,6 +210,7 @@ export async function getDashboardData(projectSlug: string): Promise<DashboardDa
     const groups = buildGroups(checks);
 
     return {
+      firewatch: buildFirewatch(checks),
       groups,
       projectSlug: project.slug,
       summary: summarizeGroups(groups),
@@ -732,6 +737,56 @@ function mapCheck(check: CheckWithRuns): DashboardCheckRow {
     status: mapRunStatus(latestRun?.status),
     tags: check.tags,
     time: formatRunAge(latestRun),
+    type: check.type.toLowerCase() as DashboardCheckRow["type"],
+  };
+}
+
+function buildFirewatch(checks: CheckWithRuns[]): DashboardFirewatch {
+  const cutoff = new Date(Date.now() - FIREWATCH_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
+  const rows = checks
+    .map((check) => mapFirewatchRow(check, cutoff))
+    .filter((row): row is DashboardFirewatchRow => Boolean(row));
+
+  return {
+    lookbackDays: FIREWATCH_LOOKBACK_DAYS,
+    rows,
+  };
+}
+
+function mapFirewatchRow(
+  check: CheckWithRuns,
+  cutoff: Date,
+): DashboardFirewatchRow | undefined {
+  const latestRun = check.runs[0];
+
+  if (!latestRun || mapRunStatus(latestRun.status) !== "failing") {
+    return undefined;
+  }
+
+  const failingStreak: CheckWithRuns["runs"] = [];
+
+  for (const run of check.runs) {
+    if (mapRunStatus(run.status) !== "failing") {
+      break;
+    }
+
+    failingStreak.push(run);
+  }
+
+  const firstFailingRun = failingStreak[failingStreak.length - 1];
+
+  if (!firstFailingRun || firstFailingRun.createdAt < cutoff) {
+    return undefined;
+  }
+
+  return {
+    checkId: check.id,
+    firstSeen: formatRelative(firstFailingRun.createdAt),
+    firstSeenAt: firstFailingRun.createdAt.toISOString(),
+    groupName: check.group?.name ?? "Ungrouped",
+    lastSeen: formatRelative(latestRun.createdAt),
+    lastSeenAt: latestRun.createdAt.toISOString(),
+    name: check.name,
     type: check.type.toLowerCase() as DashboardCheckRow["type"],
   };
 }
@@ -1528,6 +1583,10 @@ function formatRelative(date: Date): string {
 
 function createEmptyDashboard(projectSlug: string): DashboardData {
   return {
+    firewatch: {
+      lookbackDays: FIREWATCH_LOOKBACK_DAYS,
+      rows: [],
+    },
     groups: [],
     projectSlug,
     summary: {

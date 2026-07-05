@@ -17,6 +17,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   return (
     <DashboardClient
+      initialFirewatch={dashboard.firewatch}
       initialActiveView={initialActiveView}
       initialGroups={dashboard.groups}
       initialSettings={settings}

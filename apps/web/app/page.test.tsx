@@ -16,6 +16,7 @@ vi.mock("next/navigation", () => ({
 
 import type {
   DashboardCheckRow,
+  DashboardFirewatch,
   DashboardGroupRow,
   DashboardSummary,
 } from "@/lib/dashboard-types";
@@ -79,6 +80,10 @@ const fixtureSummary: DashboardSummary = {
   failing: 0,
   passing: 5,
   running: 0,
+};
+const emptyFirewatch: DashboardFirewatch = {
+  lookbackDays: 7,
+  rows: [],
 };
 const fixtureAiEndpointOptions = [
   {
@@ -260,6 +265,10 @@ describe("DashboardPage", () => {
     expect(screen.getByText("RUNNING")).toBeTruthy();
     expect(screen.getByText("DEGRADED")).toBeTruthy();
     expect(screen.getByText("FAILING")).toBeTruthy();
+    expect(screen.getByText("Firewatch")).toBeTruthy();
+    expect(
+      screen.getByText("No newly failing checks in the last 7 days."),
+    ).toBeTruthy();
     expect(screen.getByRole("searchbox", { name: "Search checks" })).toBeTruthy();
     expect(screen.queryByRole("combobox")).toBeNull();
     expect(screen.getByRole("button", { name: "Last 24 hours" })).toBeTruthy();
@@ -283,6 +292,112 @@ describe("DashboardPage", () => {
     expect(screen.getByText("Last results")).toBeTruthy();
     expect(screen.getByText("AVA")).toBeTruthy();
     expect(screen.getByText("P95")).toBeTruthy();
+  });
+
+  it("renders Firewatch rows and queues checks from the block", async () => {
+    const user = userEvent.setup();
+    const failingCheck = createCheck({
+      name: "bff-health",
+      runState: "failed",
+      status: "failing",
+      time: "about 1 hour ago",
+    });
+    const groups: DashboardGroupRow[] = [
+      {
+        checks: "1 checks",
+        children: [failingCheck],
+        expanded: true,
+        name: "API / Bff",
+        status: "failing",
+        updated: "about 1 hour ago",
+      },
+    ];
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        return Promise.resolve(
+          new Response(JSON.stringify({ runId: "run_1", status: "queued" }), {
+            headers: {
+              "content-type": "application/json",
+            },
+            status: 202,
+          }),
+        );
+      }
+
+      expect(input).toBe("/api/dashboard");
+
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            firewatch: emptyFirewatch,
+            groups,
+            summary: {
+              degraded: 0,
+              failing: 1,
+              passing: 0,
+              running: 0,
+            },
+          }),
+          {
+            headers: {
+              "content-type": "application/json",
+            },
+            status: 200,
+          },
+        ),
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <DashboardClient
+        initialFirewatch={{
+          lookbackDays: 7,
+          rows: [
+            {
+              checkId: failingCheck.id,
+              firstSeen: "about 3 hours ago",
+              firstSeenAt: "2026-07-05T09:00:00.000Z",
+              groupName: "API / Bff",
+              lastSeen: "about 1 hour ago",
+              lastSeenAt: "2026-07-05T11:00:00.000Z",
+              name: failingCheck.name,
+              type: "api",
+            },
+          ],
+        }}
+        initialGroups={groups}
+        initialSettings={fixtureSettings}
+        initialSummary={{
+          degraded: 0,
+          failing: 1,
+          passing: 0,
+          running: 0,
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByText("You have 1 check that started failing in the last 7 days"),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Schedule all failing checks" }),
+    ).toBeTruthy();
+
+    await user.click(screen.getByRole("link", { name: "API / Bff / bff-health" }));
+
+    expect(mocks.routerPush).toHaveBeenCalledWith("/checks/check-bff-health");
+
+    await user.click(screen.getByRole("button", { name: "Schedule now" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/checks/check-bff-health/run", {
+        method: "POST",
+      });
+    });
+    expect(
+      screen.getByText("No newly failing checks in the last 7 days."),
+    ).toBeTruthy();
   });
 
   it("explains check status icons", () => {
