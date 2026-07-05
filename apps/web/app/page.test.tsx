@@ -78,6 +78,7 @@ const fixtureSummary: DashboardSummary = {
   degraded: 1,
   failing: 0,
   passing: 5,
+  running: 0,
 };
 const fixtureAiEndpointOptions = [
   {
@@ -255,6 +256,7 @@ describe("DashboardPage", () => {
     expect(screen.queryByText("nikolaev@iprojects.ru")).toBeNull();
     expect(screen.queryByText("account")).toBeNull();
     expect(screen.getByText("PASSING")).toBeTruthy();
+    expect(screen.getByText("RUNNING")).toBeTruthy();
     expect(screen.getByText("DEGRADED")).toBeTruthy();
     expect(screen.getByText("FAILING")).toBeTruthy();
     expect(screen.getByRole("searchbox", { name: "Search checks" })).toBeTruthy();
@@ -339,6 +341,7 @@ describe("DashboardPage", () => {
           degraded: 0,
           failing: 1,
           passing: 0,
+          running: 0,
         }}
       />,
     );
@@ -407,6 +410,60 @@ describe("DashboardPage", () => {
     expect(screen.getByRole("button", { name: "regress" })).toBeTruthy();
     expect(screen.getByText("group.list")).toBeTruthy();
     expect(screen.queryByText("API / Bff")).toBeNull();
+  });
+
+  it("filters running checks from the summary card and status filter", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <DashboardClient
+        initialGroups={[
+          {
+            checks: "2 checks",
+            children: [
+              createCheck({
+                name: "checkout.running",
+                runState: "running",
+                status: "degraded",
+                time: "running",
+              }),
+              createCheck({
+                name: "checkout.ready",
+                runState: "passed",
+                status: "passing",
+              }),
+            ],
+            expanded: true,
+            name: "API / Checkout",
+            status: "degraded",
+            updated: "running",
+          },
+        ]}
+        initialSettings={fixtureSettings}
+        initialSummary={{
+          degraded: 0,
+          failing: 0,
+          passing: 1,
+          running: 1,
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /RUNNING/ }));
+
+    expect(screen.getByText("checkout.running")).toBeTruthy();
+    expect(screen.queryByText("checkout.ready")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Running" }));
+    await user.click(screen.getByRole("option", { name: "All statuses" }));
+
+    expect(screen.getByText("checkout.ready")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Status" }));
+    await user.click(screen.getByRole("option", { name: "Running" }));
+
+    expect(screen.getByText("checkout.running")).toBeTruthy();
+    expect(screen.queryByText("checkout.ready")).toBeNull();
   });
 
   it("opens the account menu and updates passive filter selects", async () => {
@@ -780,9 +837,10 @@ describe("DashboardPage", () => {
         JSON.stringify({
           groups: runningGroups,
           summary: {
-            degraded: 2,
+            degraded: 1,
             failing: 0,
             passing: 4,
+            running: 1,
           },
         }),
         {

@@ -284,6 +284,12 @@ describe("dashboard data", () => {
       runState: "queued",
       status: "degraded",
     });
+    expect(dashboard.summary).toMatchObject({
+      degraded: 1,
+      failing: 0,
+      passing: 0,
+      running: 0,
+    });
     expect(check?.bars).toEqual([
       expect.objectContaining({
         runState: "failed",
@@ -296,5 +302,59 @@ describe("dashboard data", () => {
         tone: "warn",
       }),
     ]);
+  });
+
+  it("counts currently running checks in the dashboard summary", async () => {
+    mocks.checkRunUpdateMany.mockResolvedValue({ count: 0 });
+    mocks.projectFindUnique.mockResolvedValue({
+      id: "project_1",
+      slug: "default",
+    });
+    mocks.checkFindMany.mockResolvedValue([
+      {
+        enabled: true,
+        entrypoint: null,
+        frequencyMinutes: 180,
+        group: {
+          name: "API / Bff",
+        },
+        id: "check_1",
+        key: "bff-health",
+        name: "bff-health",
+        request: {
+          assertions: [],
+          headers: {},
+          method: "GET",
+          url: "https://example.test/health",
+        },
+        runs: [
+          {
+            artifacts: [],
+            createdAt: new Date("2026-07-05T09:40:00.000Z"),
+            durationMs: null,
+            id: "run_running",
+            logsPath: null,
+            result: null,
+            status: "RUNNING",
+          },
+        ],
+        tags: ["api", "bff"],
+        type: "API",
+      },
+    ]);
+
+    const dashboard = await getDashboardData("default");
+    const check = dashboard.groups[0]?.children?.[0];
+
+    expect(check).toMatchObject({
+      runState: "running",
+      status: "degraded",
+    });
+    expect(dashboard.summary).toMatchObject({
+      degraded: 0,
+      failing: 0,
+      passing: 0,
+      running: 1,
+    });
   });
 });

@@ -64,7 +64,7 @@ import type {
 
 type Status = DashboardStatus;
 type ActiveView = "dashboard" | "settings";
-type StatusFilter = Status | "all";
+type StatusFilter = Status | "running" | "all";
 type TagFilter = "all" | "api" | "regress";
 type TypeFilter = "all" | "api" | "browser";
 type DateRange = "24h" | "7d" | "all";
@@ -119,6 +119,7 @@ const statusFilterLabels: Record<StatusFilter, string> = {
   degraded: "Degraded",
   failing: "Failing",
   passing: "Passing",
+  running: "Running",
 };
 
 const runStateTooltipContent: Record<
@@ -181,6 +182,7 @@ const dateRangeOptions = [
 const statusFilterOptions = [
   { label: statusFilterLabels.all, menuLabel: "All statuses", value: "all" },
   { label: statusFilterLabels.passing, value: "passing" },
+  { label: statusFilterLabels.running, value: "running" },
   { label: statusFilterLabels.degraded, value: "degraded" },
   { label: statusFilterLabels.failing, value: "failing" },
 ] satisfies Array<FilterOption<StatusFilter>>;
@@ -250,6 +252,12 @@ export default function DashboardClient({
           value: String(summary.passing),
         },
         {
+          label: "RUNNING",
+          status: "running",
+          tone: "border-blue-950/80 bg-blue-950/75 text-blue-400 shadow-blue-950/20",
+          value: String(summary.running),
+        },
+        {
           label: "DEGRADED",
           status: "degraded",
           tone: "border-amber-950/80 bg-amber-950/75 text-amber-400 shadow-amber-950/20",
@@ -263,7 +271,7 @@ export default function DashboardClient({
         },
       ] satisfies Array<{
         label: string;
-        status: Status;
+        status: Exclude<StatusFilter, "all">;
         tone: string;
         value: string;
       }>,
@@ -365,7 +373,7 @@ export default function DashboardClient({
       );
       const groupMatches =
         doesGroupMatchSearch(group, query) &&
-        doesStatusMatch(group.status, statusFilter) &&
+        doesGroupStatusMatch(group, statusFilter) &&
         !traceOnly &&
         tagFilter === "all";
 
@@ -483,7 +491,7 @@ export default function DashboardClient({
         <section className="mx-auto flex w-full max-w-[1760px] flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8">
           {activeView === "dashboard" ? (
             <>
-              <div className="grid gap-4 lg:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 {summaryCards.map((card) => (
                   <button
                     aria-pressed={statusFilter === card.status}
@@ -607,6 +615,14 @@ function doesStatusMatch(status: Status, statusFilter: StatusFilter) {
   return statusFilter === "all" || status === statusFilter;
 }
 
+function doesGroupStatusMatch(group: GroupRow, statusFilter: StatusFilter) {
+  if (statusFilter === "degraded" && group.children) {
+    return group.children.some((check) => doesCheckStatusMatch(check, statusFilter));
+  }
+
+  return doesStatusMatch(group.status, statusFilter);
+}
+
 function doesGroupMatchSearch(group: GroupRow, query: string) {
   if (!query.trim()) {
     return true;
@@ -633,11 +649,27 @@ function doesCheckMatchFilters(
 
   return (
     matchesQuery &&
-    doesStatusMatch(check.status, filters.statusFilter) &&
+    doesCheckStatusMatch(check, filters.statusFilter) &&
     (filters.tagFilter === "all" || check.tags.includes(filters.tagFilter)) &&
     (!filters.traceOnly || check.hasTrace) &&
     (filters.typeFilter === "all" || check.type === filters.typeFilter)
   );
+}
+
+function doesCheckStatusMatch(check: CheckRow, statusFilter: StatusFilter) {
+  if (statusFilter === "all") {
+    return true;
+  }
+
+  if (statusFilter === "running") {
+    return check.runState === "running";
+  }
+
+  if (statusFilter === "degraded") {
+    return check.status === "degraded" && check.runState !== "running";
+  }
+
+  return check.status === statusFilter;
 }
 
 async function fetchDashboardSnapshot(): Promise<DashboardSnapshot> {
@@ -726,14 +758,20 @@ function summarizeDashboardGroups(groups: GroupRow[]): DashboardSummary {
   return groups
     .flatMap((group) => group.children ?? [])
     .reduce<DashboardSummary>(
-      (summary, check) => ({
-        ...summary,
-        [check.status]: summary[check.status] + 1,
-      }),
+      (summary, check) => {
+        const isRunning = check.runState === "running";
+
+        return {
+          ...summary,
+          [check.status]: summary[check.status] + (isRunning ? 0 : 1),
+          running: summary.running + (isRunning ? 1 : 0),
+        };
+      },
       {
         degraded: 0,
         failing: 0,
         passing: 0,
+        running: 0,
       },
     );
 }

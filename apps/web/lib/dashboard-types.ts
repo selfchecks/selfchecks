@@ -122,4 +122,5 @@ export type DashboardSummary = {
   degraded: number;
   failing: number;
   passing: number;
+  running: number;
 };

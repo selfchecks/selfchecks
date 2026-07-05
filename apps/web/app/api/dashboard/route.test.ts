@@ -23,6 +23,7 @@ describe("dashboard route", () => {
         degraded: 0,
         failing: 0,
         passing: 0,
+        running: 0,
       },
     });
 
@@ -38,6 +39,7 @@ describe("dashboard route", () => {
         degraded: 0,
         failing: 0,
         passing: 0,
+        running: 0,
       },
     });
     expect(mocks.getDashboardData).toHaveBeenCalledWith("account");
@@ -51,6 +53,7 @@ describe("dashboard route", () => {
         degraded: 0,
         failing: 0,
         passing: 0,
+        running: 0,
       },
     });
 

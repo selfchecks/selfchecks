@@ -912,14 +912,20 @@ function summarizeGroups(groups: DashboardGroupRow[]): DashboardSummary {
   return groups
     .flatMap((group) => group.children ?? [])
     .reduce<DashboardSummary>(
-      (summary, check) => ({
-        ...summary,
-        [check.status]: summary[check.status] + 1,
-      }),
+      (summary, check) => {
+        const isRunning = check.runState === "running";
+
+        return {
+          ...summary,
+          [check.status]: summary[check.status] + (isRunning ? 0 : 1),
+          running: summary.running + (isRunning ? 1 : 0),
+        };
+      },
       {
         degraded: 0,
         failing: 0,
         passing: 0,
+        running: 0,
       },
     );
 }
@@ -1174,6 +1180,7 @@ function createEmptyDashboard(projectSlug: string): DashboardData {
       degraded: 0,
       failing: 0,
       passing: 0,
+      running: 0,
     },
   };
 }
