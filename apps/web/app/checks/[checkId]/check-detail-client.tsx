@@ -33,10 +33,7 @@ import type {
   DashboardRunState,
   DashboardStatus,
 } from "@/lib/dashboard-types";
-import {
-  getRunResultTone,
-  getRunResultToneClassName,
-} from "@/lib/run-result-tone";
+import { getRunResultTone, getRunResultToneClassName } from "@/lib/run-result-tone";
 import { cn } from "@/lib/utils";
 import { DetailSidebar } from "../detail-sidebar";
 
