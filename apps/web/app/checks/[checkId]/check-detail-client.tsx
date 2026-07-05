@@ -445,15 +445,24 @@ function Metric({ label, value }: { label: string; value: string }) {
 
 function ResultChart({ runs }: { runs: DashboardRunRow[] }) {
   const bars = buildRunBars(runs);
+  const barGap = bars.length > 72 ? 2 : bars.length > 36 ? 4 : 8;
 
   return (
-    <div className="h-48 border-t border-slate-800 pt-5">
+    <div className="h-48 min-w-0 overflow-hidden border-t border-slate-800 pt-5">
       {bars.length > 0 ? (
-        <div className="flex h-full items-end gap-2 overflow-hidden">
+        <div
+          aria-label="Run result chart"
+          className="grid h-full min-w-0 items-end overflow-hidden"
+          role="img"
+          style={{
+            columnGap: barGap,
+            gridTemplateColumns: `repeat(${bars.length}, minmax(0, 1fr))`,
+          }}
+        >
           {bars.map((bar) => (
             <div
               aria-label={`${runStateLabels[bar.runState]} ${bar.duration} ${bar.occurredAt}`}
-              className="group relative flex min-w-4 flex-1 items-end justify-center"
+              className="group relative flex min-w-0 items-end justify-center"
               key={bar.id}
             >
               <span

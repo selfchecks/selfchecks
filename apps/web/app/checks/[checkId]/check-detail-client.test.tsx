@@ -208,6 +208,38 @@ describe("CheckDetailClient", () => {
     ).toContain("/api/runs/run_1/artifacts/artifact_1?download=1");
   });
 
+  it("keeps dense run charts constrained to the card width", () => {
+    const runs = Array.from({ length: 49 }, (_, index) => ({
+      ...detail.check.runs[index % detail.check.runs.length]!,
+      createdAt: new Date(Date.now() - index * 60_000).toISOString(),
+      id: `run_dense_${index}`,
+      occurredAt: `Jul 05 ${String(index).padStart(2, "0")}:00 (UTC+0)`,
+    }));
+
+    render(
+      <CheckDetailClient
+        accountLabel="nikolaev@iprojects.ru"
+        detail={{
+          ...detail,
+          check: {
+            ...detail.check,
+            runs,
+          },
+        }}
+      />,
+    );
+
+    const chart = screen.getByRole("img", { name: "Run result chart" });
+
+    expect(chart.className).toContain("grid");
+    expect(chart.className).toContain("min-w-0");
+    expect(chart.className).toContain("overflow-hidden");
+    expect(chart.getAttribute("style")).toContain(
+      "grid-template-columns: repeat(49, minmax(0, 1fr))",
+    );
+    expect(chart.getAttribute("style")).toContain("column-gap: 4px");
+  });
+
   it("filters run results from the segment controls", async () => {
     const user = userEvent.setup();
 
