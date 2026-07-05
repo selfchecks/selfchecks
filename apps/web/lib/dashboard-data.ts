@@ -690,6 +690,8 @@ function buildGroups(checks: CheckWithRuns[]): DashboardGroupRow[] {
 
 function mapCheck(check: CheckWithRuns): DashboardCheckRow {
   const latestRun = check.runs[0];
+  const runState = mapCheckRunState(check.runs);
+  const status = mapCheckStatus(check.runs);
   const durations = check.runs
     .map((run) => run.durationMs)
     .filter((duration): duration is number => typeof duration === "number");
@@ -715,7 +717,7 @@ function mapCheck(check: CheckWithRuns): DashboardCheckRow {
     id: check.id,
     name: check.name,
     p95: formatDuration(percentile(durations, 0.95)),
-    runState: mapRunState(latestRun?.status),
+    runState,
     runs: check.runs.map(mapRun),
     settings: {
       enabled: check.enabled,
@@ -734,7 +736,7 @@ function mapCheck(check: CheckWithRuns): DashboardCheckRow {
       passedRuns: String(passedRuns),
       totalRuns: String(check.runs.length),
     },
-    status: mapRunStatus(latestRun?.status),
+    status,
     tags: check.tags,
     time: formatRunAge(latestRun),
     type: check.type.toLowerCase() as DashboardCheckRow["type"],
@@ -1358,6 +1360,44 @@ function summarizeStatus(statuses: DashboardStatus[]): DashboardStatus {
   }
 
   return "passing";
+}
+
+function mapCheckStatus(runs: CheckWithRuns["runs"]): DashboardStatus {
+  const latestRunState = mapRunState(runs[0]?.status);
+
+  if (latestRunState === "queued" || latestRunState === "running") {
+    return mapRunStatus(runs[0]?.status);
+  }
+
+  if (runs.length === 0) {
+    return "degraded";
+  }
+
+  return summarizeStatus(runs.map((run) => mapRunStatus(run.status)));
+}
+
+function mapCheckRunState(runs: CheckWithRuns["runs"]): DashboardRunState {
+  const latestRunState = mapRunState(runs[0]?.status);
+
+  if (latestRunState === "queued" || latestRunState === "running") {
+    return latestRunState;
+  }
+
+  const runStates = runs.map((run) => mapRunState(run.status));
+
+  if (runStates.includes("failed")) {
+    return "failed";
+  }
+
+  if (runStates.includes("timed_out")) {
+    return "timed_out";
+  }
+
+  if (runStates.includes("cancelled")) {
+    return "cancelled";
+  }
+
+  return latestRunState;
 }
 
 function mapRunStatus(status: string | undefined): DashboardStatus {

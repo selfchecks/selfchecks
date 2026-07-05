@@ -327,6 +327,90 @@ describe("dashboard data", () => {
     ]);
   });
 
+  it("marks a check as failing when visible history contains failed runs", async () => {
+    mocks.checkRunUpdateMany.mockResolvedValue({ count: 0 });
+    mocks.projectFindUnique.mockResolvedValue({
+      id: "project_1",
+      slug: "default",
+    });
+    mocks.checkFindMany.mockResolvedValue([
+      {
+        enabled: true,
+        entrypoint: "ab-tests.spec.ts",
+        frequencyMinutes: 1440,
+        group: {
+          name: "App / Actionmedia",
+        },
+        id: "check_1",
+        key: "AB-tests",
+        name: "AB tests",
+        request: null,
+        runs: [
+          {
+            artifacts: [],
+            createdAt: new Date("2026-07-05T15:45:00.000Z"),
+            durationMs: 60000,
+            id: "run_passed",
+            logsPath: null,
+            result: null,
+            status: "PASSED",
+          },
+          {
+            artifacts: [],
+            createdAt: new Date("2026-07-05T15:43:00.000Z"),
+            durationMs: 98700,
+            id: "run_failed_1",
+            logsPath: null,
+            result: null,
+            status: "FAILED",
+          },
+          {
+            artifacts: [],
+            createdAt: new Date("2026-07-05T15:40:00.000Z"),
+            durationMs: 47000,
+            id: "run_failed_2",
+            logsPath: null,
+            result: null,
+            status: "FAILED",
+          },
+        ],
+        tags: ["app", "action"],
+        type: "BROWSER",
+      },
+    ]);
+
+    const dashboard = await getDashboardData("default");
+    const check = dashboard.groups[0]?.children?.[0];
+
+    expect(check).toMatchObject({
+      runState: "failed",
+      status: "failing",
+    });
+    expect(dashboard.summary).toMatchObject({
+      degraded: 0,
+      failing: 1,
+      passing: 0,
+      running: 0,
+    });
+    expect(check?.bars).toEqual([
+      expect.objectContaining({
+        runState: "failed",
+        status: "failing",
+        tone: "bad",
+      }),
+      expect.objectContaining({
+        runState: "failed",
+        status: "failing",
+        tone: "bad",
+      }),
+      expect.objectContaining({
+        runState: "passed",
+        status: "passing",
+        tone: "good",
+      }),
+    ]);
+  });
+
   it("counts currently running checks in the dashboard summary", async () => {
     mocks.checkRunUpdateMany.mockResolvedValue({ count: 0 });
     mocks.projectFindUnique.mockResolvedValue({
