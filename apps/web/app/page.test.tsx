@@ -267,10 +267,12 @@ describe("DashboardPage", () => {
     expect(screen.getByText("DEGRADED")).toBeTruthy();
     expect(screen.getByText("QUEUED")).toBeTruthy();
     expect(screen.getByText("FAILING")).toBeTruthy();
-    expect(screen.getByText("Firewatch")).toBeTruthy();
+    const firewatchToggle = screen.getByRole("button", { name: "Firewatch" });
+
+    expect(firewatchToggle.getAttribute("aria-expanded")).toBe("false");
     expect(
-      screen.getByText("No newly failing checks in the last 7 days."),
-    ).toBeTruthy();
+      screen.queryByText("No newly failing checks in the last 7 days."),
+    ).toBeNull();
     expect(screen.getByRole("searchbox", { name: "Search checks" })).toBeTruthy();
     expect(screen.queryByRole("combobox")).toBeNull();
     expect(screen.getByRole("button", { name: "Last 24 hours" })).toBeTruthy();
@@ -381,11 +383,21 @@ describe("DashboardPage", () => {
       />,
     );
 
+    const firewatchToggle = screen.getByRole("button", { name: "Firewatch" });
+
+    expect(firewatchToggle.getAttribute("aria-expanded")).toBe("false");
     expect(
-      screen.getByText("You have 1 check that started failing in the last 7 days"),
-    ).toBeTruthy();
+      screen.queryByText("You have 1 check that started failing in the last 7 days"),
+    ).toBeNull();
     expect(
       screen.getByRole("button", { name: "Restart all failed checks" }),
+    ).toBeTruthy();
+
+    await user.click(firewatchToggle);
+
+    expect(firewatchToggle.getAttribute("aria-expanded")).toBe("true");
+    expect(
+      screen.getByText("You have 1 check that started failing in the last 7 days"),
     ).toBeTruthy();
 
     await user.click(screen.getByRole("link", { name: "API / Bff / bff-health" }));
@@ -499,8 +511,8 @@ describe("DashboardPage", () => {
     );
 
     expect(
-      screen.getByText("No newly failing checks in the last 7 days."),
-    ).toBeTruthy();
+      screen.queryByText("No newly failing checks in the last 7 days."),
+    ).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Restart all failed checks" }));
 

@@ -217,7 +217,7 @@ export default function DashboardClient({
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [activeActionMenu, setActiveActionMenu] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<DateRange>("24h");
-  const [firewatchOpen, setFirewatchOpen] = useState(true);
+  const [firewatchOpen, setFirewatchOpen] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(groups.map((group) => [group.name, Boolean(group.expanded)])),
   );
