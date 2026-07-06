@@ -1,42 +1,18 @@
-import type { SVGProps } from "react";
+import Image, { type ImageProps } from "next/image";
 
-export function ServiceMark(props: SVGProps<SVGSVGElement>) {
+type ServiceMarkProps = Omit<ImageProps, "alt" | "height" | "src" | "width"> & {
+  alt?: string;
+};
+
+export function ServiceMark({ alt = "", ...props }: ServiceMarkProps) {
   return (
-    <svg
-      aria-hidden="true"
-      focusable="false"
-      viewBox="0 0 64 64"
-      xmlns="http://www.w3.org/2000/svg"
+    <Image
+      alt={alt}
+      aria-hidden={alt ? undefined : true}
+      height={64}
+      src="/selfchecks-icon.png"
+      width={64}
       {...props}
-    >
-      <defs>
-        <linearGradient id="selfchecks-signal" x1="13" x2="51" y1="18" y2="46">
-          <stop offset="0" stopColor="#34D399" />
-          <stop offset="1" stopColor="#22D3EE" />
-        </linearGradient>
-        <radialGradient id="selfchecks-bg" cx="50%" cy="42%" r="70%">
-          <stop offset="0" stopColor="#07192A" />
-          <stop offset="1" stopColor="#020B17" />
-        </radialGradient>
-      </defs>
-
-      <rect width="64" height="64" rx="10" fill="url(#selfchecks-bg)" />
-      <circle
-        cx="32"
-        cy="32"
-        r="23.5"
-        fill="none"
-        stroke="url(#selfchecks-signal)"
-        strokeWidth="4.8"
-      />
-      <path
-        d="M16 32h7.2l3.9-6.4 5.1 12.1 5.4-23.1 7.2 34.8L49.7 32H54"
-        fill="none"
-        stroke="url(#selfchecks-signal)"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="5.3"
-      />
-    </svg>
+    />
   );
 }
