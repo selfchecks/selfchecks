@@ -118,7 +118,7 @@ function DashboardSkeleton() {
           <div className="inline-flex min-w-0 items-center gap-2 text-left">
             <SkeletonLine className="h-4 w-4" />
             <SkeletonLine className="h-7 w-7" />
-            <span className="truncate text-lg font-semibold text-slate-100">
+            <span className="truncate text-lg font-semibold text-slate-500">
               Firewatch
             </span>
           </div>
