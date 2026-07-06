@@ -444,11 +444,11 @@ function PlaywrightReportPanel({
       </div>
 
       <details
-        className="overflow-hidden rounded-md border border-slate-700 bg-[#111821]"
+        className="group overflow-hidden rounded-md border border-slate-700 bg-[#111821]"
         open
       >
         <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-4 hover:bg-slate-800/60">
-          <ChevronRight className="h-4 w-4 shrink-0 text-slate-500" />
+          <ChevronRight className="h-4 w-4 shrink-0 text-slate-500 transition-transform group-open:rotate-90" />
           <CheckStatusIcon compact runState={run.runState} status={run.status} />
           <div className="min-w-0 flex-1">
             <div className="truncate text-base font-semibold text-slate-100">
@@ -486,14 +486,14 @@ function PageNavigationsPanel({ entries }: { entries: PageNavigationEntry[] }) {
         {entries.length > 0 ? (
           entries.map((entry) => (
             <details
-              className="overflow-hidden rounded-md border border-slate-700 bg-[#111821]"
+              className="group overflow-hidden rounded-md border border-slate-700 bg-[#111821]"
               key={entry.id}
             >
               <summary
                 aria-label={`Toggle navigation ${entry.url}`}
                 className="flex cursor-pointer list-none items-center gap-3 px-4 py-4 hover:bg-slate-800/60"
               >
-                <ChevronRight className="h-4 w-4 shrink-0 text-slate-500" />
+                <ChevronRight className="h-4 w-4 shrink-0 text-slate-500 transition-transform group-open:rotate-90" />
                 <CheckStatusIcon compact runState="passed" status={entry.tone} />
                 <span
                   className="min-w-0 flex-1 truncate text-slate-300"
