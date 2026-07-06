@@ -126,57 +126,37 @@ export function RunDetailView({ accountLabel, detail }: RunDetailViewProps) {
                 </div>
                 <History className="h-4 w-4 text-slate-500" />
               </div>
-              <div className="border-l-4 border-blue-500 bg-slate-800/60 px-5 py-4">
-                <div className="flex items-center gap-3">
-                  <CheckStatusIcon
-                    compact
-                    runState={run.runState}
-                    status={run.status}
-                  />
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-semibold text-slate-100">
-                      Check run
-                    </div>
-                    <div className="mt-1 truncate text-xs text-slate-500">
-                      {run.createdAtLabel}
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="border-t border-slate-800 px-5 py-4">
-                <div className="text-xs font-semibold uppercase text-slate-500">
-                  Attempts
-                </div>
-                <div className="mt-3 grid gap-2">
-                  {run.attempts.map((attempt) => (
-                    <Link
-                      aria-current={attempt.isCurrent ? "page" : undefined}
-                      className={cn(
-                        "flex min-w-0 items-center gap-3 rounded-md border px-3 py-2 text-left text-sm",
-                        attempt.isCurrent
-                          ? "border-blue-500 bg-blue-500/10 text-slate-100"
-                          : "border-slate-800 bg-[#0d1117] text-slate-300 hover:border-slate-700 hover:bg-slate-800/80",
-                      )}
-                      href={attempt.href}
-                      key={attempt.id}
-                    >
-                      <CheckStatusIcon
-                        compact
-                        runState={attempt.runState}
-                        status={attempt.status}
-                      />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate font-semibold">
-                          {attempt.label}
-                        </span>
-                        <span className="mt-0.5 block truncate text-xs text-slate-500">
-                          {attempt.duration}
-                        </span>
+              <div className="grid">
+                {run.attempts.map((attempt) => (
+                  <Link
+                    aria-current={attempt.isCurrent ? "page" : undefined}
+                    className={cn(
+                      "flex min-w-0 items-center gap-3 border-b border-slate-800 px-5 py-4 text-left text-sm",
+                      attempt.isCurrent
+                        ? "border-l-4 border-l-blue-500 bg-slate-800/60 pl-4 text-slate-100"
+                        : "border-l-4 border-l-transparent text-slate-300 hover:bg-slate-800/50 hover:text-slate-100",
+                    )}
+                    href={attempt.href}
+                    key={attempt.id}
+                  >
+                    <CheckStatusIcon
+                      compact
+                      runState={attempt.runState}
+                      status={attempt.status}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-semibold">
+                        {attempt.label}
                       </span>
-                      <ChevronRight className="h-4 w-4 shrink-0 text-slate-500" />
-                    </Link>
-                  ))}
-                </div>
+                      <span className="mt-1 block truncate text-xs text-slate-500">
+                        {attempt.createdAtLabel}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-xs font-semibold text-slate-500">
+                      {attempt.duration}
+                    </span>
+                  </Link>
+                ))}
               </div>
             </div>
           </aside>

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
@@ -324,11 +324,20 @@ describe("RunDetailView", () => {
 
     expect(screen.getByText("1/2 failed")).toBeTruthy();
     expect(screen.getByText("Attempt #2 of 2")).toBeTruthy();
+    const reportColumn = screen.getByText("Check report").closest("aside");
+
+    expect(reportColumn).toBeTruthy();
     expect(
-      (screen.getByRole("link", { name: /Attempt #1/ }) as HTMLAnchorElement).href,
+      (
+        within(reportColumn as HTMLElement).getByRole("link", {
+          name: /Attempt #1/,
+        }) as HTMLAnchorElement
+      ).href,
     ).toContain("/checks/check_1/runs/run_1");
     expect(
-      screen.getByRole("link", { name: /Attempt #2/ }).getAttribute("aria-current"),
+      within(reportColumn as HTMLElement)
+        .getByRole("link", { name: /Attempt #2/ })
+        .getAttribute("aria-current"),
     ).toBe("page");
   });
 
