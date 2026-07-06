@@ -681,8 +681,8 @@ function RunHistoryTableSkeleton() {
         Run history
       </div>
       <div className="overflow-x-auto">
-        <div className="w-full min-w-[900px]">
-          <div className="grid grid-cols-[1.2fr_1fr_1fr_1.4fr_2fr] gap-4 bg-[#121820] px-4 py-3">
+        <div className="w-full min-w-[1040px]">
+          <div className="grid grid-cols-[13rem_10rem_7rem_25rem_minmax(18rem,1fr)] gap-4 bg-[#121820] px-4 py-3">
             {["Run", "Status", "Duration", "Artifacts", "Error"].map((label) => (
               <div
                 className="text-xs font-semibold uppercase text-slate-500"
@@ -694,14 +694,17 @@ function RunHistoryTableSkeleton() {
           </div>
           {Array.from({ length: 5 }, (_, rowIndex) => (
             <div
-              className="grid grid-cols-[1.2fr_1fr_1fr_1.4fr_2fr] gap-4 border-t border-slate-800 px-4 py-3"
+              className="grid grid-cols-[13rem_10rem_7rem_25rem_minmax(18rem,1fr)] gap-4 border-t border-slate-800 px-4 py-4"
               key={rowIndex}
             >
               <SkeletonLine className="h-5 w-32" />
               <SkeletonLine className="h-5 w-24" />
               <SkeletonLine className="h-5 w-16" />
-              <SkeletonLine className="h-5 w-28" />
-              <SkeletonLine className="h-5 w-full" />
+              <div className="flex gap-2">
+                <SkeletonLine className="h-8 w-28" />
+                <SkeletonLine className="h-8 w-24" />
+              </div>
+              <SkeletonLine className="h-5 w-4/5" />
             </div>
           ))}
         </div>
@@ -1155,7 +1158,14 @@ function RunHistoryTable({
         Run history
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[900px] text-left text-sm">
+        <table className="w-full min-w-[1040px] table-fixed text-left text-sm">
+          <colgroup>
+            <col className="w-[13rem]" />
+            <col className="w-[10rem]" />
+            <col className="w-[7rem]" />
+            <col className="w-[25rem]" />
+            <col />
+          </colgroup>
           <thead className="bg-[#121820] text-xs font-semibold uppercase text-slate-500">
             <tr>
               <th className="px-4 py-3">Run</th>
@@ -1168,24 +1178,37 @@ function RunHistoryTable({
           <tbody>
             {runs.length > 0 ? (
               runs.map((run) => (
-                <tr className="border-t border-slate-800" key={run.id}>
-                  <td className="px-4 py-3">
+                <tr
+                  className="border-t border-slate-800 align-top hover:bg-slate-900/40"
+                  key={run.id}
+                >
+                  <td className="px-4 py-4">
                     <Link
-                      className="font-medium text-blue-300 hover:text-blue-200"
+                      aria-label={run.occurredAt}
+                      className="inline-flex max-w-full flex-col text-blue-300 hover:text-blue-200"
                       href={getRunHref(checkId, run.id)}
                     >
-                      {run.occurredAt}
+                      <span className="truncate whitespace-nowrap font-medium">
+                        {run.occurredAt}
+                      </span>
+                      <span className="mt-1 truncate text-xs text-slate-500">
+                        {run.id}
+                      </span>
                     </Link>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-4">
                     <RunStateBadge runState={run.runState} status={run.status} />
                   </td>
-                  <td className="px-4 py-3 text-slate-300">{run.duration}</td>
-                  <td className="px-4 py-3">
+                  <td className="whitespace-nowrap px-4 py-4 text-slate-300">
+                    {run.duration}
+                  </td>
+                  <td className="px-4 py-4">
                     <ArtifactList artifacts={run.artifacts} />
                   </td>
-                  <td className="max-w-[28rem] px-4 py-3 text-slate-500">
-                    <span className="line-clamp-2">{run.errorMessage ?? "-"}</span>
+                  <td className="px-4 py-4 text-slate-500">
+                    <span className="line-clamp-3 break-words">
+                      {run.errorMessage ?? "-"}
+                    </span>
                   </td>
                 </tr>
               ))
@@ -1526,42 +1549,56 @@ function RunStateBadge({
   );
 }
 
+type ArtifactGroup = {
+  artifacts: DashboardRunArtifact[];
+  count: number;
+  primary: DashboardRunArtifact;
+  type: DashboardRunArtifact["type"];
+};
+
 function ArtifactList({ artifacts }: { artifacts: DashboardRunArtifact[] }) {
   if (artifacts.length === 0) {
     return <span className="text-slate-500">No artifacts</span>;
   }
 
+  const artifactGroups = groupArtifactsByType(artifacts);
+
   return (
-    <div className="flex flex-wrap gap-2">
-      {artifacts.map((artifact) => {
-        const Icon = getArtifactIcon(artifact.type);
-        const label = getArtifactTypeLabel(artifact.type);
+    <div className="flex max-w-full flex-wrap gap-2">
+      {artifactGroups.map((group) => {
+        const { primary } = group;
+        const Icon = getArtifactIcon(group.type);
+        const label = getArtifactTypeLabel(group.type);
 
         return (
           <span
-            className="inline-flex max-w-full items-center gap-2 rounded-md border border-slate-700 bg-[#0f151d] px-2 py-1 text-xs text-slate-300"
-            key={artifact.id}
+            className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-slate-700 bg-[#0f151d] px-2 py-1 text-xs text-slate-300"
+            key={group.type}
           >
             <Icon className="h-3.5 w-3.5 shrink-0 text-slate-500" />
-            <span className="max-w-48 truncate" title={artifact.name}>
+            <span
+              className="min-w-0 truncate"
+              title={getArtifactGroupTitle(group)}
+            >
               {label}
-              {artifact.size !== "-" ? ` · ${artifact.size}` : ""}
+              {group.count > 1 ? ` × ${group.count}` : ""}
+              {primary.size !== "-" ? ` · ${primary.size}` : ""}
             </span>
             <a
-              aria-label={`View ${artifact.name}`}
+              aria-label={`View ${primary.name}`}
               className="flex h-6 w-6 items-center justify-center rounded text-slate-400 hover:bg-slate-800 hover:text-slate-100"
-              href={artifact.viewUrl}
-              rel={artifact.type === "trace" ? undefined : "noreferrer"}
-              target={artifact.type === "trace" ? undefined : "_blank"}
+              href={primary.viewUrl}
+              rel={primary.type === "trace" ? undefined : "noreferrer"}
+              target={primary.type === "trace" ? undefined : "_blank"}
               title="View"
             >
               <ExternalLink className="h-3.5 w-3.5" />
             </a>
             <a
-              aria-label={`Download ${artifact.name}`}
+              aria-label={`Download ${primary.name}`}
               className="flex h-6 w-6 items-center justify-center rounded text-slate-400 hover:bg-slate-800 hover:text-slate-100"
               download
-              href={artifact.downloadUrl}
+              href={primary.downloadUrl}
               title="Download"
             >
               <Download className="h-3.5 w-3.5" />
@@ -1571,6 +1608,39 @@ function ArtifactList({ artifacts }: { artifacts: DashboardRunArtifact[] }) {
       })}
     </div>
   );
+}
+
+function groupArtifactsByType(artifacts: DashboardRunArtifact[]): ArtifactGroup[] {
+  const groups = new Map<DashboardRunArtifact["type"], ArtifactGroup>();
+
+  for (const artifact of artifacts) {
+    const existingGroup = groups.get(artifact.type);
+
+    if (existingGroup) {
+      existingGroup.artifacts.push(artifact);
+      existingGroup.count += 1;
+      continue;
+    }
+
+    groups.set(artifact.type, {
+      artifacts: [artifact],
+      count: 1,
+      primary: artifact,
+      type: artifact.type,
+    });
+  }
+
+  return [...groups.values()];
+}
+
+function getArtifactGroupTitle(group: ArtifactGroup) {
+  if (group.count === 1) {
+    return group.primary.name;
+  }
+
+  return `${getArtifactTypeLabel(group.type)} artifacts: ${group.artifacts
+    .map((artifact) => artifact.name)
+    .join(", ")}`;
 }
 
 function CheckStatusIcon({
