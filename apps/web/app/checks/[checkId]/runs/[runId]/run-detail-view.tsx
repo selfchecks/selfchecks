@@ -62,6 +62,8 @@ export function RunDetailView({ accountLabel, detail }: RunDetailViewProps) {
   const command = getResultField(run.resultFields, "Command");
   const navigationEntries = buildPageNavigations(run);
   const failedAttemptCount = run.status === "failing" ? 1 : 0;
+  const showResultData = Boolean(run.response) || !run.aiAnalysis;
+  const showDataPanels = Boolean(run.request) || showResultData;
   const target = run.request
     ? `${run.request.method} ${run.request.url}`
     : (command ?? check.settings.entrypoint ?? "No request data recorded");
@@ -235,16 +237,25 @@ export function RunDetailView({ accountLabel, detail }: RunDetailViewProps) {
                 <AssertionsTable assertions={run.request.assertions} />
               ) : null}
 
-              <section
-                className={cn("grid gap-5", run.request ? "xl:grid-cols-2" : "")}
-              >
-                {run.request ? <RequestDataPanel request={run.request} /> : null}
-                <ResponseDataPanel
-                  response={run.response}
-                  resultFields={run.resultFields}
-                  resultJson={run.resultJson}
-                />
-              </section>
+              {showDataPanels ? (
+                <section
+                  className={cn(
+                    "grid min-w-0 gap-5",
+                    run.request
+                      ? "xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"
+                      : "",
+                  )}
+                >
+                  {run.request ? <RequestDataPanel request={run.request} /> : null}
+                  {showResultData ? (
+                    <ResponseDataPanel
+                      response={run.response}
+                      resultFields={run.resultFields}
+                      resultJson={run.resultJson}
+                    />
+                  ) : null}
+                </section>
+              ) : null}
 
               {run.jobLog ? (
                 <section className="rounded-md border border-slate-800 bg-[#111821]">
@@ -552,12 +563,12 @@ function AssertionsTable({
 
 function RequestDataPanel({ request }: { request: RunDetailData["run"]["request"] }) {
   return (
-    <section className="rounded-md border border-slate-800 bg-[#111821]">
+    <section className="min-w-0 rounded-md border border-slate-800 bg-[#111821]">
       <div className="border-b border-slate-800 px-4 py-3 text-sm font-semibold text-slate-100">
         Request data
       </div>
       {request ? (
-        <div className="grid gap-5 p-4 text-sm">
+        <div className="grid min-w-0 gap-5 p-4 text-sm">
           <DetailRow label="URL" value={request.url} />
           <DetailRow label="Method" value={request.method} />
           <KeyValueList
@@ -597,11 +608,11 @@ function ResponseDataPanel({
         : (response.status ?? response.statusText);
 
     return (
-      <section className="rounded-md border border-slate-800 bg-[#111821]">
+      <section className="min-w-0 rounded-md border border-slate-800 bg-[#111821]">
         <div className="border-b border-slate-800 px-4 py-3 text-sm font-semibold text-slate-100">
           Response data
         </div>
-        <div className="grid gap-5 p-4 text-sm">
+        <div className="grid min-w-0 gap-5 p-4 text-sm">
           {response.url ? <DetailRow label="URL" value={response.url} /> : null}
           {statusValue ? <DetailRow label="Status" value={statusValue} /> : null}
           <KeyValueList
@@ -617,13 +628,13 @@ function ResponseDataPanel({
   }
 
   return (
-    <section className="rounded-md border border-slate-800 bg-[#111821]">
+    <section className="min-w-0 rounded-md border border-slate-800 bg-[#111821]">
       <div className="border-b border-slate-800 px-4 py-3 text-sm font-semibold text-slate-100">
         Result data
       </div>
-      <div className="grid gap-5 p-4 text-sm">
+      <div className="grid min-w-0 gap-5 p-4 text-sm">
         {resultFields.length > 0 ? (
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid min-w-0 gap-3 sm:grid-cols-2">
             {resultFields.map((field) => (
               <DetailRow key={field.label} label={field.label} value={field.value} />
             ))}
@@ -658,19 +669,22 @@ function KeyValueList({
   title: string;
 }) {
   return (
-    <div>
+    <div className="min-w-0">
       <div className="text-xs font-semibold uppercase text-slate-500">{title}</div>
       {items.length > 0 ? (
-        <dl className="mt-2 grid gap-2">
+        <dl className="mt-2 grid min-w-0 gap-2">
           {items.map((item) => (
             <div
-              className="grid gap-2 rounded border border-slate-800 bg-[#0f151d] px-3 py-2 sm:grid-cols-[12rem_minmax(0,1fr)]"
+              className="grid min-w-0 gap-2 rounded border border-slate-800 bg-[#0f151d] px-3 py-2 sm:grid-cols-[12rem_minmax(0,1fr)]"
               key={item.name}
             >
-              <dt className="truncate font-medium text-slate-300" title={item.name}>
+              <dt
+                className="min-w-0 truncate font-medium text-slate-300"
+                title={item.name}
+              >
                 {item.name}
               </dt>
-              <dd className="truncate text-slate-400" title={item.value}>
+              <dd className="min-w-0 truncate text-slate-400" title={item.value}>
                 {item.value}
               </dd>
             </div>
@@ -685,7 +699,7 @@ function KeyValueList({
 
 function CodeBlock({ label, value }: { label: string; value: string }) {
   return (
-    <div>
+    <div className="min-w-0">
       <div className="text-xs font-semibold uppercase text-slate-500">{label}</div>
       <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded bg-[#0b0f14] p-4 text-sm text-slate-300">
         {value}

@@ -257,7 +257,28 @@ describe("RunDetailView", () => {
     expect(
       screen.getByText("Вероятная причина: селектор поля поиска не найден."),
     ).toBeTruthy();
-    expect(screen.getByText("Result data")).toBeTruthy();
+    expect(screen.queryByText("Result data")).toBeNull();
     expect(screen.getByText("trace.zip")).toBeTruthy();
+  });
+
+  it("keeps result data for browser runs without AI analysis", () => {
+    render(
+      <RunDetailView
+        accountLabel="nikolaev@iprojects.ru"
+        detail={{
+          ...browserDetail,
+          run: {
+            ...browserDetail.run,
+            aiAnalysis: undefined,
+          },
+        }}
+      />,
+    );
+
+    expect(screen.queryByText("AI analysis")).toBeNull();
+    expect(screen.getByText("Result data")).toBeTruthy();
+    expect(
+      screen.getAllByText("npx playwright test tests/header-search.spec.ts").length,
+    ).toBeGreaterThan(1);
   });
 });
