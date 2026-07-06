@@ -8,7 +8,7 @@ describe("metadata", () => {
     expect(metadata).toMatchObject({
       description: "Self-hosted synthetic checks runner and dashboard.",
       icons: {
-        icon: [{ sizes: "any", type: "image/png", url: "/selfchecks-icon.png" }],
+        icon: [{ type: "image/svg+xml", url: "/favicon.svg" }],
       },
       title: "SelfChecks",
     });
