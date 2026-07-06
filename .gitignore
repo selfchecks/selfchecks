@@ -20,6 +20,7 @@ output/playwright/
 .selfchecks/
 runtime/
 .playwright-cli/
+.tmp-font-hypothesis/
 *.tsbuildinfo
 
 .DS_Store
