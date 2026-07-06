@@ -681,9 +681,9 @@ function RunHistoryTableSkeleton() {
         Run history
       </div>
       <div className="overflow-x-auto">
-        <div className="w-full min-w-[1040px]">
-          <div className="grid grid-cols-[13rem_10rem_7rem_25rem_minmax(18rem,1fr)] gap-4 bg-[#121820] px-4 py-3">
-            {["Run", "Status", "Duration", "Artifacts", "Error"].map((label) => (
+        <div className="w-full min-w-[55rem]">
+          <div className="grid grid-cols-[13rem_10rem_7rem_minmax(25rem,1fr)] gap-4 bg-[#121820] px-4 py-3">
+            {["Run", "Status", "Duration", "Artifacts"].map((label) => (
               <div
                 className="text-xs font-semibold uppercase text-slate-500"
                 key={label}
@@ -694,7 +694,7 @@ function RunHistoryTableSkeleton() {
           </div>
           {Array.from({ length: 5 }, (_, rowIndex) => (
             <div
-              className="grid grid-cols-[13rem_10rem_7rem_25rem_minmax(18rem,1fr)] gap-4 border-t border-slate-800 px-4 py-4"
+              className="grid grid-cols-[13rem_10rem_7rem_minmax(25rem,1fr)] gap-4 border-t border-slate-800 px-4 py-4"
               key={rowIndex}
             >
               <SkeletonLine className="h-5 w-32" />
@@ -704,7 +704,6 @@ function RunHistoryTableSkeleton() {
                 <SkeletonLine className="h-8 w-28" />
                 <SkeletonLine className="h-8 w-24" />
               </div>
-              <SkeletonLine className="h-5 w-4/5" />
             </div>
           ))}
         </div>
@@ -1158,12 +1157,11 @@ function RunHistoryTable({
         Run history
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1040px] table-fixed text-left text-sm">
+        <table className="w-full min-w-[55rem] table-fixed text-left text-sm">
           <colgroup>
             <col className="w-[13rem]" />
             <col className="w-[10rem]" />
             <col className="w-[7rem]" />
-            <col className="w-[25rem]" />
             <col />
           </colgroup>
           <thead className="bg-[#121820] text-xs font-semibold uppercase text-slate-500">
@@ -1172,7 +1170,6 @@ function RunHistoryTable({
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Duration</th>
               <th className="px-4 py-3">Artifacts</th>
-              <th className="px-4 py-3">Error</th>
             </tr>
           </thead>
           <tbody>
@@ -1205,16 +1202,11 @@ function RunHistoryTable({
                   <td className="px-4 py-4">
                     <ArtifactList artifacts={run.artifacts} />
                   </td>
-                  <td className="px-4 py-4 text-slate-500">
-                    <span className="line-clamp-3 break-words">
-                      {run.errorMessage ?? "-"}
-                    </span>
-                  </td>
                 </tr>
               ))
             ) : (
               <tr>
-                <td className="px-4 py-5 text-slate-500" colSpan={5}>
+                <td className="px-4 py-5 text-slate-500" colSpan={4}>
                   No runs match the current filters.
                 </td>
               </tr>

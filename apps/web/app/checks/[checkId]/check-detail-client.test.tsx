@@ -251,6 +251,7 @@ describe("CheckDetailClient", () => {
     ).toBeGreaterThan(1);
     expect(screen.getByText("Run results")).toBeTruthy();
     expect(screen.getByText("Run history")).toBeTruthy();
+    expect(screen.queryByRole("columnheader", { name: "Error" })).toBeNull();
     expect(screen.getByText("Performance")).toBeTruthy();
     expect(screen.getByText("Check duration")).toBeTruthy();
     expect(screen.getByText("Loading")).toBeTruthy();
@@ -340,7 +341,7 @@ describe("CheckDetailClient", () => {
     expect(
       screen.getByRole("button", { name: "Failed" }).getAttribute("aria-pressed"),
     ).toBe("true");
-    expect(screen.getByText("Expected status 200")).toBeTruthy();
+    expect(screen.queryByText("Expected status 200")).toBeNull();
     expect(screen.getByText("Last 2 runs")).toBeTruthy();
     expect(screen.queryByText("Trace · 42 KB")).toBeNull();
 
@@ -348,7 +349,9 @@ describe("CheckDetailClient", () => {
     expect(
       screen.getByRole("button", { name: "Has retries" }).getAttribute("aria-pressed"),
     ).toBe("true");
-    expect(screen.getByText("Expected status 200")).toBeTruthy();
+    expect(screen.getByText("Last 1 runs")).toBeTruthy();
+    expect(screen.getAllByText("Jun 22 12:00").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Jun 22 13:00")).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "24hr" }));
 
