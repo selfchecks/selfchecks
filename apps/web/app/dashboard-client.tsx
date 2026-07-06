@@ -2341,7 +2341,8 @@ function CheckTableRow({
         tabIndex={0}
       >
         <td className="px-5 py-3">
-          <div className="flex items-center gap-4 pl-6">
+          <div className="flex items-center gap-3">
+            <span aria-hidden="true" className="h-4 w-4 shrink-0" />
             <CheckStatus runState={check.runState} status={check.status} />
             <div className="min-w-0">
               <div className="truncate font-semibold text-slate-200">{check.name}</div>
