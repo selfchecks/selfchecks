@@ -28,6 +28,11 @@ import type {
 import { cn } from "@/lib/utils";
 import { DetailSidebar } from "@/app/checks/detail-sidebar";
 
+import {
+  ScreenshotComparisonPanel,
+  type ScreenshotComparison,
+} from "./screenshot-comparison-slider";
+
 type RunDetailViewProps = {
   accountLabel: string;
   detail: RunDetailData;
@@ -385,6 +390,7 @@ function PlaywrightReportPanel({
   const hasBrowserArtifacts = run.artifacts.some((artifact) =>
     ["screenshot", "trace", "video"].includes(artifact.type),
   );
+  const screenshotComparisons = buildScreenshotComparisons(run.artifacts);
   const title =
     checkType === "browser" || hasBrowserArtifacts
       ? "Playwright test report"
@@ -426,6 +432,7 @@ function PlaywrightReportPanel({
             <DetailRow label="Finished" value={run.finishedAt} />
             <DetailRow label="Run" value={run.id} />
           </div>
+          <ScreenshotComparisonPanel comparisons={screenshotComparisons} />
           <ArtifactList artifacts={run.artifacts} />
         </div>
       </details>
@@ -767,6 +774,92 @@ function ArtifactList({ artifacts }: { artifacts: DashboardRunArtifact[] }) {
       })}
     </div>
   );
+}
+
+type ScreenshotComparisonPart = "actual" | "diff" | "expected";
+
+type ScreenshotComparisonGroup = {
+  actual?: DashboardRunArtifact;
+  diff?: DashboardRunArtifact;
+  expected?: DashboardRunArtifact;
+  id: string;
+  label: string;
+  order: number;
+};
+
+function buildScreenshotComparisons(
+  artifacts: DashboardRunArtifact[],
+): ScreenshotComparison[] {
+  const groups = new Map<string, ScreenshotComparisonGroup>();
+
+  for (const artifact of artifacts) {
+    if (artifact.type !== "screenshot") {
+      continue;
+    }
+
+    const part = parseScreenshotComparisonPart(artifact.name);
+
+    if (!part) {
+      continue;
+    }
+
+    const group = groups.get(part.key) ?? {
+      id: part.key,
+      label: part.label,
+      order: groups.size,
+    };
+
+    group[part.type] = artifact;
+    groups.set(part.key, group);
+  }
+
+  return [...groups.values()]
+    .sort((first, second) => first.order - second.order)
+    .flatMap((group) => {
+      if (!group.actual || !group.expected) {
+        return [];
+      }
+
+      return [
+        {
+          actual: group.actual,
+          ...(group.diff ? { diff: group.diff } : {}),
+          expected: group.expected,
+          id: group.id,
+          label: group.label,
+        },
+      ];
+    });
+}
+
+function parseScreenshotComparisonPart(
+  name: string,
+): { key: string; label: string; type: ScreenshotComparisonPart } | undefined {
+  const extension = name.match(/\.[^.]+$/)?.[0] ?? "";
+  const stem = name.slice(0, name.length - extension.length);
+  const match = stem.match(/^(.*?)[-_.](actual|diff|expected)$/i);
+
+  if (!match?.[1] || !match[2]) {
+    return undefined;
+  }
+
+  const key = match[1].toLowerCase();
+
+  return {
+    key,
+    label: formatScreenshotComparisonLabel(match[1]),
+    type: match[2].toLowerCase() as ScreenshotComparisonPart,
+  };
+}
+
+function formatScreenshotComparisonLabel(value: string) {
+  const label = value
+    .replace(/^[-_.]+|[-_.]+$/g, "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return label || "Screenshot";
 }
 
 function AssertionStatusIcon({ passed }: { passed?: boolean }) {

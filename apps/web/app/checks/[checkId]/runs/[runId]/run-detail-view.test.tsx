@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
@@ -280,5 +280,66 @@ describe("RunDetailView", () => {
     expect(
       screen.getAllByText("npx playwright test tests/header-search.spec.ts").length,
     ).toBeGreaterThan(1);
+  });
+
+  it("renders an overlay comparison slider for visual screenshot mismatches", () => {
+    render(
+      <RunDetailView
+        accountLabel="nikolaev@iprojects.ru"
+        detail={{
+          ...browserDetail,
+          run: {
+            ...browserDetail.run,
+            artifacts: [
+              {
+                downloadUrl: "/api/runs/run_1/artifacts/expected?download=1",
+                id: "expected",
+                mimeType: "image/png",
+                name: "home-page-expected.png",
+                size: "250 KB",
+                type: "screenshot",
+                viewUrl: "/api/runs/run_1/artifacts/expected",
+              },
+              {
+                downloadUrl: "/api/runs/run_1/artifacts/actual?download=1",
+                id: "actual",
+                mimeType: "image/png",
+                name: "home-page-actual.png",
+                size: "251 KB",
+                type: "screenshot",
+                viewUrl: "/api/runs/run_1/artifacts/actual",
+              },
+              {
+                downloadUrl: "/api/runs/run_1/artifacts/diff?download=1",
+                id: "diff",
+                mimeType: "image/png",
+                name: "home-page-diff.png",
+                size: "18 KB",
+                type: "screenshot",
+                viewUrl: "/api/runs/run_1/artifacts/diff",
+              },
+            ],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Screenshot comparisons")).toBeTruthy();
+    expect(screen.getByText("1 visual mismatch")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "home page" })).toBeTruthy();
+    expect(
+      (screen.getByRole("link", { name: "Diff" }) as HTMLAnchorElement).href,
+    ).toContain("/api/runs/run_1/artifacts/diff");
+
+    const slider = screen.getByRole("slider", {
+      name: "Reveal actual screenshot for home page",
+    });
+    const actualImage = screen.getByAltText(
+      "Actual screenshot for home page",
+    ) as HTMLImageElement;
+
+    expect(actualImage.style.clipPath).toBe("inset(0 50% 0 0)");
+    fireEvent.change(slider, { target: { value: "75" } });
+    expect(actualImage.style.clipPath).toBe("inset(0 25% 0 0)");
   });
 });
