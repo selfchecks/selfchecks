@@ -208,6 +208,10 @@ export async function getDashboardSettingsData(
   }
 }
 
+export function getDashboardAccountLabel() {
+  return mapBasicSettings(readRuntimeConfig()).login || "Admin";
+}
+
 export async function updateBasicSettings(input: BasicSettingsInput) {
   const currentConfig = readRuntimeConfig();
   const login = readRequiredString(input.login, "Login");

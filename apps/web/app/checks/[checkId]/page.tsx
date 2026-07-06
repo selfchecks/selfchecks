@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 
-import { getCheckDetailData } from "@/lib/dashboard-data";
-import { getDashboardSettingsData } from "@/lib/settings-data";
+import { getCheckDetailShellData } from "@/lib/dashboard-data";
+import { getDashboardAccountLabel } from "@/lib/settings-data";
 
 import CheckDetailClient from "./check-detail-client";
 
@@ -15,15 +15,13 @@ type CheckDetailPageProps = {
 
 export default async function CheckDetailPage({ params }: CheckDetailPageProps) {
   const { checkId } = await params;
-  const detail = await getCheckDetailData(checkId);
+  const detail = await getCheckDetailShellData(checkId);
 
   if (!detail) {
     notFound();
   }
 
-  const settings = await getDashboardSettingsData(detail.projectSlug);
-
   return (
-    <CheckDetailClient accountLabel={settings.basic.login || "Admin"} detail={detail} />
+    <CheckDetailClient accountLabel={getDashboardAccountLabel()} detail={detail} />
   );
 }

@@ -32,6 +32,7 @@ vi.mock("@/lib/prisma", () => ({
 
 import {
   getCheckDetailData,
+  getCheckDetailShellData,
   getDashboardData,
   getJournalData,
   getRunDetailData,
@@ -75,6 +76,68 @@ describe("dashboard data", () => {
         },
       }),
     );
+  });
+
+  it("loads a lightweight check detail shell without run result payloads", async () => {
+    const createdAt = new Date("2026-07-05T13:20:03.000Z");
+
+    mocks.checkRunUpdateMany.mockResolvedValue({ count: 0 });
+    mocks.checkFindFirst.mockResolvedValue({
+      enabled: true,
+      entrypoint: "checks/homepage.spec.ts",
+      frequencyMinutes: 180,
+      group: {
+        name: "App / Smoke",
+      },
+      id: "check_1",
+      key: "homepage",
+      name: "Homepage",
+      project: {
+        slug: "default",
+      },
+      request: null,
+      runs: [
+        {
+          artifacts: [],
+          createdAt,
+          durationMs: 2390,
+          errorMessage: null,
+          id: "run_1",
+          logsPath: null,
+          status: "PASSED",
+        },
+      ],
+      tags: ["app", "regress"],
+      type: "BROWSER",
+    });
+
+    const detail = await getCheckDetailShellData("check_1");
+    const query = mocks.checkFindFirst.mock.calls[0]?.[0] as {
+      select?: {
+        runs?: {
+          select?: Record<string, unknown>;
+          take?: number;
+        };
+      };
+    };
+
+    expect(query.select?.runs?.take).toBe(1);
+    expect(query.select?.runs?.select).not.toHaveProperty("result");
+    expect(detail).toMatchObject({
+      check: {
+        id: "check_1",
+        name: "Homepage",
+        runState: "passed",
+        runs: [
+          {
+            id: "run_1",
+            performance: undefined,
+          },
+        ],
+      },
+      groupName: "App / Smoke",
+      projectSlug: "default",
+    });
   });
 
   it("loads run details with request, result and artifacts", async () => {

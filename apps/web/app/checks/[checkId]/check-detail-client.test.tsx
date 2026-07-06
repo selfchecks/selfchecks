@@ -164,8 +164,63 @@ const detail: CheckDetailData = {
   updated: "1 hour ago",
 };
 
-function renderDetail() {
-  render(<CheckDetailClient accountLabel="nikolaev@iprojects.ru" detail={detail} />);
+function createJsonResponse(payload: unknown, status = 200) {
+  return Promise.resolve(
+    new Response(JSON.stringify(payload), {
+      headers: {
+        "content-type": "application/json",
+      },
+      status,
+    }),
+  );
+}
+
+function getFetchUrl(input: Parameters<typeof fetch>[0]) {
+  if (typeof input === "string") {
+    return input;
+  }
+
+  if (input instanceof Request) {
+    return input.url;
+  }
+
+  return input.toString();
+}
+
+function stubDetailFetch(fullDetail = detail) {
+  const fetchMock = vi.fn((input: Parameters<typeof fetch>[0]) => {
+    const url = getFetchUrl(input);
+
+    if (url.endsWith("/api/checks/check_1/detail")) {
+      return createJsonResponse(fullDetail);
+    }
+
+    return createJsonResponse({ error: `Unexpected request: ${url}` }, 500);
+  });
+
+  vi.stubGlobal("fetch", fetchMock);
+
+  return fetchMock;
+}
+
+function renderDetail({
+  fetchMock,
+  fullDetail = detail,
+  initialDetail = detail,
+}: {
+  fetchMock?: ReturnType<typeof vi.fn>;
+  fullDetail?: CheckDetailData;
+  initialDetail?: CheckDetailData;
+} = {}) {
+  if (fetchMock) {
+    vi.stubGlobal("fetch", fetchMock);
+  } else {
+    stubDetailFetch(fullDetail);
+  }
+
+  render(
+    <CheckDetailClient accountLabel="nikolaev@iprojects.ru" detail={initialDetail} />,
+  );
 }
 
 describe("CheckDetailClient", () => {
@@ -175,7 +230,7 @@ describe("CheckDetailClient", () => {
     vi.useRealTimers();
   });
 
-  it("renders a dedicated Checkly-like check detail page", () => {
+  it("renders a dedicated Checkly-like check detail page", async () => {
     renderDetail();
 
     expect(screen.getByRole("heading", { name: "bff-gtm-js" })).toBeTruthy();
@@ -195,6 +250,9 @@ describe("CheckDetailClient", () => {
     expect(screen.getByText("Loading")).toBeTruthy();
     expect(screen.getByText("Errors")).toBeTruthy();
     expect(screen.getByText("Interactivity")).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByText("Trace · 42 KB")).toBeTruthy();
+    });
     expect(screen.getAllByText("TTFB").length).toBeGreaterThan(1);
     expect(screen.getByText("239 ms")).toBeTruthy();
     expect(screen.getByText("Network")).toBeTruthy();
@@ -213,7 +271,6 @@ describe("CheckDetailClient", () => {
       (screen.getByRole("link", { name: "Jun 24 12:00 (UTC+3)" }) as HTMLAnchorElement)
         .href,
     ).toContain("/checks/check_1/runs/run_1");
-    expect(screen.getByText("Trace · 42 KB")).toBeTruthy();
     expect(
       (screen.getByRole("link", { name: "View trace.zip" }) as HTMLAnchorElement).href,
     ).toContain("/runs/run_1/artifacts/artifact_1/trace");
@@ -223,7 +280,7 @@ describe("CheckDetailClient", () => {
     ).toContain("/api/runs/run_1/artifacts/artifact_1?download=1");
   });
 
-  it("keeps dense run charts constrained to the card width", () => {
+  it("keeps dense run charts constrained to the card width", async () => {
     const runs = Array.from({ length: 49 }, (_, index) => ({
       ...detail.check.runs[index % detail.check.runs.length]!,
       createdAt: new Date(Date.now() - index * 60_000).toISOString(),
@@ -231,20 +288,17 @@ describe("CheckDetailClient", () => {
       occurredAt: `Jul 05 ${String(index).padStart(2, "0")}:00 (UTC+0)`,
     }));
 
-    render(
-      <CheckDetailClient
-        accountLabel="nikolaev@iprojects.ru"
-        detail={{
-          ...detail,
-          check: {
-            ...detail.check,
-            runs,
-          },
-        }}
-      />,
-    );
+    renderDetail({
+      fullDetail: {
+        ...detail,
+        check: {
+          ...detail.check,
+          runs,
+        },
+      },
+    });
 
-    const chart = screen.getByRole("img", { name: "Run result chart" });
+    const chart = await screen.findByRole("img", { name: "Run result chart" });
 
     expect(chart.className).toContain("grid");
     expect(chart.className).toContain("min-w-0");
@@ -255,10 +309,12 @@ describe("CheckDetailClient", () => {
     expect(chart.getAttribute("style")).toContain("column-gap: 4px");
   });
 
-  it("renders failed and cancelled run chart bars with dashboard matching colors", () => {
+  it("renders failed and cancelled run chart bars with dashboard matching colors", async () => {
     renderDetail();
 
-    const failedBar = screen.getByLabelText("Failed 2.79 s Jun 22 12:00 (UTC+3)");
+    const failedBar = await screen.findByLabelText(
+      "Failed 2.79 s Jun 22 12:00 (UTC+3)",
+    );
 
     expect(failedBar.querySelector("span")?.className).toContain("bg-red-500");
 
@@ -272,7 +328,9 @@ describe("CheckDetailClient", () => {
 
     renderDetail();
 
-    expect(screen.getByText("Last 3 runs")).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByText("Last 3 runs")).toBeTruthy();
+    });
 
     await user.click(screen.getByRole("button", { name: "Failed" }));
 
@@ -297,19 +355,23 @@ describe("CheckDetailClient", () => {
 
   it("queues a run from the detail page", async () => {
     const user = userEvent.setup();
-    const fetchMock = vi.fn(() =>
-      Promise.resolve(
-        new Response(JSON.stringify({ runId: "run_2", status: "queued" }), {
-          headers: {
-            "content-type": "application/json",
-          },
-          status: 202,
-        }),
-      ),
-    );
-    vi.stubGlobal("fetch", fetchMock);
+    const fetchMock = vi.fn(
+      (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+        const url = getFetchUrl(input);
 
-    renderDetail();
+        if (url.endsWith("/api/checks/check_1/run") && init?.method === "POST") {
+          return createJsonResponse({ runId: "run_2", status: "queued" }, 202);
+        }
+
+        if (url.endsWith("/api/checks/check_1/detail")) {
+          return createJsonResponse(detail);
+        }
+
+        return createJsonResponse({ error: `Unexpected request: ${url}` }, 500);
+      },
+    );
+
+    renderDetail({ fetchMock });
 
     await user.click(screen.getByRole("button", { name: "Schedule now" }));
 
@@ -322,35 +384,37 @@ describe("CheckDetailClient", () => {
     expect(mocks.routerRefresh).toHaveBeenCalledOnce();
   });
 
-  it("refreshes while a queued or running run is visible", () => {
+  it("polls run history while a queued or running run is visible", async () => {
     vi.useFakeTimers();
-
-    render(
-      <CheckDetailClient
-        accountLabel="nikolaev@iprojects.ru"
-        detail={{
-          ...detail,
-          check: {
-            ...detail.check,
+    const queuedDetail: CheckDetailData = {
+      ...detail,
+      check: {
+        ...detail.check,
+        runState: "queued",
+        runs: [
+          {
+            ...detail.check.runs[0]!,
+            id: "run_queued",
             runState: "queued",
-            runs: [
-              {
-                ...detail.check.runs[0]!,
-                id: "run_queued",
-                runState: "queued",
-                status: "degraded",
-              },
-            ],
             status: "degraded",
           },
-        }}
-      />,
-    );
+        ],
+        status: "degraded",
+      },
+    };
+    const fetchMock = stubDetailFetch(queuedDetail);
 
-    expect(mocks.routerRefresh).toHaveBeenCalledOnce();
+    renderDetail({
+      fetchMock,
+      fullDetail: queuedDetail,
+      initialDetail: queuedDetail,
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
 
     vi.advanceTimersByTime(2000);
 
-    expect(mocks.routerRefresh).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(mocks.routerRefresh).not.toHaveBeenCalled();
   });
 });

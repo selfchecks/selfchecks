@@ -154,7 +154,6 @@ export type RunDetailData = {
   };
 };
 
-type CheckWithRuns = Awaited<ReturnType<typeof fetchChecks>>[number];
 type CheckRunWhere = NonNullable<
   NonNullable<Parameters<typeof prisma.checkRun.findMany>[0]>["where"]
 >;
@@ -173,6 +172,21 @@ type MappableRun = {
   logsPath: string | null;
   result: unknown;
   status: string;
+};
+type CheckWithRuns = {
+  enabled: boolean;
+  entrypoint: string | null;
+  frequencyMinutes: number | null;
+  group: {
+    name: string;
+  } | null;
+  id: string;
+  key: string;
+  name: string;
+  request: unknown;
+  runs: MappableRun[];
+  tags: string[];
+  type: string;
 };
 
 const JOURNAL_DEFAULT_PAGE_SIZE = 20;
@@ -218,6 +232,99 @@ export async function getDashboardData(projectSlug: string): Promise<DashboardDa
   } catch (error) {
     console.warn("Unable to load dashboard data.", error);
     return createEmptyDashboard(projectSlug);
+  }
+}
+
+export async function getCheckDetailShellData(
+  checkId: string,
+): Promise<CheckDetailData | undefined> {
+  try {
+    await cancelStaleQueuedRuns();
+
+    const check = await prisma.check.findFirst({
+      select: {
+        enabled: true,
+        entrypoint: true,
+        frequencyMinutes: true,
+        group: {
+          select: {
+            name: true,
+          },
+        },
+        id: true,
+        key: true,
+        name: true,
+        project: {
+          select: {
+            slug: true,
+          },
+        },
+        request: true,
+        runs: {
+          orderBy: {
+            createdAt: "desc",
+          },
+          select: {
+            artifacts: {
+              orderBy: {
+                createdAt: "desc",
+              },
+              select: {
+                id: true,
+                mimeType: true,
+                path: true,
+                sizeBytes: true,
+                type: true,
+              },
+            },
+            createdAt: true,
+            durationMs: true,
+            errorMessage: true,
+            id: true,
+            logsPath: true,
+            status: true,
+          },
+          take: 1,
+        },
+        tags: true,
+        type: true,
+      },
+      where: {
+        enabled: true,
+        id: checkId,
+      },
+    });
+
+    if (!check) {
+      return undefined;
+    }
+
+    const shellCheck: CheckWithRuns = {
+      enabled: check.enabled,
+      entrypoint: check.entrypoint,
+      frequencyMinutes: check.frequencyMinutes,
+      group: check.group,
+      id: check.id,
+      key: check.key,
+      name: check.name,
+      request: check.request,
+      runs: check.runs.map((run) => ({
+        ...run,
+        result: null,
+      })),
+      tags: check.tags,
+      type: check.type,
+    };
+
+    return {
+      check: mapCheck(shellCheck),
+      groupName: check.group?.name ?? "Ungrouped",
+      projectSlug: check.project.slug,
+      updated: formatLatestUpdate([shellCheck]),
+    };
+  } catch (error) {
+    console.warn("Unable to load check detail shell data.", error);
+    return undefined;
   }
 }
 

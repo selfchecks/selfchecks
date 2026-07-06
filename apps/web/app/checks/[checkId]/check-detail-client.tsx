@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   CalendarDays,
@@ -54,6 +54,7 @@ const runStateLabels: Record<DashboardRunState, string> = {
 
 type DateFilter = "7d" | "24h";
 type StatusFilter = "all" | DashboardStatus;
+type RunDataStatus = "error" | "loading" | "ready";
 type RunStatsView = {
   averageDuration: string;
   availability: string;
@@ -101,48 +102,122 @@ type PerformanceAnalyticsView = {
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const EMPTY_RUNS: DashboardRunRow[] = [];
 
 export default function CheckDetailClient({
   accountLabel,
   detail,
 }: CheckDetailClientProps) {
-  const { check } = detail;
   const router = useRouter();
+  const checkId = detail.check.id;
+  const [loadedDetail, setLoadedDetail] = useState<CheckDetailData | null>(null);
+  const [runDataStatus, setRunDataStatus] = useState<RunDataStatus>("loading");
+  const [runDataError, setRunDataError] = useState("");
   const [notice, setNotice] = useState("");
   const [scheduling, setScheduling] = useState(false);
   const [dateFilter, setDateFilter] = useState<DateFilter>("7d");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [hasRetriesOnly, setHasRetriesOnly] = useState(false);
+  const currentDetail = loadedDetail ?? detail;
+  const { check } = currentDetail;
+  const runs = loadedDetail?.check.runs ?? EMPTY_RUNS;
   const requestLabel = check.settings.request
     ? `${check.settings.request.method} ${check.settings.request.url}`
     : (check.settings.entrypoint ?? "No request configured");
   const hasActiveRuns =
     check.runState === "queued" ||
     check.runState === "running" ||
-    check.runs.some((run) => run.runState === "queued" || run.runState === "running");
+    runs.some((run) => run.runState === "queued" || run.runState === "running");
   const filteredRuns = useMemo(
     () =>
-      filterRuns(check.runs, {
+      filterRuns(runs, {
         dateFilter,
         hasRetriesOnly,
         statusFilter,
       }),
-    [check.runs, dateFilter, hasRetriesOnly, statusFilter],
+    [runs, dateFilter, hasRetriesOnly, statusFilter],
   );
   const filteredStats = useMemo(() => calculateRunStats(filteredRuns), [filteredRuns]);
+  const isRunDataError = runDataStatus === "error";
+  const isRunDataLoading = runDataStatus === "loading";
+  const loadFullDetail = useCallback(
+    async ({
+      signal,
+      silent = false,
+    }: {
+      signal?: AbortSignal;
+      silent?: boolean;
+    } = {}) => {
+      if (!silent) {
+        setRunDataStatus("loading");
+        setRunDataError("");
+      }
+
+      try {
+        const response = await fetch(
+          `/api/checks/${encodeURIComponent(checkId)}/detail`,
+          {
+            cache: "no-store",
+            signal,
+          },
+        );
+        const payload = (await response.json().catch(() => null)) as
+          | CheckDetailData
+          | { error?: string }
+          | null;
+
+        if (!response.ok) {
+          const message =
+            payload && "error" in payload && payload.error
+              ? payload.error
+              : "Unable to load run history.";
+
+          throw new Error(message);
+        }
+
+        if (!payload || !("check" in payload)) {
+          throw new Error("Unable to load run history.");
+        }
+
+        setLoadedDetail(payload);
+        setRunDataStatus("ready");
+        setRunDataError("");
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          return;
+        }
+
+        if (silent) {
+          setRunDataError(error instanceof Error ? error.message : String(error));
+          return;
+        }
+
+        setRunDataStatus("error");
+        setRunDataError(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [checkId],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    void loadFullDetail({ signal: controller.signal });
+
+    return () => controller.abort();
+  }, [loadFullDetail]);
 
   useEffect(() => {
     if (!hasActiveRuns) {
       return;
     }
 
-    router.refresh();
     const intervalId = window.setInterval(() => {
-      router.refresh();
+      void loadFullDetail({ silent: true });
     }, 2000);
 
     return () => window.clearInterval(intervalId);
-  }, [hasActiveRuns, router]);
+  }, [hasActiveRuns, loadFullDetail]);
 
   function toggleStatusFilter(nextStatus: DashboardStatus) {
     setStatusFilter((currentStatus) =>
@@ -155,7 +230,7 @@ export default function CheckDetailClient({
     setNotice("");
 
     try {
-      const response = await fetch(`/api/checks/${encodeURIComponent(check.id)}/run`, {
+      const response = await fetch(`/api/checks/${encodeURIComponent(checkId)}/run`, {
         method: "POST",
       });
       const payload = (await response.json().catch(() => ({}))) as { error?: string };
@@ -165,6 +240,7 @@ export default function CheckDetailClient({
       }
 
       setNotice("Check run queued.");
+      await loadFullDetail({ silent: true });
       router.refresh();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : String(error));
@@ -192,7 +268,7 @@ export default function CheckDetailClient({
               <span className="text-slate-600">/</span>
               <span className="inline-flex min-w-0 items-center gap-2 truncate">
                 <Folder className="h-4 w-4 shrink-0" />
-                {detail.groupName}
+                {currentDetail.groupName}
               </span>
               <span className="text-slate-600">/</span>
               <span className="inline-flex min-w-0 items-center gap-2 truncate text-slate-200">
@@ -240,8 +316,8 @@ export default function CheckDetailClient({
                   </div>
                 </div>
                 <div className="text-right text-sm text-slate-400">
-                  <div>Updated {detail.updated}</div>
-                  <div>Project {detail.projectSlug}</div>
+                  <div>Updated {currentDetail.updated}</div>
+                  <div>Project {currentDetail.projectSlug}</div>
                 </div>
               </div>
 
@@ -330,26 +406,47 @@ export default function CheckDetailClient({
                 />
               </div>
 
-              <section className="grid gap-5 rounded-md border border-slate-800 bg-[#11161d] p-5">
-                <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
-                  <Metric label="Availability" value={filteredStats.availability} />
-                  <Metric label="Runs" value={filteredStats.totalRuns} />
-                  <Metric label="Passed" value={filteredStats.passedRuns} />
-                  <Metric label="Failed" value={filteredStats.failedRuns} />
-                  <Metric label="Average" value={filteredStats.averageDuration} />
-                  <Metric label="P95" value={filteredStats.p95Duration} />
-                </div>
-                <ResultChart runs={filteredRuns} />
-              </section>
+              {isRunDataLoading ? (
+                <RunOverviewSkeleton />
+              ) : isRunDataError ? (
+                <RunDataError
+                  message={runDataError}
+                  onRetry={() => void loadFullDetail()}
+                />
+              ) : (
+                <section className="grid gap-5 rounded-md border border-slate-800 bg-[#11161d] p-5">
+                  <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
+                    <Metric label="Availability" value={filteredStats.availability} />
+                    <Metric label="Runs" value={filteredStats.totalRuns} />
+                    <Metric label="Passed" value={filteredStats.passedRuns} />
+                    <Metric label="Failed" value={filteredStats.failedRuns} />
+                    <Metric label="Average" value={filteredStats.averageDuration} />
+                    <Metric label="P95" value={filteredStats.p95Duration} />
+                  </div>
+                  <ResultChart runs={filteredRuns} />
+                </section>
+              )}
 
-              <PerformanceAnalytics runs={filteredRuns} />
+              {isRunDataLoading ? (
+                <PerformanceAnalyticsSkeleton />
+              ) : isRunDataError ? null : (
+                <PerformanceAnalytics runs={filteredRuns} />
+              )}
 
               <section className="grid gap-5 xl:grid-cols-2">
                 <SettingsPanel check={check} />
-                <RunStatsPanel stats={filteredStats} />
+                {isRunDataLoading ? (
+                  <RunStatsPanelSkeleton />
+                ) : isRunDataError ? null : (
+                  <RunStatsPanel stats={filteredStats} />
+                )}
               </section>
 
-              <RunHistoryTable checkId={check.id} runs={filteredRuns} />
+              {isRunDataLoading ? (
+                <RunHistoryTableSkeleton />
+              ) : isRunDataError ? null : (
+                <RunHistoryTable checkId={check.id} runs={filteredRuns} />
+              )}
             </div>
           </section>
 
@@ -357,12 +454,22 @@ export default function CheckDetailClient({
             <div className="sticky top-16">
               <div className="border-b border-slate-800 px-5 py-5">
                 <h2 className="text-xl font-semibold text-slate-100">Run results</h2>
-                <span className="mt-2 inline-flex rounded bg-slate-700 px-2 py-1 text-xs font-semibold text-slate-300">
-                  Last {filteredRuns.length || 0} runs
-                </span>
+                {isRunDataLoading ? (
+                  <SkeletonLine className="mt-3 h-6 w-24" />
+                ) : isRunDataError ? null : (
+                  <span className="mt-2 inline-flex rounded bg-slate-700 px-2 py-1 text-xs font-semibold text-slate-300">
+                    Last {filteredRuns.length || 0} runs
+                  </span>
+                )}
               </div>
               <div className="max-h-[calc(100vh-9rem)] overflow-y-auto">
-                {filteredRuns.length > 0 ? (
+                {isRunDataLoading ? (
+                  <RunResultsSidebarSkeleton />
+                ) : isRunDataError ? (
+                  <div className="px-5 py-6 text-sm text-slate-500">
+                    Unable to load run results.
+                  </div>
+                ) : filteredRuns.length > 0 ? (
                   filteredRuns.map((run) => (
                     <Link
                       aria-label={`Open run result ${run.occurredAt}`}
@@ -440,6 +547,186 @@ function Metric({ label, value }: { label: string; value: string }) {
     <div className="min-w-0">
       <div className="text-sm font-medium text-slate-500">{label}</div>
       <div className="mt-1 truncate text-2xl font-semibold text-slate-100">{value}</div>
+    </div>
+  );
+}
+
+function SkeletonLine({
+  className,
+  style,
+}: {
+  className?: string;
+  style?: CSSProperties;
+}) {
+  return (
+    <div
+      aria-hidden="true"
+      className={cn("animate-pulse rounded bg-slate-800/80", className)}
+      style={style}
+    />
+  );
+}
+
+function RunOverviewSkeleton() {
+  return (
+    <section
+      aria-busy="true"
+      aria-label="Loading run summary"
+      className="grid gap-5 rounded-md border border-slate-800 bg-[#11161d] p-5"
+    >
+      <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
+        {["Availability", "Runs", "Passed", "Failed", "Average", "P95"].map((label) => (
+          <div className="min-w-0" key={label}>
+            <div className="text-sm font-medium text-slate-500">{label}</div>
+            <SkeletonLine className="mt-2 h-8 w-20" />
+          </div>
+        ))}
+      </div>
+      <div className="h-48 min-w-0 overflow-hidden border-t border-slate-800 pt-5">
+        <div
+          className="grid h-full items-end gap-2"
+          style={{ gridTemplateColumns: "repeat(24, minmax(0, 1fr))" }}
+        >
+          {Array.from({ length: 24 }, (_, index) => (
+            <SkeletonLine
+              className="w-full rounded-t-sm"
+              key={index}
+              style={{
+                height: `${20 + (index % 6) * 12}px`,
+              }}
+            />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function RunDataError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <section className="rounded-md border border-red-950/80 bg-red-950/30 p-5 text-sm text-red-100">
+      <div className="font-semibold">Unable to load run history.</div>
+      <div className="mt-1 text-red-200/80">{message || "Please try again."}</div>
+      <button
+        className="mt-4 inline-flex h-9 items-center gap-2 rounded-md border border-red-800 px-3 font-semibold text-red-100 hover:bg-red-900/40"
+        onClick={onRetry}
+        type="button"
+      >
+        <RefreshCw className="h-4 w-4" />
+        Retry
+      </button>
+    </section>
+  );
+}
+
+function PerformanceAnalyticsSkeleton() {
+  return (
+    <section aria-busy="true" className="grid gap-4">
+      <h2 className="text-xl font-semibold text-slate-100">Performance</h2>
+      <div className="grid gap-4 xl:grid-cols-2">
+        {["Check duration", "Loading", "Errors", "Interactivity"].map((title) => (
+          <section
+            className="rounded-md border border-slate-800 bg-[#111821] p-5"
+            key={title}
+          >
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-semibold text-slate-100">{title}</h3>
+            </div>
+            <div className="mt-4 grid grid-cols-3 gap-4">
+              {Array.from({ length: 3 }, (_, index) => (
+                <div className="min-w-0" key={index}>
+                  <SkeletonLine className="h-4 w-12" />
+                  <SkeletonLine className="mt-2 h-6 w-16" />
+                </div>
+              ))}
+            </div>
+            <SkeletonLine className="mt-6 h-48 w-full" />
+          </section>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function RunStatsPanelSkeleton() {
+  return (
+    <section
+      aria-busy="true"
+      className="rounded-md border border-slate-800 bg-[#111821]"
+    >
+      <div className="flex items-center gap-2 border-b border-slate-800 px-4 py-3 text-sm font-semibold text-slate-100">
+        <Gauge className="h-4 w-4 text-slate-500" />
+        Run statistics
+      </div>
+      <div className="grid grid-cols-2 gap-4 p-4">
+        {Array.from({ length: 6 }, (_, index) => (
+          <div key={index}>
+            <SkeletonLine className="h-4 w-20" />
+            <SkeletonLine className="mt-2 h-5 w-16" />
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function RunHistoryTableSkeleton() {
+  return (
+    <section
+      aria-busy="true"
+      className="overflow-hidden rounded-md border border-slate-800 bg-[#111821]"
+    >
+      <div className="flex items-center gap-2 border-b border-slate-800 px-4 py-3 text-sm font-semibold text-slate-100">
+        <History className="h-4 w-4 text-slate-500" />
+        Run history
+      </div>
+      <div className="overflow-x-auto">
+        <div className="w-full min-w-[900px]">
+          <div className="grid grid-cols-[1.2fr_1fr_1fr_1.4fr_2fr] gap-4 bg-[#121820] px-4 py-3">
+            {["Run", "Status", "Duration", "Artifacts", "Error"].map((label) => (
+              <div
+                className="text-xs font-semibold uppercase text-slate-500"
+                key={label}
+              >
+                {label}
+              </div>
+            ))}
+          </div>
+          {Array.from({ length: 5 }, (_, rowIndex) => (
+            <div
+              className="grid grid-cols-[1.2fr_1fr_1fr_1.4fr_2fr] gap-4 border-t border-slate-800 px-4 py-3"
+              key={rowIndex}
+            >
+              <SkeletonLine className="h-5 w-32" />
+              <SkeletonLine className="h-5 w-24" />
+              <SkeletonLine className="h-5 w-16" />
+              <SkeletonLine className="h-5 w-28" />
+              <SkeletonLine className="h-5 w-full" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function RunResultsSidebarSkeleton() {
+  return (
+    <div aria-busy="true">
+      {Array.from({ length: 6 }, (_, index) => (
+        <div className="border-b border-slate-800 px-5 py-4" key={index}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 flex-1 items-start gap-3">
+              <SkeletonLine className="mt-1 h-4 w-4 rounded-full" />
+              <div className="min-w-0 flex-1">
+                <SkeletonLine className="h-5 w-28" />
+                <SkeletonLine className="mt-2 h-4 w-16" />
+              </div>
+            </div>
+            <SkeletonLine className="h-4 w-24" />
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
