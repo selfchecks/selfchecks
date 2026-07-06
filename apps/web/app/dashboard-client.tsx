@@ -606,7 +606,7 @@ export default function DashboardClient({
                 open={firewatchOpen}
               />
 
-              <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-5">
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500" />
                   <input
@@ -990,7 +990,7 @@ function FirewatchPanel({
         </button>
         <div className="flex flex-wrap items-center gap-2">
           {count > 0 ? (
-            <span className="rounded-md border border-red-500/30 bg-red-500/10 px-2 py-1 text-xs font-semibold text-red-300">
+            <span className="inline-flex h-9 min-w-9 items-center justify-center rounded-md border border-red-500/30 bg-red-500/10 px-3 text-sm font-semibold text-red-300">
               {count}
             </span>
           ) : null}
@@ -1648,12 +1648,13 @@ function SettingsScreen({
           ) : null}
 
           <label
-            className="grid gap-2 text-sm font-medium text-slate-200"
+            className="grid gap-2 text-sm font-medium text-slate-200 lg:w-1/2"
             htmlFor="settings-ai-api-key"
           >
             AI_API_KEY
             <input
-              autoComplete="off"
+              aria-label="AI_API_KEY"
+              autoComplete="new-password"
               className="h-10 rounded-md border border-slate-700 bg-[#0f151d] px-3 text-sm text-slate-100 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
               id="settings-ai-api-key"
               onChange={(event) =>
@@ -1662,11 +1663,16 @@ function SettingsScreen({
                   apiKey: event.target.value,
                 }))
               }
-              placeholder={settings.ai.apiKeyMasked ?? "Paste API key"}
+              placeholder="Paste new API key"
               required={!settings.ai.hasApiKey}
               type="password"
               value={aiDraft.apiKey}
             />
+            {settings.ai.apiKeyMasked ? (
+              <span className="text-sm font-normal text-slate-500">
+                Current key: {settings.ai.apiKeyMasked}
+              </span>
+            ) : null}
           </label>
 
           <label
@@ -1746,21 +1752,9 @@ function SettingsScreen({
 
         <div className="grid gap-6 p-5 xl:grid-cols-2">
           <section className="min-w-0">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-2 text-sm font-semibold text-slate-100">
-                <UserRound className="h-4 w-4 shrink-0 text-slate-500" />
-                <span className="truncate">Variables</span>
-              </div>
-              <button
-                className="inline-flex h-9 items-center gap-2 rounded-md border border-slate-700 px-3 text-sm font-medium text-slate-200 hover:bg-slate-800"
-                onClick={() =>
-                  setVariableRows((current) => [...current, createVariableDraft()])
-                }
-                type="button"
-              >
-                <Plus className="h-4 w-4" />
-                Add
-              </button>
+            <div className="mb-3 flex min-w-0 items-center gap-2 text-sm font-semibold text-slate-100">
+              <UserRound className="h-4 w-4 shrink-0 text-slate-500" />
+              <span className="truncate">Variables</span>
             </div>
 
             <div className="grid gap-2">
@@ -1813,25 +1807,24 @@ function SettingsScreen({
                   </button>
                 </div>
               ))}
-            </div>
-          </section>
-
-          <section className="min-w-0">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-2 text-sm font-semibold text-slate-100">
-                <LockKeyhole className="h-4 w-4 shrink-0 text-slate-500" />
-                <span className="truncate">Secrets</span>
-              </div>
               <button
-                className="inline-flex h-9 items-center gap-2 rounded-md border border-slate-700 px-3 text-sm font-medium text-slate-200 hover:bg-slate-800"
+                aria-label="Add variable"
+                className="mt-1 inline-flex h-10 w-fit items-center gap-2 rounded-md border border-slate-700 px-3 text-sm font-medium text-slate-200 hover:bg-slate-800"
                 onClick={() =>
-                  setSecretRows((current) => [...current, createSecretDraft()])
+                  setVariableRows((current) => [...current, createVariableDraft()])
                 }
                 type="button"
               >
                 <Plus className="h-4 w-4" />
                 Add
               </button>
+            </div>
+          </section>
+
+          <section className="min-w-0">
+            <div className="mb-3 flex min-w-0 items-center gap-2 text-sm font-semibold text-slate-100">
+              <LockKeyhole className="h-4 w-4 shrink-0 text-slate-500" />
+              <span className="truncate">Secrets</span>
             </div>
 
             <div className="grid gap-2">
@@ -1887,6 +1880,17 @@ function SettingsScreen({
                   </button>
                 </div>
               ))}
+              <button
+                aria-label="Add secret"
+                className="mt-1 inline-flex h-10 w-fit items-center gap-2 rounded-md border border-slate-700 px-3 text-sm font-medium text-slate-200 hover:bg-slate-800"
+                onClick={() =>
+                  setSecretRows((current) => [...current, createSecretDraft()])
+                }
+                type="button"
+              >
+                <Plus className="h-4 w-4" />
+                Add
+              </button>
             </div>
           </section>
         </div>
@@ -2314,7 +2318,7 @@ function CheckTableRow({
         tabIndex={0}
       >
         <td className="px-5 py-3">
-          <div className="flex items-center gap-4 pl-16">
+          <div className="flex items-center gap-4 pl-6">
             <CheckStatus runState={check.runState} status={check.status} />
             <div className="min-w-0">
               <div className="truncate font-semibold text-slate-200">{check.name}</div>

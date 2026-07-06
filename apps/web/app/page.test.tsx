@@ -891,8 +891,9 @@ describe("DashboardPage", () => {
     expect(screen.getByText("https://openrouter.ai/api/v1")).toBeTruthy();
     expect(screen.getByRole("option", { name: "Gemini" })).toBeTruthy();
     expect((screen.getByLabelText("AI_API_KEY") as HTMLInputElement).placeholder).toBe(
-      "************f7dd",
+      "Paste new API key",
     );
+    expect(screen.getByText("Current key: ************f7dd")).toBeTruthy();
     expect((screen.getByLabelText("AI_MODEL") as HTMLInputElement).value).toBe(
       "openai/gpt-5-mini",
     );
@@ -996,6 +997,12 @@ describe("DashboardPage", () => {
       );
     });
     expect(screen.getByText("Environment settings saved.")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Add variable" }));
+    expect(screen.getByLabelText("Variable 2 name")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Add secret" }));
+    expect(screen.getByLabelText("Secret 2 name")).toBeTruthy();
   });
 
   it("opens and closes custom filter dropdowns", async () => {
