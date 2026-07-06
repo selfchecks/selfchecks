@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -94,6 +94,29 @@ describe("runCheckById", () => {
       "autopayment-chromium",
       "trace.zip",
     );
+    const screenshotOutputDir = path.join(isolatedOutputDir, "autopayment-chromium");
+    const actualScreenshotPath = path.join(
+      screenshotOutputDir,
+      "limits-is-spent-actual.png",
+    );
+    const expectedScreenshotPath = path.join(
+      screenshotOutputDir,
+      "limits-is-spent-expected.png",
+    );
+    const updateScreenshotPath = path.join(
+      screenshotOutputDir,
+      "limits-is-spent-chromium-linux.png",
+    );
+    const baselineSnapshotPath = path.join(
+      rootDir,
+      "src",
+      "__checks__",
+      "UI",
+      "App",
+      "billing",
+      "rest.limit-checks.spec.ts-snapshots",
+      "limits-is-spent-chromium-linux.png",
+    );
     const sharedTracePath = path.join(
       rootDir,
       "test-results",
@@ -138,9 +161,20 @@ describe("runCheckById", () => {
           await mkdir(path.dirname(sharedTracePath), { recursive: true });
           await writeFile(path.join(String(outputDir), ".last-run.json"), "{}");
           await writeFile(isolatedTracePath, "trace payload");
+          await writeFile(actualScreenshotPath, "actual screenshot payload");
+          await writeFile(expectedScreenshotPath, "expected screenshot payload");
           await writeFile(sharedTracePath, "shared trace payload");
 
-          child.stdout.emit("data", Buffer.from("passed"));
+          child.stdout.emit(
+            "data",
+            Buffer.from(
+              [
+                "Error: Screenshot comparison failed",
+                `Expected: ${baselineSnapshotPath}`,
+                `Received: ${actualScreenshotPath}`,
+              ].join("\n"),
+            ),
+          );
           child.emit("close", 0);
         })();
       });
@@ -204,10 +238,17 @@ describe("runCheckById", () => {
           path: isolatedTracePath,
           type: "TRACE",
         }),
+        expect.objectContaining({
+          path: updateScreenshotPath,
+          type: "SCREENSHOT",
+        }),
       ]),
     );
     expect(artifactCreateArgs.data.map((artifact) => artifact.path)).not.toContain(
       sharedTracePath,
+    );
+    await expect(readFile(updateScreenshotPath, "utf8")).resolves.toBe(
+      "actual screenshot payload",
     );
   });
 

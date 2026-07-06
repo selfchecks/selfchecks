@@ -1,4 +1,4 @@
-import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -88,6 +88,10 @@ const DEFAULT_RETRY_BACKOFF_SECONDS = 60;
 const DEFAULT_RETRY_MAX_DURATION_SECONDS = 600;
 const DEFAULT_RETRY_MAX_RETRIES = 2;
 const MAX_RETRIES = 10;
+const ANSI_ESCAPE_PATTERN = new RegExp(
+  `${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`,
+  "g",
+);
 
 export async function runChecks(options: RunChecksOptions): Promise<RunChecksSummary> {
   const startedAt = Date.now();
@@ -820,6 +824,7 @@ async function collectRunArtifacts(
   browserArtifactDirs: string[],
 ): Promise<CollectedRunArtifact[]> {
   const artifacts: CollectedRunArtifact[] = [];
+  const logOutput = logsPath ? await readFile(logsPath, "utf8").catch(() => "") : "";
 
   if (logsPath) {
     const logArtifact = await describeFileArtifact(logsPath, "LOG", "text/plain");
@@ -836,8 +841,16 @@ async function collectRunArtifacts(
     console.warn("Unable to collect browser artifacts.", error);
     return [];
   });
+  const snapshotUpdateArtifacts = await createSnapshotUpdateArtifacts(
+    discoveredArtifacts,
+    parseSnapshotUpdateArtifactNames(logOutput),
+  ).catch((error) => {
+    console.warn("Unable to create snapshot update artifacts.", error);
+    return [];
+  });
 
   artifacts.push(...discoveredArtifacts);
+  artifacts.push(...snapshotUpdateArtifacts);
 
   return artifacts;
 }
@@ -970,6 +983,128 @@ function inferArtifactFile(
   }
 
   return undefined;
+}
+
+type SnapshotUpdateArtifactNames = {
+  byActualName: Map<string, string>;
+  byActualPath: Map<string, string>;
+  entries: Array<{ actualPath: string; snapshotName: string }>;
+};
+
+function parseSnapshotUpdateArtifactNames(output: string): SnapshotUpdateArtifactNames {
+  const names: SnapshotUpdateArtifactNames = {
+    byActualName: new Map(),
+    byActualPath: new Map(),
+    entries: [],
+  };
+  const strippedOutput = stripAnsi(output);
+  const comparisonPattern =
+    /Expected:\s+([^\n\r]+?\.(?:png|jpe?g|webp))[\s\S]*?Received:\s+([^\n\r]+?\.(?:png|jpe?g|webp))/gi;
+
+  for (const match of strippedOutput.matchAll(comparisonPattern)) {
+    const expectedPath = cleanOutputPath(match[1]);
+    const actualPath = cleanOutputPath(match[2]);
+
+    if (
+      !expectedPath ||
+      !actualPath ||
+      !/-actual\.(?:png|jpe?g|webp)$/i.test(actualPath)
+    ) {
+      continue;
+    }
+
+    const snapshotName = path.basename(expectedPath);
+
+    names.byActualName.set(path.basename(actualPath), snapshotName);
+    names.byActualPath.set(path.normalize(actualPath), snapshotName);
+    names.entries.push({
+      actualPath: path.normalize(actualPath),
+      snapshotName,
+    });
+  }
+
+  return names;
+}
+
+async function createSnapshotUpdateArtifacts(
+  artifacts: CollectedRunArtifact[],
+  names: SnapshotUpdateArtifactNames,
+): Promise<CollectedRunArtifact[]> {
+  if (names.byActualName.size === 0 && names.byActualPath.size === 0) {
+    return [];
+  }
+
+  const artifactPaths = new Set(
+    artifacts.map((artifact) => path.normalize(artifact.path)),
+  );
+  const generatedArtifacts: CollectedRunArtifact[] = [];
+
+  for (const artifact of artifacts) {
+    if (artifact.type !== "SCREENSHOT") {
+      continue;
+    }
+
+    const snapshotName = findSnapshotUpdateArtifactName(artifact.path, names);
+
+    if (!snapshotName || path.basename(artifact.path) === snapshotName) {
+      continue;
+    }
+
+    const snapshotPath = path.join(path.dirname(artifact.path), snapshotName);
+    const normalizedSnapshotPath = path.normalize(snapshotPath);
+
+    if (artifactPaths.has(normalizedSnapshotPath)) {
+      continue;
+    }
+
+    await copyFile(artifact.path, snapshotPath);
+    artifactPaths.add(normalizedSnapshotPath);
+
+    const snapshotArtifact = await describeFileArtifact(
+      snapshotPath,
+      "SCREENSHOT",
+      artifact.mimeType ?? "image/png",
+    );
+
+    if (snapshotArtifact) {
+      generatedArtifacts.push(snapshotArtifact);
+    }
+  }
+
+  return generatedArtifacts;
+}
+
+function findSnapshotUpdateArtifactName(
+  artifactPath: string,
+  names: SnapshotUpdateArtifactNames,
+): string | undefined {
+  const normalizedArtifactPath = path.normalize(artifactPath);
+  const exactMatch = names.byActualPath.get(normalizedArtifactPath);
+
+  if (exactMatch) {
+    return exactMatch;
+  }
+
+  const suffixMatch = names.entries.find(({ actualPath }) => {
+    const normalizedActualPath = path.normalize(actualPath);
+
+    return (
+      normalizedArtifactPath.endsWith(`${path.sep}${normalizedActualPath}`) ||
+      normalizedArtifactPath.endsWith(normalizedActualPath)
+    );
+  });
+
+  return (
+    suffixMatch?.snapshotName ?? names.byActualName.get(path.basename(artifactPath))
+  );
+}
+
+function cleanOutputPath(value: string | undefined): string {
+  return (value ?? "").trim().replace(/^["'`]+|["'`:;,]+$/g, "");
+}
+
+function stripAnsi(value: string): string {
+  return value.replace(ANSI_ESCAPE_PATTERN, "");
 }
 
 function interpolateEnv(value: string, env: Record<string, string>): string {
