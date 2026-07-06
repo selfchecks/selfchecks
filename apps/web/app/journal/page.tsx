@@ -4,13 +4,7 @@ import {
   CircleX,
   Clock3,
   ExternalLink,
-  FileArchive,
-  FileImage,
-  FileJson,
-  FileText,
   History,
-  Video,
-  type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -24,12 +18,7 @@ import {
   type JournalRunStatusFilter,
   type JournalRunTypeFilter,
 } from "@/lib/dashboard-data";
-import type {
-  DashboardArtifactType,
-  DashboardRunArtifact,
-  DashboardRunState,
-  DashboardStatus,
-} from "@/lib/dashboard-types";
+import type { DashboardRunState, DashboardStatus } from "@/lib/dashboard-types";
 import { getDashboardSettingsData } from "@/lib/settings-data";
 import { cn } from "@/lib/utils";
 import { JournalFilters } from "./journal-filters";
@@ -107,7 +96,7 @@ function JournalTable({ runs }: { runs: JournalRunRow[] }) {
   return (
     <section className="overflow-hidden rounded-md border border-slate-800 bg-[#111821]">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1120px] text-left text-sm">
+        <table className="w-full min-w-[920px] text-left text-sm">
           <thead className="bg-[#121820] text-xs font-semibold uppercase text-slate-500">
             <tr>
               <th className="px-4 py-3">Run</th>
@@ -116,8 +105,6 @@ function JournalTable({ runs }: { runs: JournalRunRow[] }) {
               <th className="px-4 py-3">Type</th>
               <th className="px-4 py-3">Schedule</th>
               <th className="px-4 py-3">Duration</th>
-              <th className="px-4 py-3">Artifacts</th>
-              <th className="px-4 py-3">Error</th>
               <th className="px-4 py-3" aria-label="Actions" />
             </tr>
           </thead>
@@ -126,7 +113,7 @@ function JournalTable({ runs }: { runs: JournalRunRow[] }) {
               runs.map((run) => <JournalRunRowView key={run.id} run={run} />)
             ) : (
               <tr>
-                <td className="px-4 py-8 text-center text-slate-500" colSpan={9}>
+                <td className="px-4 py-8 text-center text-slate-500" colSpan={7}>
                   No runs match the current filters.
                 </td>
               </tr>
@@ -195,12 +182,6 @@ function JournalRunRowView({ run }: { run: JournalRunRow }) {
         ) : null}
       </td>
       <td className="px-4 py-3 text-slate-300">{run.duration}</td>
-      <td className="px-4 py-3">
-        <ArtifactSummary artifacts={run.artifacts} />
-      </td>
-      <td className="max-w-[26rem] px-4 py-3 text-slate-500">
-        <span className="line-clamp-2">{run.errorMessage ?? "-"}</span>
-      </td>
       <td className="px-4 py-3">
         <Link
           aria-label={`Open run ${run.id}`}
@@ -273,73 +254,6 @@ function RunStateIcon({
       <CheckCircle2 className="h-3.5 w-3.5" />
     </span>
   );
-}
-
-function ArtifactSummary({ artifacts }: { artifacts: DashboardRunArtifact[] }) {
-  if (artifacts.length === 0) {
-    return <span className="text-slate-500">No artifacts</span>;
-  }
-
-  return (
-    <div className="flex flex-wrap gap-2">
-      {summarizeArtifacts(artifacts).map((item) => {
-        const Icon = getArtifactIcon(item.type);
-
-        return (
-          <span
-            className="inline-flex items-center gap-1.5 rounded-md border border-slate-700 bg-[#0f151d] px-2 py-1 text-xs text-slate-300"
-            key={item.type}
-            title={item.label}
-          >
-            <Icon className="h-3.5 w-3.5 text-slate-500" />
-            {item.count}
-          </span>
-        );
-      })}
-    </div>
-  );
-}
-
-function summarizeArtifacts(artifacts: DashboardRunArtifact[]) {
-  const counts = new Map<DashboardArtifactType, number>();
-
-  for (const artifact of artifacts) {
-    counts.set(artifact.type, (counts.get(artifact.type) ?? 0) + 1);
-  }
-
-  return [...counts.entries()].map(([type, count]) => ({
-    count,
-    label: getArtifactTypeLabel(type),
-    type,
-  }));
-}
-
-function getArtifactIcon(type: DashboardArtifactType): LucideIcon {
-  if (type === "screenshot") {
-    return FileImage;
-  }
-
-  if (type === "video") {
-    return Video;
-  }
-
-  if (type === "trace") {
-    return FileArchive;
-  }
-
-  if (type === "json" || type === "request_response") {
-    return FileJson;
-  }
-
-  return FileText;
-}
-
-function getArtifactTypeLabel(type: DashboardArtifactType) {
-  if (type === "request_response") {
-    return "Request/response";
-  }
-
-  return type.charAt(0).toUpperCase() + type.slice(1);
 }
 
 function JournalPagination({ journal }: { journal: JournalData }) {

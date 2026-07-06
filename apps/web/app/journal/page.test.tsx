@@ -117,6 +117,8 @@ describe("JournalPage", () => {
     expect(screen.queryByRole("link", { name: "Checks" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Apply" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Reset" })).toBeNull();
+    expect(screen.queryByRole("columnheader", { name: "Artifacts" })).toBeNull();
+    expect(screen.queryByRole("columnheader", { name: "Error" })).toBeNull();
     expect(
       (screen.getByRole("searchbox", { name: "Search runs" }) as HTMLInputElement)
         .value,
