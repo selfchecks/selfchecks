@@ -41,6 +41,11 @@ enum WebhookAdapter {
   ROCKET_CHAT
 }
 
+enum TestSessionKind {
+  TEST
+  TRIGGER
+}
+
 model Project {
   id                  String               @id @default(cuid())
   slug                String               @unique
@@ -109,12 +114,16 @@ model Check {
 
 model TestSession {
   id        String         @id @default(cuid())
+  kind      TestSessionKind @default(TRIGGER)
   name      String?
   source    String?
+  targetUrl String?
   commitSha String?
   status    CheckRunStatus @default(QUEUED)
   createdAt DateTime       @default(now())
   runs      CheckRun[]
+
+  @@index([kind, createdAt])
 }
 
 model CheckRun {
@@ -137,6 +146,7 @@ model CheckRun {
   testSession   TestSession?   @relation(fields: [testSessionId], references: [id], onDelete: SetNull)
 
   @@index([checkId, createdAt])
+  @@index([testSessionId, status, createdAt])
   @@index([retryGroupId, attempt])
   @@index([status, createdAt])
 }

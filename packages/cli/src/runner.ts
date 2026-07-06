@@ -47,6 +47,7 @@ export type RunChecksOptions = {
   reporter: string;
   retries?: number;
   rootDir: string;
+  runMode?: "monitoring" | "test";
   tagSets: string[][];
   testSessionName?: string;
 };
@@ -91,7 +92,7 @@ const MAX_RETRIES = 10;
 export async function runChecks(options: RunChecksOptions): Promise<RunChecksSummary> {
   const startedAt = Date.now();
   const checks = await findRunnableChecks(options);
-  const session = options.record ? await createTestSession(options) : undefined;
+  const session = options.record ? await createRunSession(options) : undefined;
   const results: RunCheckResult[] = [];
 
   for (const check of checks) {
@@ -158,6 +159,7 @@ export async function runCheckById(
       reporter: options.reporter,
       retries: options.retries,
       rootDir: options.rootDir,
+      runMode: "monitoring",
       tagSets: [],
     },
     undefined,
@@ -216,14 +218,43 @@ function doesCheckMatchTags(check: Check, tagSets: string[][]): boolean {
   return tagSets.some((tagSet) => tagSet.every((tag) => checkTags.includes(tag)));
 }
 
-async function createTestSession(options: RunChecksOptions): Promise<TestSession> {
+async function createRunSession(options: RunChecksOptions): Promise<TestSession> {
+  const isTestSession = options.runMode === "test";
+
   return prisma.testSession.create({
     data: {
+      kind: isTestSession ? "TEST" : "TRIGGER",
       name: options.testSessionName,
       source: options.rootDir,
       status: "RUNNING",
+      targetUrl: isTestSession ? resolveTestSessionTargetUrl(options.env) : undefined,
     },
   });
+}
+
+function resolveTestSessionTargetUrl(env: EnvVar[]): string | undefined {
+  const envByName = new Map(env.map((item) => [item.name.trim(), item.value.trim()]));
+  const preferredNames = [
+    "ENVIRONMENT_URL",
+    "BASE_URL",
+    "PLAYWRIGHT_TEST_BASE_URL",
+    "APP_URL",
+    "TARGET_URL",
+  ];
+
+  for (const name of preferredNames) {
+    const value = envByName.get(name);
+
+    if (isHttpUrl(value)) {
+      return value;
+    }
+  }
+
+  return env.find((item) => item.name.endsWith("_URL") && isHttpUrl(item.value))?.value;
+}
+
+function isHttpUrl(value: string | undefined): value is string {
+  return typeof value === "string" && /^https?:\/\/\S+$/i.test(value.trim());
 }
 
 async function runCheck(

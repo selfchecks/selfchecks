@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 import {
   CalendarDays,
   CheckCircle2,
+  FlaskConical,
   History,
   Home,
   Route,
@@ -52,6 +53,7 @@ function SkeletonSidebar({ activeView }: { activeView: DashboardActiveView }) {
   const items = [
     { icon: Home, id: "dashboard", label: "Home" },
     { icon: History, id: "journal", label: "Journal" },
+    { icon: FlaskConical, id: "test-sessions", label: "Test sessions" },
     { icon: Settings2, id: "settings", label: "Settings" },
   ] as const;
 

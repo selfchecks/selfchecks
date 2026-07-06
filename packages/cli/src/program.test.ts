@@ -266,6 +266,49 @@ describe("createSelfchecksProgram", () => {
     ]);
   });
 
+  it("runs the test command as a recorded test session", async () => {
+    const runChecksLocally = vi.fn(async () => ({
+      durationMs: 10,
+      failed: 0,
+      passed: 0,
+      results: [],
+      skipped: 0,
+      total: 0,
+    }));
+    const program = createSelfchecksProgram({
+      runChecksLocally,
+      write: () => undefined,
+    });
+
+    program.exitOverride();
+    program.configureOutput({
+      writeErr: () => undefined,
+      writeOut: () => undefined,
+    });
+
+    await program.parseAsync([
+      "node",
+      "selfchecks",
+      "test",
+      "--record",
+      "-e",
+      "ENVIRONMENT_URL=https://example.test",
+    ]);
+
+    expect(runChecksLocally).toHaveBeenCalledWith(
+      expect.objectContaining({
+        env: [
+          {
+            name: "ENVIRONMENT_URL",
+            value: "https://example.test",
+          },
+        ],
+        record: true,
+        runMode: "test",
+      }),
+    );
+  });
+
   it("emits trigger command options", async () => {
     await expect(
       parseCommand([
@@ -327,6 +370,7 @@ describe("createSelfchecksProgram", () => {
     expect(runChecksLocally).toHaveBeenCalledWith(
       expect.objectContaining({
         retries: 2,
+        runMode: "monitoring",
       }),
     );
   });

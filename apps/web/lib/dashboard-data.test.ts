@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   checkRunUpdateMany: vi.fn(),
   projectFindFirst: vi.fn(),
   projectFindUnique: vi.fn(),
+  testSessionFindFirst: vi.fn(),
+  testSessionFindMany: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -27,6 +29,10 @@ vi.mock("@/lib/prisma", () => ({
       findFirst: mocks.projectFindFirst,
       findUnique: mocks.projectFindUnique,
     },
+    testSession: {
+      findFirst: mocks.testSessionFindFirst,
+      findMany: mocks.testSessionFindMany,
+    },
   },
 }));
 
@@ -36,6 +42,7 @@ import {
   getDashboardData,
   getJournalData,
   getRunDetailData,
+  getTestSessionsData,
 } from "./dashboard-data";
 
 describe("dashboard data", () => {
@@ -650,6 +657,93 @@ describe("dashboard data", () => {
     });
   });
 
+  it("keeps finished CLI test sessions out of dashboard run history", async () => {
+    mocks.checkRunUpdateMany.mockResolvedValue({ count: 0 });
+    mocks.projectFindUnique.mockResolvedValue({
+      id: "project_1",
+      slug: "default",
+    });
+    mocks.checkFindMany.mockResolvedValue([
+      {
+        enabled: true,
+        entrypoint: null,
+        frequencyMinutes: 180,
+        group: {
+          name: "API / Bff",
+        },
+        id: "check_1",
+        key: "bff-health",
+        name: "bff-health",
+        request: {
+          assertions: [],
+          headers: {},
+          method: "GET",
+          url: "https://example.test/health",
+        },
+        runs: [
+          {
+            artifacts: [],
+            createdAt: new Date("2026-07-05T09:40:00.000Z"),
+            durationMs: null,
+            id: "run_running_test",
+            logsPath: null,
+            result: null,
+            status: "RUNNING",
+          },
+          {
+            artifacts: [],
+            createdAt: new Date("2026-07-05T09:38:00.000Z"),
+            durationMs: 8,
+            id: "run_monitoring",
+            logsPath: null,
+            result: null,
+            status: "PASSED",
+          },
+        ],
+        tags: ["api", "bff"],
+        type: "API",
+      },
+    ]);
+
+    const dashboard = await getDashboardData("default");
+    const query = mocks.checkFindMany.mock.calls[0]?.[0] as {
+      include?: {
+        runs?: {
+          where?: unknown;
+        };
+      };
+    };
+
+    expect(query.include?.runs?.where).toEqual({
+      OR: [
+        {
+          testSessionId: null,
+        },
+        {
+          status: {
+            in: ["QUEUED", "RUNNING"],
+          },
+        },
+        {
+          testSession: {
+            is: {
+              kind: {
+                not: "TEST",
+              },
+            },
+          },
+        },
+      ],
+    });
+    expect(dashboard.summary).toMatchObject({
+      degraded: 0,
+      failing: 0,
+      passing: 0,
+      queued: 0,
+      running: 1,
+    });
+  });
+
   it("lists Firewatch rows for current failures that started within seven days", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-05T12:00:00.000Z"));
@@ -892,6 +986,113 @@ describe("dashboard data", () => {
       runHref: "/checks/check_1/runs/run_1",
       schedule: "15 min",
       status: "passing",
+    });
+  });
+
+  it("loads CLI test sessions with target URLs and test summaries", async () => {
+    mocks.checkRunUpdateMany.mockResolvedValue({ count: 0 });
+    mocks.projectFindUnique.mockResolvedValue({
+      id: "project_1",
+      slug: "default",
+    });
+    mocks.testSessionFindMany.mockResolvedValue([
+      {
+        createdAt: new Date("2026-07-05T11:20:00.000Z"),
+        id: "session_1",
+        name: null,
+        source: "/repo/config/checkly",
+        status: "FAILED",
+        targetUrl: "https://example.test",
+        runs: [
+          {
+            artifacts: [],
+            check: {
+              enabled: true,
+              entrypoint: "signin.spec.ts",
+              group: {
+                name: "Browser",
+              },
+              id: "check_1",
+              key: "signin",
+              name: "Signin",
+              request: null,
+              tags: ["app"],
+              type: "BROWSER",
+            },
+            checkId: "check_1",
+            createdAt: new Date("2026-07-05T11:20:00.000Z"),
+            durationMs: 1000,
+            id: "run_1",
+            logsPath: null,
+            result: null,
+            status: "FAILED",
+          },
+          {
+            artifacts: [],
+            check: {
+              enabled: true,
+              entrypoint: null,
+              group: {
+                name: "API / Bff",
+              },
+              id: "check_2",
+              key: "bff-health",
+              name: "bff-health",
+              request: {
+                assertions: [],
+                headers: {},
+                method: "GET",
+                url: "https://example.test/health",
+              },
+              tags: ["api"],
+              type: "API",
+            },
+            checkId: "check_2",
+            createdAt: new Date("2026-07-05T11:19:00.000Z"),
+            durationMs: 20,
+            id: "run_2",
+            logsPath: null,
+            result: {
+              url: "https://example.test/health",
+            },
+            status: "PASSED",
+          },
+        ],
+      },
+    ]);
+
+    const data = await getTestSessionsData("default");
+
+    expect(mocks.testSessionFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          kind: "TEST",
+          runs: {
+            some: {
+              check: {
+                enabled: true,
+                projectId: "project_1",
+              },
+            },
+          },
+        },
+      }),
+    );
+    expect(data.sessions[0]).toMatchObject({
+      duration: "1.02 s",
+      href: "/test-sessions/session_1",
+      id: "session_1",
+      runState: "failed",
+      source: "/repo/config/checkly",
+      status: "failing",
+      summary: {
+        failed: 1,
+        passed: 1,
+        queued: 0,
+        running: 0,
+        total: 2,
+      },
+      targetUrl: "https://example.test",
     });
   });
 });

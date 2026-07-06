@@ -1,12 +1,12 @@
 "use client";
 
-import { History, Home, Settings2, type LucideIcon } from "lucide-react";
+import { FlaskConical, History, Home, Settings2, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 
 import { ServiceMark } from "@/components/service-mark";
 import { cn } from "@/lib/utils";
 
-export type AppSidebarItem = "home" | "journal" | "settings";
+export type AppSidebarItem = "home" | "journal" | "settings" | "test-sessions";
 
 type SidebarEntry = {
   href: string;
@@ -18,6 +18,12 @@ type SidebarEntry = {
 const sidebarItems: SidebarEntry[] = [
   { href: "/", icon: Home, id: "home", label: "Home" },
   { href: "/journal", icon: History, id: "journal", label: "Journal" },
+  {
+    href: "/test-sessions",
+    icon: FlaskConical,
+    id: "test-sessions",
+    label: "Test sessions",
+  },
   { href: "/?view=settings", icon: Settings2, id: "settings", label: "Settings" },
 ];
 

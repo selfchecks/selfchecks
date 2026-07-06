@@ -1,6 +1,8 @@
 import path from "node:path";
 import { readFile } from "node:fs/promises";
 
+import type { Prisma } from "@prisma/client";
+
 import type {
   DashboardCheckRow,
   DashboardFirewatch,
@@ -27,6 +29,76 @@ type DashboardData = {
   groups: DashboardGroupRow[];
   projectSlug: string;
   summary: DashboardSummary;
+};
+
+export type TestSessionRunCountSummary = {
+  failed: number;
+  passed: number;
+  queued: number;
+  running: number;
+  total: number;
+};
+
+export type TestSessionRow = {
+  createdAt: string;
+  createdAtLabel: string;
+  duration: string;
+  href: string;
+  id: string;
+  name?: string;
+  runState: DashboardRunState;
+  source?: string;
+  status: DashboardStatus;
+  summary: TestSessionRunCountSummary;
+  targetUrl?: string;
+  tone?: DashboardResultTone;
+};
+
+export type TestSessionsData = {
+  projectSlug: string;
+  sessions: TestSessionRow[];
+};
+
+export type TestSessionCheckRow = {
+  checkHref: string;
+  checkId: string;
+  checkKey: string;
+  checkName: string;
+  checkType: DashboardCheckRow["type"];
+  duration: string;
+  groupName: string;
+  latestRunHref: string;
+  runCount: number;
+  runState: DashboardRunState;
+  status: DashboardStatus;
+  target: string;
+  tone?: DashboardResultTone;
+};
+
+export type TestSessionDetailData = {
+  projectSlug: string;
+  session: TestSessionRow & {
+    checks: TestSessionCheckRow[];
+  };
+};
+
+export type TestSessionCheckDetailData = {
+  check: {
+    id: string;
+    key: string;
+    name: string;
+    tags: string[];
+    target: string;
+    type: DashboardCheckRow["type"];
+  };
+  groupName: string;
+  projectSlug: string;
+  runs: Array<
+    DashboardRunRow & {
+      runHref: string;
+    }
+  >;
+  session: TestSessionRow;
 };
 
 export type JournalRangeFilter = "24h" | "7d" | "30d" | "all";
@@ -207,9 +279,39 @@ type CheckWithRuns = {
   tags: string[];
   type: string;
 };
+type TestSessionRunWithCheck = MappableRun & {
+  check: {
+    enabled: boolean;
+    entrypoint: string | null;
+    frequencyMinutes?: number | null;
+    group: {
+      name: string;
+    } | null;
+    id: string;
+    key: string;
+    name: string;
+    project?: {
+      slug: string;
+    };
+    request: unknown;
+    tags: string[];
+    type: string;
+  };
+  checkId: string;
+};
+type TestSessionWithRuns = {
+  createdAt: Date;
+  id: string;
+  name: string | null;
+  runs: TestSessionRunWithCheck[];
+  source: string | null;
+  status: string;
+  targetUrl: string | null;
+};
 
 const JOURNAL_DEFAULT_PAGE_SIZE = 20;
 const JOURNAL_MAX_PAGE_SIZE = 100;
+const DASHBOARD_ACTIVE_RUN_STATUSES = ["QUEUED", "RUNNING"] as const;
 
 export async function getDashboardData(projectSlug: string): Promise<DashboardData> {
   const timeZone = getRuntimeTimeZone();
@@ -287,6 +389,7 @@ export async function getCheckDetailShellData(
           orderBy: {
             createdAt: "desc",
           },
+          where: buildDashboardVisibleRunWhere(),
           select: {
             artifacts: {
               orderBy: {
@@ -381,6 +484,7 @@ export async function getCheckDetailData(
           orderBy: {
             createdAt: "desc",
           },
+          where: buildDashboardVisibleRunWhere(),
           take: 50,
         },
       },
@@ -585,6 +689,225 @@ export async function getJournalData(
   }
 }
 
+export async function getTestSessionsData(
+  projectSlug: string,
+): Promise<TestSessionsData> {
+  const timeZone = getRuntimeTimeZone();
+
+  try {
+    await cancelStaleQueuedRuns();
+
+    const project = await findProjectForDashboard(projectSlug);
+
+    if (!project) {
+      return {
+        projectSlug,
+        sessions: [],
+      };
+    }
+
+    const sessions = await prisma.testSession.findMany({
+      include: {
+        runs: {
+          include: {
+            artifacts: {
+              orderBy: {
+                createdAt: "desc",
+              },
+            },
+            check: {
+              include: {
+                group: true,
+              },
+            },
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      take: 100,
+      where: {
+        kind: "TEST",
+        runs: {
+          some: {
+            check: {
+              enabled: true,
+              projectId: project.id,
+            },
+          },
+        },
+      },
+    });
+
+    return {
+      projectSlug: project.slug,
+      sessions: sessions.map((session) =>
+        mapTestSession(session as TestSessionWithRuns, timeZone),
+      ),
+    };
+  } catch (error) {
+    console.warn("Unable to load test sessions data.", error);
+
+    return {
+      projectSlug,
+      sessions: [],
+    };
+  }
+}
+
+export async function getTestSessionData(
+  sessionId: string,
+): Promise<TestSessionDetailData | undefined> {
+  const timeZone = getRuntimeTimeZone();
+
+  try {
+    await cancelStaleQueuedRuns();
+
+    const session = await prisma.testSession.findFirst({
+      include: {
+        runs: {
+          include: {
+            artifacts: {
+              orderBy: {
+                createdAt: "desc",
+              },
+            },
+            check: {
+              include: {
+                group: true,
+                project: {
+                  select: {
+                    slug: true,
+                  },
+                },
+              },
+            },
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+        },
+      },
+      where: {
+        id: sessionId,
+        kind: "TEST",
+      },
+    });
+
+    if (!session) {
+      return undefined;
+    }
+
+    const mappedSession = mapTestSession(session as TestSessionWithRuns, timeZone);
+    const runs = (session.runs as TestSessionRunWithCheck[]).filter(
+      (run) => run.check.enabled,
+    );
+
+    return {
+      projectSlug: runs[0]?.check.project?.slug ?? "default",
+      session: {
+        ...mappedSession,
+        checks: mapTestSessionChecks(runs, session.id),
+      },
+    };
+  } catch (error) {
+    console.warn("Unable to load test session data.", error);
+    return undefined;
+  }
+}
+
+export async function getTestSessionCheckData(
+  sessionId: string,
+  checkId: string,
+): Promise<TestSessionCheckDetailData | undefined> {
+  const timeZone = getRuntimeTimeZone();
+
+  try {
+    await cancelStaleQueuedRuns();
+
+    const session = await prisma.testSession.findFirst({
+      include: {
+        runs: {
+          include: {
+            artifacts: {
+              orderBy: {
+                createdAt: "desc",
+              },
+            },
+            check: {
+              include: {
+                group: true,
+                project: {
+                  select: {
+                    slug: true,
+                  },
+                },
+              },
+            },
+          },
+          orderBy: [
+            {
+              attempt: "asc",
+            },
+            {
+              createdAt: "asc",
+            },
+          ],
+          where: {
+            checkId,
+          },
+        },
+      },
+      where: {
+        id: sessionId,
+        kind: "TEST",
+        runs: {
+          some: {
+            checkId,
+            check: {
+              enabled: true,
+            },
+          },
+        },
+      },
+    });
+
+    const runs = (session?.runs ?? []) as TestSessionRunWithCheck[];
+    const firstRun = runs[0];
+
+    if (!session || !firstRun || !firstRun.check.enabled) {
+      return undefined;
+    }
+
+    return {
+      check: {
+        id: firstRun.check.id,
+        key: firstRun.check.key,
+        name: firstRun.check.name,
+        tags: firstRun.check.tags,
+        target: formatTestRunTarget(firstRun),
+        type: firstRun.check.type.toLowerCase() as DashboardCheckRow["type"],
+      },
+      groupName: firstRun.check.group?.name ?? "Ungrouped",
+      projectSlug: firstRun.check.project?.slug ?? "default",
+      runs: runs.map((run) => ({
+        ...mapRun(run, timeZone),
+        runHref: `/checks/${encodeURIComponent(run.check.id)}/runs/${encodeURIComponent(
+          run.id,
+        )}`,
+      })),
+      session: mapTestSession(session as TestSessionWithRuns, timeZone),
+    };
+  } catch (error) {
+    console.warn("Unable to load test session check data.", error);
+    return undefined;
+  }
+}
+
 function normalizeJournalFilters(options: JournalDataOptions): JournalData["filters"] {
   const pageSize = clampInteger(
     options.pageSize,
@@ -740,6 +1063,214 @@ function getJournalRangeCutoff(range: JournalRangeFilter): Date | undefined {
   return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 }
 
+async function findProjectForDashboard(projectSlug: string) {
+  return (
+    (await prisma.project.findUnique({
+      select: {
+        id: true,
+        slug: true,
+      },
+      where: {
+        slug: projectSlug,
+      },
+    })) ??
+    (await prisma.project.findFirst({
+      orderBy: {
+        createdAt: "desc",
+      },
+      select: {
+        id: true,
+        slug: true,
+      },
+    }))
+  );
+}
+
+function buildDashboardVisibleRunWhere(): Prisma.CheckRunWhereInput {
+  return {
+    OR: [
+      {
+        testSessionId: null,
+      },
+      {
+        status: {
+          in: [...DASHBOARD_ACTIVE_RUN_STATUSES],
+        },
+      },
+      {
+        testSession: {
+          is: {
+            kind: {
+              not: "TEST",
+            },
+          },
+        },
+      },
+    ],
+  };
+}
+
+function mapTestSession(
+  session: TestSessionWithRuns,
+  timeZone: string,
+): TestSessionRow {
+  const runs = session.runs.filter((run) => run.check.enabled);
+  const latestRuns = getLatestRunsByCheck(runs);
+  const summary = summarizeTestSessionRuns(latestRuns);
+
+  return {
+    createdAt: session.createdAt.toISOString(),
+    createdAtLabel: formatRunTimestamp(session.createdAt, timeZone),
+    duration: formatTestSessionDuration(runs),
+    href: `/test-sessions/${encodeURIComponent(session.id)}`,
+    id: session.id,
+    name: session.name ?? undefined,
+    runState: mapRunState(session.status),
+    source: session.source ?? undefined,
+    status: mapRunStatus(session.status),
+    summary,
+    targetUrl: session.targetUrl ?? undefined,
+    tone: mapRunTone(session.status),
+  };
+}
+
+function mapTestSessionChecks(
+  runs: TestSessionRunWithCheck[],
+  sessionId: string,
+): TestSessionCheckRow[] {
+  const runsByCheck = new Map<string, TestSessionRunWithCheck[]>();
+
+  for (const run of runs) {
+    runsByCheck.set(run.check.id, [...(runsByCheck.get(run.check.id) ?? []), run]);
+  }
+
+  return [...runsByCheck.values()]
+    .map((checkRuns) => {
+      const latestRun = getLatestRun(checkRuns);
+      const check = latestRun.check;
+
+      return {
+        checkHref: `/test-sessions/${encodeURIComponent(
+          sessionId,
+        )}/checks/${encodeURIComponent(check.id)}`,
+        checkId: check.id,
+        checkKey: check.key,
+        checkName: check.name,
+        checkType: check.type.toLowerCase() as DashboardCheckRow["type"],
+        duration: formatDuration(latestRun.durationMs ?? undefined),
+        groupName: check.group?.name ?? "Ungrouped",
+        latestRunHref: `/checks/${encodeURIComponent(
+          check.id,
+        )}/runs/${encodeURIComponent(latestRun.id)}`,
+        runCount: checkRuns.length,
+        runState: mapRunState(latestRun.status),
+        status: mapRunStatus(latestRun.status),
+        target: formatTestRunTarget(latestRun),
+        tone: mapRunTone(latestRun.status),
+      };
+    })
+    .sort((left, right) => {
+      if (left.status !== right.status) {
+        return statusSortRank(left.runState) - statusSortRank(right.runState);
+      }
+
+      return left.checkName.localeCompare(right.checkName);
+    });
+}
+
+function getLatestRunsByCheck(
+  runs: TestSessionRunWithCheck[],
+): TestSessionRunWithCheck[] {
+  const runsByCheck = new Map<string, TestSessionRunWithCheck>();
+
+  for (const run of runs) {
+    const current = runsByCheck.get(run.check.id);
+
+    if (!current || run.createdAt > current.createdAt) {
+      runsByCheck.set(run.check.id, run);
+    }
+  }
+
+  return [...runsByCheck.values()];
+}
+
+function getLatestRun(runs: TestSessionRunWithCheck[]): TestSessionRunWithCheck {
+  return runs.reduce((latestRun, run) =>
+    run.createdAt > latestRun.createdAt ? run : latestRun,
+  );
+}
+
+function summarizeTestSessionRuns(
+  runs: TestSessionRunWithCheck[],
+): TestSessionRunCountSummary {
+  return runs.reduce<TestSessionRunCountSummary>(
+    (summary, run) => {
+      const runState = mapRunState(run.status);
+      const status = mapRunStatus(run.status);
+
+      return {
+        failed: summary.failed + (status === "failing" ? 1 : 0),
+        passed: summary.passed + (status === "passing" ? 1 : 0),
+        queued: summary.queued + (runState === "queued" ? 1 : 0),
+        running: summary.running + (runState === "running" ? 1 : 0),
+        total: summary.total + 1,
+      };
+    },
+    {
+      failed: 0,
+      passed: 0,
+      queued: 0,
+      running: 0,
+      total: 0,
+    },
+  );
+}
+
+function formatTestSessionDuration(runs: TestSessionRunWithCheck[]): string {
+  const durationMs = runs
+    .map((run) => run.durationMs)
+    .filter((duration): duration is number => typeof duration === "number")
+    .reduce((sum, duration) => sum + duration, 0);
+
+  return durationMs > 0 ? formatDuration(durationMs) : "-";
+}
+
+function formatTestRunTarget(run: TestSessionRunWithCheck): string {
+  const resultUrl = asRecord(run.result).url;
+
+  if (typeof resultUrl === "string" && resultUrl.length > 0) {
+    return resultUrl;
+  }
+
+  const request = formatRequestSettings(run.check.request);
+
+  if (request) {
+    return `${request.method} ${request.url}`;
+  }
+
+  return run.check.entrypoint ?? "-";
+}
+
+function statusSortRank(runState: DashboardRunState): number {
+  if (runState === "failed" || runState === "timed_out") {
+    return 0;
+  }
+
+  if (runState === "running" || runState === "queued") {
+    return 1;
+  }
+
+  if (runState === "cancelled") {
+    return 2;
+  }
+
+  if (runState === "passed") {
+    return 3;
+  }
+
+  return 4;
+}
+
 function mapJournalRun(
   run: MappableRun & {
     check: {
@@ -795,6 +1326,7 @@ async function fetchChecks(projectId: string) {
         orderBy: {
           createdAt: "desc",
         },
+        where: buildDashboardVisibleRunWhere(),
         take: 24,
       },
     },

@@ -10,10 +10,14 @@ const mocks = vi.hoisted(() => ({
   artifactCreateMany: vi.fn(),
   artifactDeleteMany: vi.fn(),
   checkFindFirst: vi.fn(),
+  checkFindMany: vi.fn(),
   checkRunCreate: vi.fn(),
   checkRunFindFirst: vi.fn(),
   checkRunUpdate: vi.fn(),
+  projectFindUnique: vi.fn(),
   spawn: vi.fn(),
+  testSessionCreate: vi.fn(),
+  testSessionUpdate: vi.fn(),
 }));
 
 vi.mock("node:child_process", () => ({
@@ -31,11 +35,19 @@ vi.mock("@selfchecks/db", () => ({
     },
     check: {
       findFirst: mocks.checkFindFirst,
+      findMany: mocks.checkFindMany,
     },
     checkRun: {
       create: mocks.checkRunCreate,
       findFirst: mocks.checkRunFindFirst,
       update: mocks.checkRunUpdate,
+    },
+    project: {
+      findUnique: mocks.projectFindUnique,
+    },
+    testSession: {
+      create: mocks.testSessionCreate,
+      update: mocks.testSessionUpdate,
     },
   },
 }));
@@ -44,7 +56,7 @@ vi.mock("./ai-analysis.js", () => ({
   analyzeFailedCheck: vi.fn(),
 }));
 
-import { runCheckById } from "./runner.js";
+import { runCheckById, runChecks } from "./runner.js";
 
 const tempDirs: string[] = [];
 
@@ -311,5 +323,120 @@ describe("runCheckById", () => {
         },
       }),
     );
+  });
+});
+
+describe("runChecks", () => {
+  afterEach(async () => {
+    vi.clearAllMocks();
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    await Promise.all(
+      tempDirs.splice(0).map((directory) =>
+        rm(directory, {
+          force: true,
+          recursive: true,
+        }),
+      ),
+    );
+  });
+
+  it("creates recorded CLI test sessions with the target URL", async () => {
+    mocks.projectFindUnique.mockResolvedValue({
+      id: "project_1",
+    });
+    mocks.checkFindMany.mockResolvedValue([]);
+    mocks.testSessionCreate.mockResolvedValue({
+      id: "session_1",
+      status: "RUNNING",
+    });
+    mocks.testSessionUpdate.mockResolvedValue({
+      id: "session_1",
+      status: "PASSED",
+    });
+
+    await expect(
+      runChecks({
+        checkKeys: [],
+        env: [
+          {
+            name: "ENVIRONMENT_URL",
+            value: "https://example.test",
+          },
+        ],
+        projectSlug: "default",
+        record: true,
+        reporter: "list",
+        rootDir: "/repo",
+        runMode: "test",
+        tagSets: [],
+      }),
+    ).resolves.toMatchObject({
+      sessionId: "session_1",
+      total: 0,
+    });
+
+    expect(mocks.testSessionCreate).toHaveBeenCalledWith({
+      data: {
+        kind: "TEST",
+        name: undefined,
+        source: "/repo",
+        status: "RUNNING",
+        targetUrl: "https://example.test",
+      },
+    });
+    expect(mocks.testSessionUpdate).toHaveBeenCalledWith({
+      data: {
+        status: "PASSED",
+      },
+      where: {
+        id: "session_1",
+      },
+    });
+  });
+
+  it("records CLI monitoring runs as trigger sessions", async () => {
+    mocks.projectFindUnique.mockResolvedValue({
+      id: "project_1",
+    });
+    mocks.checkFindMany.mockResolvedValue([]);
+    mocks.testSessionCreate.mockResolvedValue({
+      id: "session_1",
+      status: "RUNNING",
+    });
+    mocks.testSessionUpdate.mockResolvedValue({
+      id: "session_1",
+      status: "PASSED",
+    });
+
+    await runChecks({
+      checkKeys: [],
+      env: [],
+      projectSlug: "default",
+      record: true,
+      reporter: "list",
+      rootDir: "/repo",
+      runMode: "monitoring",
+      tagSets: [],
+      testSessionName: "Deploy v1.2.3",
+    });
+
+    expect(mocks.testSessionCreate).toHaveBeenCalledWith({
+      data: {
+        kind: "TRIGGER",
+        name: "Deploy v1.2.3",
+        source: "/repo",
+        status: "RUNNING",
+        targetUrl: undefined,
+      },
+    });
+    expect(mocks.testSessionUpdate).toHaveBeenCalledWith({
+      data: {
+        status: "PASSED",
+      },
+      where: {
+        id: "session_1",
+      },
+    });
   });
 });

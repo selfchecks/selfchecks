@@ -174,6 +174,7 @@ export function createSelfchecksProgram(
           record: Boolean(commandOptions.record),
           reporter: commandOptions.reporter,
           rootDir: commandOptions.root,
+          runMode: "test",
           tagSets,
         });
 
@@ -224,6 +225,7 @@ export function createSelfchecksProgram(
           reporter: commandOptions.reporter,
           retries,
           rootDir: commandOptions.root,
+          runMode: "monitoring",
           tagSets: [],
           testSessionName: commandOptions.testSessionName,
         });

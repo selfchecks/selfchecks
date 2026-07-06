@@ -23,6 +23,9 @@ describe("AppSidebar", () => {
     expect(screen.getByRole("link", { name: "Journal" }).getAttribute("href")).toBe(
       "/journal",
     );
+    expect(
+      screen.getByRole("link", { name: "Test sessions" }).getAttribute("href"),
+    ).toBe("/test-sessions");
     expect(screen.getByRole("button", { name: "Settings" })).toBeTruthy();
     expect(
       screen.getByRole("link", { name: "Journal" }).getAttribute("aria-current"),

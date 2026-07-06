@@ -260,7 +260,10 @@ write_env_file "${INSTALL_DIR}"
 
 if [ "${SKIP_START}" = "1" ]; then
   log "Install files are ready in ${INSTALL_DIR}."
-  log "Start manually with: docker compose --env-file .env -f docker-compose.prod.yml pull && docker compose --env-file .env -f docker-compose.prod.yml up -d"
+  log "Start manually with:"
+  log "  docker compose --env-file .env -f docker-compose.prod.yml pull"
+  log "  docker compose --env-file .env -f docker-compose.prod.yml up --force-recreate --abort-on-container-exit --exit-code-from migrate migrate"
+  log "  docker compose --env-file .env -f docker-compose.prod.yml up -d"
   exit 0
 fi
 

@@ -283,6 +283,10 @@ docker compose --env-file .env.production -f docker-compose.prod.yml up --force-
 docker compose --env-file .env.production -f docker-compose.prod.yml up -d
 ```
 
+The `yarn prod:infra` helper runs the same migration job before starting the
+production stack, so pending Prisma migrations are applied automatically during
+manual deploys too.
+
 Production resource names:
 
 - containers: `selfchecks-prod-web`, `selfchecks-prod-worker`,
