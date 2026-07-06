@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
+import { ServiceMark } from "@/components/service-mark";
 import { isRuntimeAdminConfigured, readRuntimeConfig } from "@/lib/runtime-config";
 
 export const dynamic = "force-dynamic";
@@ -21,17 +22,20 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#0d1117] px-4 py-10 text-slate-100">
       <section className="w-full max-w-xl rounded-md border border-slate-800 bg-[#12171f] p-6 shadow-xl shadow-black/20">
-        <div className="mb-6">
-          <p className="text-xs font-semibold uppercase text-emerald-400">
-            First launch
-          </p>
-          <h1 className="mt-2 text-2xl font-semibold tracking-normal">
-            Configure SelfChecks
-          </h1>
-          <p className="mt-2 text-sm text-slate-400">
-            Create the admin account and enter the domain that will receive the
-            production TLS certificate.
-          </p>
+        <div className="mb-6 flex items-start gap-4">
+          <ServiceMark className="h-12 w-12 shrink-0 rounded-lg" />
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase text-emerald-400">
+              First launch
+            </p>
+            <h1 className="mt-2 text-2xl font-semibold tracking-normal">
+              Configure SelfChecks
+            </h1>
+            <p className="mt-2 text-sm text-slate-400">
+              Create the admin account and enter the domain that will receive the
+              production TLS certificate.
+            </p>
+          </div>
         </div>
 
         {error ? (

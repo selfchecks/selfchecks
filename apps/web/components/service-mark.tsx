@@ -9,24 +9,34 @@ export function ServiceMark(props: SVGProps<SVGSVGElement>) {
       xmlns="http://www.w3.org/2000/svg"
       {...props}
     >
-      <rect width="64" height="64" rx="14" fill="#07111F" />
-      <path
-        d="M13 34h9l5-13 8 27 6-14h10"
+      <defs>
+        <linearGradient id="selfchecks-signal" x1="13" x2="51" y1="18" y2="46">
+          <stop offset="0" stopColor="#34D399" />
+          <stop offset="1" stopColor="#22D3EE" />
+        </linearGradient>
+        <radialGradient id="selfchecks-bg" cx="50%" cy="42%" r="70%">
+          <stop offset="0" stopColor="#07192A" />
+          <stop offset="1" stopColor="#020B17" />
+        </radialGradient>
+      </defs>
+
+      <rect width="64" height="64" rx="10" fill="url(#selfchecks-bg)" />
+      <circle
+        cx="32"
+        cy="32"
+        r="23.5"
         fill="none"
-        stroke="#22D3EE"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="5"
+        stroke="url(#selfchecks-signal)"
+        strokeWidth="4.8"
       />
       <path
-        d="m22 43 8 8 18-22"
+        d="M16 32h7.2l3.9-6.4 5.1 12.1 5.4-23.1 7.2 34.8L49.7 32H54"
         fill="none"
-        stroke="#34D399"
+        stroke="url(#selfchecks-signal)"
         strokeLinecap="round"
         strokeLinejoin="round"
-        strokeWidth="6"
+        strokeWidth="5.3"
       />
-      <circle cx="48" cy="16" r="6" fill="#34D399" />
     </svg>
   );
 }
