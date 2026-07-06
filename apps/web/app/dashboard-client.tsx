@@ -1074,12 +1074,15 @@ function FirewatchPanel({
                           <CheckTypeBadge type={row.type} />
                         </td>
                         <td
-                          className="px-4 py-3 text-slate-300"
+                          className="whitespace-nowrap px-4 py-3 text-slate-300"
                           title={row.firstSeenAt}
                         >
                           {row.firstSeen}
                         </td>
-                        <td className="px-4 py-3 text-slate-300" title={row.lastSeenAt}>
+                        <td
+                          className="whitespace-nowrap px-4 py-3 text-slate-300"
+                          title={row.lastSeenAt}
+                        >
                           {row.lastSeen}
                         </td>
                         <td className="px-4 py-3 text-right">
@@ -1181,6 +1184,7 @@ function SettingsScreen({
 }) {
   const [basicDraft, setBasicDraft] = useState(() => ({
     domain: settings.basic.domain,
+    timeZone: settings.basic.timeZone,
   }));
   const [securityDraft, setSecurityDraft] = useState(() => ({
     password: "",
@@ -1208,6 +1212,7 @@ function SettingsScreen({
   useEffect(() => {
     setBasicDraft({
       domain: settings.basic.domain,
+      timeZone: settings.basic.timeZone,
     });
     setSecurityDraft({
       password: "",
@@ -1243,6 +1248,7 @@ function SettingsScreen({
     notificationEmail: string;
     password?: string;
     passwordConfirm?: string;
+    timeZone: string;
   }) {
     const payload = await postSettingsJson<{
       error?: string;
@@ -1266,6 +1272,7 @@ function SettingsScreen({
         domain: basicDraft.domain,
         login: settings.basic.login,
         notificationEmail: settings.basic.notificationEmail,
+        timeZone: basicDraft.timeZone,
       });
 
       onSettingsChange({
@@ -1275,6 +1282,7 @@ function SettingsScreen({
       setBasicDraft((current) => ({
         ...current,
         domain: basicSettings.domain,
+        timeZone: basicSettings.timeZone,
       }));
       setNotice("Basic settings saved.");
     } catch (error) {
@@ -1296,6 +1304,7 @@ function SettingsScreen({
         notificationEmail: settings.basic.notificationEmail,
         password: securityDraft.password,
         passwordConfirm: securityDraft.passwordConfirm,
+        timeZone: settings.basic.timeZone,
       });
 
       setSecurityDraft({
@@ -1420,7 +1429,7 @@ function SettingsScreen({
           </span>
           <div>
             <h3 className="text-base font-semibold text-slate-100">Basic settings</h3>
-            <div className="text-xs text-slate-500">Domain</div>
+            <div className="text-xs text-slate-500">Domain and timezone</div>
           </div>
         </div>
 
@@ -1443,6 +1452,41 @@ function SettingsScreen({
               type="text"
               value={basicDraft.domain}
             />
+          </label>
+          <label
+            className="grid gap-2 text-sm font-medium text-slate-200"
+            htmlFor="settings-time-zone"
+          >
+            Timezone
+            <input
+              className="h-10 rounded-md border border-slate-700 bg-[#0f151d] px-3 text-sm text-slate-100 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              id="settings-time-zone"
+              list="settings-time-zone-options"
+              onChange={(event) =>
+                setBasicDraft((current) => ({
+                  ...current,
+                  timeZone: event.target.value,
+                }))
+              }
+              required
+              type="text"
+              value={basicDraft.timeZone}
+            />
+            <datalist id="settings-time-zone-options">
+              {[
+                "Europe/Moscow",
+                "UTC",
+                "Europe/London",
+                "Europe/Berlin",
+                "Asia/Dubai",
+                "Asia/Almaty",
+                "Asia/Tokyo",
+                "America/New_York",
+                "America/Los_Angeles",
+              ].map((timeZone) => (
+                <option key={timeZone} value={timeZone} />
+              ))}
+            </datalist>
           </label>
         </div>
 

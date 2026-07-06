@@ -9,6 +9,7 @@ import { prisma } from "./prisma";
 import {
   hashAdminPassword,
   readRuntimeConfig,
+  normalizeTimeZone,
   type SelfchecksRuntimeConfig,
   writeRuntimeConfig,
 } from "./runtime-config";
@@ -107,6 +108,7 @@ export type BasicSettingsData = {
   login: string;
   notificationEmail: string;
   publicUrl: string;
+  timeZone: string;
 };
 
 export type AiSettingsData = {
@@ -153,6 +155,7 @@ export type BasicSettingsInput = {
   notificationEmail?: unknown;
   password?: unknown;
   passwordConfirm?: unknown;
+  timeZone?: unknown;
 };
 
 export type AiSettingsInput = {
@@ -221,6 +224,11 @@ export async function updateBasicSettings(input: BasicSettingsInput) {
   const notificationEmail = validateEmail(
     readRequiredString(input.notificationEmail, "Notification email"),
   );
+  const timeZone = normalizeTimeZone(input.timeZone);
+
+  if (typeof input.timeZone === "string" && input.timeZone !== timeZone) {
+    throw new Error("Timezone must be a valid IANA timezone.");
+  }
 
   if (login.length < 3) {
     throw new Error("Login must be at least 3 characters.");
@@ -251,6 +259,9 @@ export async function updateBasicSettings(input: BasicSettingsInput) {
       }),
       login,
       ...(password ? hashAdminPassword(password) : {}),
+    },
+    preferences: {
+      timeZone,
     },
     server: {
       caddyEmail: notificationEmail,
@@ -425,6 +436,7 @@ function mapBasicSettings(config: SelfchecksRuntimeConfig): BasicSettingsData {
     login: config.admin?.login ?? process.env.SELFCHECKS_ADMIN_LOGIN ?? "",
     notificationEmail: config.server.caddyEmail,
     publicUrl: config.server.publicUrl,
+    timeZone: config.preferences.timeZone,
   };
 }
 

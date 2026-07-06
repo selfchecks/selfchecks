@@ -71,6 +71,9 @@ describe("authorizeAdminCredentials", () => {
             salt: "fixed-salt",
           }),
         },
+        preferences: {
+          timeZone: "Europe/Moscow",
+        },
         server: {
           caddyEmail: "ops@example.com",
           domain: "checks.example.com",

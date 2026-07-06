@@ -42,6 +42,9 @@ describe("runtime config", () => {
         login: "admin",
         ...password,
       },
+      preferences: {
+        timeZone: "Europe/Moscow",
+      },
       server: {
         caddyEmail: "ops@example.com",
         domain: "checks.example.com",

@@ -8,6 +8,7 @@ import {
   writeCaddyfile,
 } from "@/lib/caddy";
 import {
+  DEFAULT_TIME_ZONE,
   hashAdminPassword,
   isRuntimeAdminConfigured,
   type SelfchecksRuntimeConfig,
@@ -81,6 +82,9 @@ export async function POST(request: Request) {
         configuredAt: now,
         login,
         ...passwordHash,
+      },
+      preferences: {
+        timeZone: DEFAULT_TIME_ZONE,
       },
       server: {
         caddyEmail,

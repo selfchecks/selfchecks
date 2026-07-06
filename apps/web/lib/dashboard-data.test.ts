@@ -670,7 +670,7 @@ describe("dashboard data", () => {
       rows: [
         {
           checkId: "check_recent",
-          firstSeen: "about 3 hours ago",
+          firstSeen: "Jul 05 12:00 (UTC+3)",
           firstSeenAt: "2026-07-05T09:00:00.000Z",
           groupName: "API / Bff",
           lastSeen: "about 1 hours ago",

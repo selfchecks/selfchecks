@@ -16,6 +16,7 @@ import type {
 } from "./dashboard-types";
 import { prisma } from "./prisma";
 import { getRunResultTone } from "./run-result-tone";
+import { getRuntimeTimeZone } from "./runtime-config";
 
 const DEFAULT_QUEUED_RUN_TIMEOUT_MINUTES = 30;
 const FIREWATCH_LOOKBACK_DAYS = 7;
@@ -193,6 +194,8 @@ const JOURNAL_DEFAULT_PAGE_SIZE = 20;
 const JOURNAL_MAX_PAGE_SIZE = 100;
 
 export async function getDashboardData(projectSlug: string): Promise<DashboardData> {
+  const timeZone = getRuntimeTimeZone();
+
   try {
     await cancelStaleQueuedRuns();
 
@@ -221,10 +224,10 @@ export async function getDashboardData(projectSlug: string): Promise<DashboardDa
     }
 
     const checks = await fetchChecks(project.id);
-    const groups = buildGroups(checks);
+    const groups = buildGroups(checks, timeZone);
 
     return {
-      firewatch: buildFirewatch(checks),
+      firewatch: buildFirewatch(checks, timeZone),
       groups,
       projectSlug: project.slug,
       summary: summarizeGroups(groups),
@@ -238,6 +241,8 @@ export async function getDashboardData(projectSlug: string): Promise<DashboardDa
 export async function getCheckDetailShellData(
   checkId: string,
 ): Promise<CheckDetailData | undefined> {
+  const timeZone = getRuntimeTimeZone();
+
   try {
     await cancelStaleQueuedRuns();
 
@@ -317,10 +322,10 @@ export async function getCheckDetailShellData(
     };
 
     return {
-      check: mapCheck(shellCheck),
+      check: mapCheck(shellCheck, timeZone),
       groupName: check.group?.name ?? "Ungrouped",
       projectSlug: check.project.slug,
-      updated: formatLatestUpdate([shellCheck]),
+      updated: formatLatestUpdate([shellCheck], timeZone),
     };
   } catch (error) {
     console.warn("Unable to load check detail shell data.", error);
@@ -331,6 +336,8 @@ export async function getCheckDetailShellData(
 export async function getCheckDetailData(
   checkId: string,
 ): Promise<CheckDetailData | undefined> {
+  const timeZone = getRuntimeTimeZone();
+
   try {
     await cancelStaleQueuedRuns();
 
@@ -367,10 +374,10 @@ export async function getCheckDetailData(
     }
 
     return {
-      check: mapCheck(check),
+      check: mapCheck(check, timeZone),
       groupName: check.group?.name ?? "Ungrouped",
       projectSlug: check.project.slug,
-      updated: formatLatestUpdate([check]),
+      updated: formatLatestUpdate([check], timeZone),
     };
   } catch (error) {
     console.warn("Unable to load check detail data.", error);
@@ -382,6 +389,8 @@ export async function getRunDetailData(
   checkId: string,
   runId: string,
 ): Promise<RunDetailData | undefined> {
+  const timeZone = getRuntimeTimeZone();
+
   try {
     await cancelStaleQueuedRuns();
 
@@ -438,16 +447,16 @@ export async function getRunDetailData(
       groupName: run.check.group?.name ?? "Ungrouped",
       projectSlug: run.check.project.slug,
       run: {
-        ...mapRun(run),
+        ...mapRun(run, timeZone),
         aiAnalysis: formatAiAnalysis(run.result),
-        createdAtLabel: formatRunTimestamp(run.createdAt),
-        finishedAt: run.finishedAt ? formatRunTimestamp(run.finishedAt) : "-",
+        createdAtLabel: formatRunTimestamp(run.createdAt, timeZone),
+        finishedAt: run.finishedAt ? formatRunTimestamp(run.finishedAt, timeZone) : "-",
         jobLog: await readRunLogPreview(run.logsPath),
         request,
         response: formatRunResponse(run.result),
         resultFields: formatResultFields(run.result),
         resultJson: formatResultJson(run.result),
-        startedAt: run.startedAt ? formatRunTimestamp(run.startedAt) : "-",
+        startedAt: run.startedAt ? formatRunTimestamp(run.startedAt, timeZone) : "-",
       },
     };
   } catch (error) {
@@ -461,6 +470,7 @@ export async function getJournalData(
   options: JournalDataOptions = {},
 ): Promise<JournalData> {
   const filters = normalizeJournalFilters(options);
+  const timeZone = getRuntimeTimeZone();
 
   try {
     await cancelStaleQueuedRuns();
@@ -536,7 +546,7 @@ export async function getJournalData(
         totalPages,
       },
       projectSlug: project.slug,
-      runs: runs.map(mapJournalRun),
+      runs: runs.map((run) => mapJournalRun(run, timeZone)),
     };
   } catch (error) {
     console.warn("Unable to load journal data.", error);
@@ -716,16 +726,17 @@ function mapJournalRun(
       name: string | null;
     } | null;
   },
+  timeZone: string,
 ): JournalRunRow {
   return {
-    ...mapRun(run),
+    ...mapRun(run, timeZone),
     checkHref: `/checks/${encodeURIComponent(run.check.id)}`,
     checkId: run.check.id,
     checkKey: run.check.key,
     checkName: run.check.name,
     checkTags: run.check.tags,
     checkType: run.check.type.toLowerCase() as DashboardCheckRow["type"],
-    createdAtLabel: formatRunTimestamp(run.createdAt),
+    createdAtLabel: formatRunTimestamp(run.createdAt, timeZone),
     groupName: run.check.group?.name ?? "Ungrouped",
     runHref: `/checks/${encodeURIComponent(run.check.id)}/runs/${encodeURIComponent(
       run.id,
@@ -773,7 +784,7 @@ async function fetchChecks(projectId: string) {
   });
 }
 
-function buildGroups(checks: CheckWithRuns[]): DashboardGroupRow[] {
+function buildGroups(checks: CheckWithRuns[], timeZone: string): DashboardGroupRow[] {
   const grouped = new Map<string, CheckWithRuns[]>();
 
   for (const check of checks) {
@@ -782,7 +793,7 @@ function buildGroups(checks: CheckWithRuns[]): DashboardGroupRow[] {
   }
 
   return [...grouped.entries()].map(([name, groupChecks], index) => {
-    const children = groupChecks.map(mapCheck);
+    const children = groupChecks.map((check) => mapCheck(check, timeZone));
 
     return {
       checks: `${children.length} checks`,
@@ -790,12 +801,12 @@ function buildGroups(checks: CheckWithRuns[]): DashboardGroupRow[] {
       expanded: index === 0,
       name,
       status: summarizeStatus(children.map((check) => check.status)),
-      updated: formatLatestUpdate(groupChecks),
+      updated: formatLatestUpdate(groupChecks, timeZone),
     };
   });
 }
 
-function mapCheck(check: CheckWithRuns): DashboardCheckRow {
+function mapCheck(check: CheckWithRuns, timeZone: string): DashboardCheckRow {
   const latestRun = check.runs[0];
   const durations = check.runs
     .map((run) => run.durationMs)
@@ -808,7 +819,7 @@ function mapCheck(check: CheckWithRuns): DashboardCheckRow {
   return {
     avg: formatDuration(average(durations)),
     ava: formatAvailability(check.runs),
-    bars: buildBars(check.runs),
+    bars: buildBars(check.runs, timeZone),
     delta: latestRun ? "24 h" : "-",
     hasTrace: Boolean(
       check.runs.some(
@@ -823,7 +834,7 @@ function mapCheck(check: CheckWithRuns): DashboardCheckRow {
     name: check.name,
     p95: formatDuration(percentile(durations, 0.95)),
     runState: mapRunState(latestRun?.status),
-    runs: check.runs.map(mapRun),
+    runs: check.runs.map((run) => mapRun(run, timeZone)),
     settings: {
       enabled: check.enabled,
       entrypoint: check.entrypoint ?? undefined,
@@ -843,15 +854,15 @@ function mapCheck(check: CheckWithRuns): DashboardCheckRow {
     },
     status: mapRunStatus(latestRun?.status),
     tags: check.tags,
-    time: formatRunAge(latestRun),
+    time: formatRunAge(latestRun, timeZone),
     type: check.type.toLowerCase() as DashboardCheckRow["type"],
   };
 }
 
-function buildFirewatch(checks: CheckWithRuns[]): DashboardFirewatch {
+function buildFirewatch(checks: CheckWithRuns[], timeZone: string): DashboardFirewatch {
   const cutoff = new Date(Date.now() - FIREWATCH_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
   const rows = checks
-    .map((check) => mapFirewatchRow(check, cutoff))
+    .map((check) => mapFirewatchRow(check, cutoff, timeZone))
     .filter((row): row is DashboardFirewatchRow => Boolean(row));
 
   return {
@@ -863,6 +874,7 @@ function buildFirewatch(checks: CheckWithRuns[]): DashboardFirewatch {
 function mapFirewatchRow(
   check: CheckWithRuns,
   cutoff: Date,
+  timeZone: string,
 ): DashboardFirewatchRow | undefined {
   const latestRun = check.runs[0];
 
@@ -888,17 +900,17 @@ function mapFirewatchRow(
 
   return {
     checkId: check.id,
-    firstSeen: formatRelative(firstFailingRun.createdAt),
+    firstSeen: formatRunTimestamp(firstFailingRun.createdAt, timeZone),
     firstSeenAt: firstFailingRun.createdAt.toISOString(),
     groupName: check.group?.name ?? "Ungrouped",
-    lastSeen: formatRelative(latestRun.createdAt),
+    lastSeen: formatRelative(latestRun.createdAt, timeZone),
     lastSeenAt: latestRun.createdAt.toISOString(),
     name: check.name,
     type: check.type.toLowerCase() as DashboardCheckRow["type"],
   };
 }
 
-function mapRun(run: MappableRun): DashboardRunRow {
+function mapRun(run: MappableRun, timeZone: string): DashboardRunRow {
   return {
     artifacts: mapRunArtifacts(run),
     createdAt: run.createdAt.toISOString(),
@@ -907,7 +919,7 @@ function mapRun(run: MappableRun): DashboardRunRow {
     errorMessage: run.errorMessage ?? undefined,
     hasRetries: hasRunRetries(run.result),
     id: run.id,
-    occurredAt: formatBarTimestamp(run),
+    occurredAt: formatBarTimestamp(run, timeZone),
     performance: mapRunPerformance(run.result),
     runner: "Local runner",
     runState: mapRunState(run.status),
@@ -1510,7 +1522,10 @@ function mapRunState(status: string | undefined): DashboardRunState {
   return "not_run";
 }
 
-function buildBars(runs: CheckWithRuns["runs"]): DashboardCheckRow["bars"] {
+function buildBars(
+  runs: CheckWithRuns["runs"],
+  timeZone: string,
+): DashboardCheckRow["bars"] {
   if (runs.length === 0) {
     return Array.from({ length: 12 }, () => ({
       duration: "-",
@@ -1525,7 +1540,7 @@ function buildBars(runs: CheckWithRuns["runs"]): DashboardCheckRow["bars"] {
 
   return [...runs].reverse().map((run) => ({
     duration: formatDuration(run.durationMs ?? undefined),
-    occurredAt: formatBarTimestamp(run),
+    occurredAt: formatBarTimestamp(run, timeZone),
     runner: "Local runner",
     runState: mapRunState(run.status),
     status: mapRunStatus(run.status),
@@ -1598,7 +1613,7 @@ function formatBytes(value: number | undefined): string {
   return `${value} B`;
 }
 
-function formatRunAge(run: MappableRun | undefined): string {
+function formatRunAge(run: MappableRun | undefined, timeZone: string): string {
   if (!run) {
     return "not run yet";
   }
@@ -1611,10 +1626,10 @@ function formatRunAge(run: MappableRun | undefined): string {
     return "running";
   }
 
-  return formatRelative(run.createdAt);
+  return formatRelative(run.createdAt, timeZone);
 }
 
-function formatBarTimestamp(run: MappableRun): string {
+function formatBarTimestamp(run: MappableRun, timeZone: string): string {
   if (run.status === "QUEUED") {
     return "Queued";
   }
@@ -1623,23 +1638,36 @@ function formatBarTimestamp(run: MappableRun): string {
     return "Running";
   }
 
-  return formatRunTimestamp(run.createdAt);
+  return formatRunTimestamp(run.createdAt, timeZone);
 }
 
-function formatRunTimestamp(date: Date): string {
-  const month = date.toLocaleString("en", { month: "short" });
-  const day = date.toLocaleString("en", { day: "2-digit" });
-  const hour = date.toLocaleString("en", {
+function formatRunTimestamp(date: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en", {
+    day: "2-digit",
     hour: "2-digit",
+    hourCycle: "h23",
     hour12: false,
-  });
-  const minute = date.toLocaleString("en", { minute: "2-digit" });
+    minute: "2-digit",
+    month: "short",
+    timeZone,
+  }).formatToParts(date);
+  const month = getDatePart(parts, "month");
+  const day = getDatePart(parts, "day");
+  const hour = getDatePart(parts, "hour");
+  const minute = getDatePart(parts, "minute");
 
-  return `${month} ${day} ${hour}:${minute} (${formatTimezoneOffset(date)})`;
+  return `${month} ${day} ${hour}:${minute} (${formatTimezoneOffset(
+    date,
+    timeZone,
+  )})`;
 }
 
-function formatTimezoneOffset(date: Date): string {
-  const offsetMinutes = -date.getTimezoneOffset();
+function getDatePart(parts: Intl.DateTimeFormatPart[], type: string) {
+  return parts.find((part) => part.type === type)?.value ?? "";
+}
+
+function formatTimezoneOffset(date: Date, timeZone: string): string {
+  const offsetMinutes = getTimeZoneOffsetMinutes(date, timeZone);
   const sign = offsetMinutes >= 0 ? "+" : "-";
   const absoluteMinutes = Math.abs(offsetMinutes);
   const hours = Math.trunc(absoluteMinutes / 60);
@@ -1652,7 +1680,32 @@ function formatTimezoneOffset(date: Date): string {
   return `UTC${sign}${hours}:${String(minutes).padStart(2, "0")}`;
 }
 
-function formatLatestUpdate(checks: CheckWithRuns[]): string {
+function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat("en", {
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23",
+    minute: "2-digit",
+    month: "2-digit",
+    second: "2-digit",
+    timeZone,
+    year: "numeric",
+  }).formatToParts(date);
+  const value = (type: string) =>
+    Number(parts.find((part) => part.type === type)?.value ?? "0");
+  const zonedTimestamp = Date.UTC(
+    value("year"),
+    value("month") - 1,
+    value("day"),
+    value("hour"),
+    value("minute"),
+    value("second"),
+  );
+
+  return Math.round((zonedTimestamp - date.getTime()) / 60000);
+}
+
+function formatLatestUpdate(checks: CheckWithRuns[], timeZone: string): string {
   const dates = checks
     .map((check) => check.runs[0]?.createdAt)
     .filter((date): date is Date => date instanceof Date);
@@ -1661,10 +1714,13 @@ function formatLatestUpdate(checks: CheckWithRuns[]): string {
     return "not run yet";
   }
 
-  return formatRelative(new Date(Math.max(...dates.map((date) => date.getTime()))));
+  return formatRelative(
+    new Date(Math.max(...dates.map((date) => date.getTime()))),
+    timeZone,
+  );
 }
 
-function formatRelative(date: Date): string {
+function formatRelative(date: Date, timeZone: string): string {
   const diffMs = Date.now() - date.getTime();
   const minutes = Math.max(0, Math.round(diffMs / 60000));
 
@@ -1682,13 +1738,16 @@ function formatRelative(date: Date): string {
     return `about ${hours} hours ago`;
   }
 
-  return `at ${date.toLocaleString("en", {
+  return `at ${new Intl.DateTimeFormat("en", {
     day: "2-digit",
     hour: "2-digit",
+    hourCycle: "h23",
+    hour12: false,
     minute: "2-digit",
     month: "short",
+    timeZone,
     year: "numeric",
-  })}`;
+  }).format(date)}`;
 }
 
 function createEmptyDashboard(projectSlug: string): DashboardData {

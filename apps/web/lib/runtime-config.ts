@@ -12,6 +12,9 @@ export type RuntimeAdminConfig = {
 
 export type SelfchecksRuntimeConfig = {
   admin: RuntimeAdminConfig | null;
+  preferences: {
+    timeZone: string;
+  };
   server: {
     caddyEmail: string;
     domain: string;
@@ -28,8 +31,13 @@ export type RuntimeConfigEnv = {
   SELFCHECKS_SETUP_TOKEN?: string;
 };
 
+export const DEFAULT_TIME_ZONE = "Europe/Moscow";
+
 export const DEFAULT_RUNTIME_CONFIG: SelfchecksRuntimeConfig = {
   admin: null,
+  preferences: {
+    timeZone: DEFAULT_TIME_ZONE,
+  },
   server: {
     caddyEmail: "",
     domain: "",
@@ -67,6 +75,9 @@ export function readRuntimeConfig(
 
   return {
     admin: parsed.admin ?? null,
+    preferences: {
+      timeZone: normalizeTimeZone(parsed.preferences?.timeZone),
+    },
     server: {
       caddyEmail: parsed.server?.caddyEmail ?? "",
       domain: parsed.server?.domain ?? "",
@@ -76,6 +87,28 @@ export function readRuntimeConfig(
       completedAt: parsed.setup?.completedAt ?? null,
     },
   };
+}
+
+export function getRuntimeTimeZone(env: RuntimeConfigEnv = process.env) {
+  return readRuntimeConfig(env).preferences.timeZone;
+}
+
+export function normalizeTimeZone(value: unknown) {
+  if (typeof value !== "string" || !isValidTimeZone(value)) {
+    return DEFAULT_TIME_ZONE;
+  }
+
+  return value;
+}
+
+export function isValidTimeZone(value: string) {
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: value }).format(new Date());
+
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function writeRuntimeConfig(

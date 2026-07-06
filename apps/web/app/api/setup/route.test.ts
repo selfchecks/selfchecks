@@ -57,10 +57,12 @@ describe("setup route", () => {
 
     const config = JSON.parse(fs.readFileSync(configPath, "utf8")) as {
       admin: { login: string; passwordHash: string };
+      preferences: { timeZone: string };
       server: { domain: string; publicUrl: string };
     };
     expect(config.admin.login).toBe("admin");
     expect(config.admin.passwordHash).not.toBe("secret123");
+    expect(config.preferences.timeZone).toBe("Europe/Moscow");
     expect(config.server).toMatchObject({
       domain: "checks.example.com",
       publicUrl: "https://checks.example.com",

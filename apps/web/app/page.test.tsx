@@ -120,6 +120,7 @@ const fixtureSettings: DashboardSettingsData = {
     login: "nikolaev@iprojects.ru",
     notificationEmail: "ops@example.com",
     publicUrl: "https://checks.example.com",
+    timeZone: "Europe/Moscow",
   },
   environment: {
     name: "default",
@@ -777,6 +778,7 @@ describe("DashboardPage", () => {
           domain: string;
           login: string;
           notificationEmail: string;
+          timeZone: string;
         };
 
         return Promise.resolve(
@@ -787,6 +789,7 @@ describe("DashboardPage", () => {
                 login: body.login,
                 notificationEmail: body.notificationEmail,
                 publicUrl: `https://${body.domain}`,
+                timeZone: body.timeZone,
               },
             }),
             {
@@ -875,6 +878,9 @@ describe("DashboardPage", () => {
     expect((screen.getByLabelText("Domain") as HTMLInputElement).value).toBe(
       "checks.example.com",
     );
+    expect((screen.getByLabelText("Timezone") as HTMLInputElement).value).toBe(
+      "Europe/Moscow",
+    );
     expect(screen.queryByLabelText("Login")).toBeNull();
     expect(screen.queryByLabelText("Notification email")).toBeNull();
     expect(screen.getByRole("heading", { name: "Security" })).toBeTruthy();
@@ -916,6 +922,7 @@ describe("DashboardPage", () => {
       domain: "checks2.example.com",
       login: "nikolaev@iprojects.ru",
       notificationEmail: "ops@example.com",
+      timeZone: "Europe/Moscow",
     });
     expect(screen.getByText("Basic settings saved.")).toBeTruthy();
 
@@ -937,6 +944,7 @@ describe("DashboardPage", () => {
       notificationEmail: "ops@example.com",
       password: "supersecret",
       passwordConfirm: "supersecret",
+      timeZone: "Europe/Moscow",
     });
     expect(screen.getByText("Security settings saved.")).toBeTruthy();
 
