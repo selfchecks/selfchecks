@@ -2,6 +2,7 @@ import { Command } from "commander";
 
 import { importCheckDefinitions, normalizeTags } from "@selfchecks/core";
 
+import { applyDatabaseMigrations } from "./migrations.js";
 import { runChecks, type EnvVar, type RunChecksSummary } from "./runner.js";
 import { persistDeploySummary } from "./storage.js";
 
@@ -34,7 +35,7 @@ export type TriggerCommandOutput = {
   projectSlug: string;
   record: boolean;
   reporter: string;
-  retries: number;
+  retries?: number;
   rootDir: string;
   status: "completed";
   summary: RunChecksSummary;
@@ -48,6 +49,7 @@ export type CliCommandOutput =
 
 export type CreateSelfchecksProgramOptions = {
   deployChecks?: typeof persistDeploySummary;
+  migrateDatabase?: typeof applyDatabaseMigrations;
   runChecksLocally?: typeof runChecks;
   write?: (value: CliCommandOutput) => void;
 };
@@ -92,6 +94,7 @@ export function createSelfchecksProgram(
       process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
     });
   const deployChecks = options.deployChecks ?? persistDeploySummary;
+  const migrateDatabase = options.migrateDatabase ?? applyDatabaseMigrations;
   const runChecksLocally = options.runChecksLocally ?? runChecks;
 
   const program = new Command();
@@ -118,11 +121,15 @@ export function createSelfchecksProgram(
       });
       const summary = commandOptions.dryRun
         ? parsedSummary
-        : await deployChecks({
-            projectSlug,
-            rootDir,
-            summary: parsedSummary,
-          });
+        : await (async () => {
+            await migrateDatabase();
+
+            return deployChecks({
+              projectSlug,
+              rootDir,
+              summary: parsedSummary,
+            });
+          })();
 
       write({
         command: "deploy",
@@ -192,7 +199,7 @@ export function createSelfchecksProgram(
     .option("--project <slug>", "Project slug", "default")
     .option("--record", "Persist the run and artifacts")
     .option("--reporter <name>", "Reporter name", "list")
-    .option("--retries <count>", "Retry failed checks", "0")
+    .option("--retries <count>", "Override configured failed-check retries")
     .option("--root <path>", "Repository root", process.cwd())
     .option("--test-session-name <name>", "Display name for the created test session")
     .action(
@@ -201,17 +208,21 @@ export function createSelfchecksProgram(
         project: string;
         record?: boolean;
         reporter: string;
-        retries: string;
+        retries?: string;
         root: string;
         testSessionName?: string;
       }) => {
-        const retries = parseRetries(commandOptions.retries);
+        const retries =
+          typeof commandOptions.retries === "string"
+            ? parseRetries(commandOptions.retries)
+            : undefined;
         const env = commandOptions.env.map(parseEnv);
         const summary = await runChecksLocally({
           env,
           projectSlug: commandOptions.project,
           record: Boolean(commandOptions.record),
           reporter: commandOptions.reporter,
+          retries,
           rootDir: commandOptions.root,
           tagSets: [],
           testSessionName: commandOptions.testSessionName,
@@ -222,7 +233,7 @@ export function createSelfchecksProgram(
           projectSlug: commandOptions.project,
           record: Boolean(commandOptions.record),
           reporter: commandOptions.reporter,
-          retries,
+          ...(typeof retries === "number" ? { retries } : {}),
           rootDir: commandOptions.root,
           status: "completed",
           summary,

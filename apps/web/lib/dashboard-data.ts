@@ -113,9 +113,23 @@ export type RunDetailData = {
       responseLanguage?: string;
       status: "completed" | "failed";
     };
+    attemptNumber: number;
+    attempts: Array<{
+      createdAtLabel: string;
+      duration: string;
+      href: string;
+      id: string;
+      isCurrent: boolean;
+      label: string;
+      runState: DashboardRunState;
+      status: DashboardStatus;
+      tone?: DashboardResultTone;
+    }>;
     createdAtLabel: string;
+    failedAttempts: number;
     finishedAt: string;
     jobLog?: string;
+    maxAttempts: number;
     request?: {
       assertions: Array<{
         actual: string;
@@ -169,9 +183,13 @@ type MappableRun = {
   createdAt: Date;
   durationMs: number | null;
   errorMessage: string | null;
+  checkId?: string;
   id: string;
   logsPath: string | null;
+  attempt?: number | null;
+  maxAttempts?: number | null;
   result: unknown;
+  retryGroupId?: string | null;
   status: string;
 };
 type CheckWithRuns = {
@@ -287,6 +305,9 @@ export async function getCheckDetailShellData(
             errorMessage: true,
             id: true,
             logsPath: true,
+            attempt: true,
+            maxAttempts: true,
+            retryGroupId: true,
             status: true,
           },
           take: 1,
@@ -426,6 +447,11 @@ export async function getRunDetailData(
     }
 
     const request = formatRunRequest(run.check.request, run.result);
+    const attemptRuns = await fetchRunAttempts(run);
+    const attempts = attemptRuns.map((attemptRun) =>
+      mapAttemptNavigationRun(attemptRun, run.checkId, run.id, timeZone),
+    );
+    const maxAttempts = Math.max(getRunMaxAttempts(run), attempts.length);
 
     return {
       check: {
@@ -448,10 +474,15 @@ export async function getRunDetailData(
       projectSlug: run.check.project.slug,
       run: {
         ...mapRun(run, timeZone),
+        attemptNumber: getRunAttempt(run),
+        attempts,
         aiAnalysis: formatAiAnalysis(run.result),
         createdAtLabel: formatRunTimestamp(run.createdAt, timeZone),
+        failedAttempts: attempts.filter((attempt) => attempt.status === "failing")
+          .length,
         finishedAt: run.finishedAt ? formatRunTimestamp(run.finishedAt, timeZone) : "-",
         jobLog: await readRunLogPreview(run.logsPath),
+        maxAttempts,
         request,
         response: formatRunResponse(run.result),
         resultFields: formatResultFields(run.result),
@@ -911,17 +942,73 @@ function mapFirewatchRow(
 }
 
 function mapRun(run: MappableRun, timeZone: string): DashboardRunRow {
+  const maxAttempts = getRunMaxAttempts(run);
+
   return {
+    attempt: getRunAttempt(run),
     artifacts: mapRunArtifacts(run),
     createdAt: run.createdAt.toISOString(),
     duration: formatDuration(run.durationMs ?? undefined),
     durationMs: run.durationMs ?? undefined,
     errorMessage: run.errorMessage ?? undefined,
-    hasRetries: hasRunRetries(run.result),
+    hasRetries: maxAttempts > 1 || hasRunRetries(run.result),
     id: run.id,
+    maxAttempts,
     occurredAt: formatBarTimestamp(run, timeZone),
     performance: mapRunPerformance(run.result),
+    retryGroupId: run.retryGroupId ?? undefined,
     runner: "Local runner",
+    runState: mapRunState(run.status),
+    status: mapRunStatus(run.status),
+    tone: mapRunTone(run.status),
+  };
+}
+
+async function fetchRunAttempts(run: MappableRun & { checkId: string }) {
+  const retryGroupId = run.retryGroupId?.trim();
+
+  if (!retryGroupId) {
+    return [run];
+  }
+
+  const runs = await prisma.checkRun.findMany({
+    include: {
+      artifacts: {
+        orderBy: {
+          createdAt: "desc",
+        },
+      },
+    },
+    orderBy: [
+      {
+        attempt: "asc",
+      },
+      {
+        createdAt: "asc",
+      },
+    ],
+    where: {
+      checkId: run.checkId,
+      retryGroupId,
+    },
+  });
+
+  return runs.length > 0 ? runs : [run];
+}
+
+function mapAttemptNavigationRun(
+  run: MappableRun,
+  checkId: string,
+  currentRunId: string,
+  timeZone: string,
+): RunDetailData["run"]["attempts"][number] {
+  return {
+    createdAtLabel: formatRunTimestamp(run.createdAt, timeZone),
+    duration: formatDuration(run.durationMs ?? undefined),
+    href: `/checks/${encodeURIComponent(checkId)}/runs/${encodeURIComponent(run.id)}`,
+    id: run.id,
+    isCurrent: run.id === currentRunId,
+    label: `Attempt #${getRunAttempt(run)}`,
     runState: mapRunState(run.status),
     status: mapRunStatus(run.status),
     tone: mapRunTone(run.status),
@@ -1083,17 +1170,39 @@ function hasRunRetries(result: unknown): boolean {
     retry?: unknown;
   };
 
-  return [value.retries, value.retry, value.attempts, value.attempt].some((item) => {
-    if (typeof item === "number") {
-      return item > 0;
-    }
+  return (
+    numericRetryCount(value.retries) > 0 ||
+    numericRetryCount(value.retry) > 0 ||
+    numericRetryCount(value.attempts) > 1 ||
+    arrayRetryCount(value.retries) > 0 ||
+    arrayRetryCount(value.retry) > 0 ||
+    arrayRetryCount(value.attempts) > 1
+  );
+}
 
-    if (Array.isArray(item)) {
-      return item.length > 0;
-    }
+function numericRetryCount(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
 
-    return false;
-  });
+function arrayRetryCount(value: unknown): number {
+  return Array.isArray(value) ? value.length : 0;
+}
+
+function getRunAttempt(run: Pick<MappableRun, "attempt">): number {
+  return normalizePositiveInteger(run.attempt, 1);
+}
+
+function getRunMaxAttempts(run: Pick<MappableRun, "maxAttempts">): number {
+  return normalizePositiveInteger(run.maxAttempts, 1);
+}
+
+function normalizePositiveInteger(
+  value: number | null | undefined,
+  fallback: number,
+): number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0
+    ? value
+    : fallback;
 }
 
 function formatRunRequest(
@@ -1274,9 +1383,17 @@ function formatQueryParams(url: string): Array<{ name: string; value: string }> 
 
 function formatResultFields(result: unknown): RunDetailData["run"]["resultFields"] {
   const record = asRecord(result);
+  const hiddenFields = new Set([
+    "aiAnalysis",
+    "attempt",
+    "attempts",
+    "retries",
+    "retryGroupId",
+    "retryStrategy",
+  ]);
 
   return Object.entries(record)
-    .filter(([label]) => label !== "aiAnalysis")
+    .filter(([label]) => !hiddenFields.has(label))
     .map(([label, value]) => ({
       label: formatSourceLabel(label),
       value: formatUnknownValue(value),

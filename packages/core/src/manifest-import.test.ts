@@ -165,6 +165,71 @@ describe("parseCheckManifestSource", () => {
     });
   });
 
+  it("extracts Checkly retry strategy builder calls", () => {
+    expect(
+      parseCheckManifestSource(
+        `
+          import { BrowserCheck, RetryStrategyBuilder } from 'checkly/constructs';
+
+          new BrowserCheck("homepage", {
+            name: "Homepage",
+            code: {
+              entrypoint: "homepage.spec.ts"
+            },
+            retryStrategy: RetryStrategyBuilder.linearStrategy({
+              baseBackoffSeconds: 30,
+              maxRetries: 4,
+              maxDurationSeconds: 600,
+              sameRegion: false,
+            })
+          });
+        `,
+        "config/checkly/homepage.check.ts",
+      ).checks[0],
+    ).toMatchObject({
+      retryStrategy: {
+        baseBackoffSeconds: 30,
+        maxDurationSeconds: 600,
+        maxRetries: 4,
+        sameRegion: false,
+        type: "LINEAR",
+      },
+    });
+  });
+
+  it("extracts object literal retry strategies", () => {
+    expect(
+      parseCheckManifestSource(
+        `
+          new ApiCheck({
+            key: "api-health",
+            name: "API health",
+            request: {
+              method: "GET",
+              url: "https://example.test/health"
+            },
+            retryStrategy: {
+              type: "FIXED",
+              baseBackoffSeconds: 10,
+              maxRetries: 2,
+              maxDurationSeconds: 120,
+              sameRegion: true
+            }
+          });
+        `,
+        "config/checkly/api.check.ts",
+      ).checks[0],
+    ).toMatchObject({
+      retryStrategy: {
+        baseBackoffSeconds: 10,
+        maxDurationSeconds: 120,
+        maxRetries: 2,
+        sameRegion: true,
+        type: "FIXED",
+      },
+    });
+  });
+
   it("extracts browser check definitions", () => {
     expect(
       parseCheckManifestSource(

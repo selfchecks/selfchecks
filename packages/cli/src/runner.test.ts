@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   artifactCreateMany: vi.fn(),
   artifactDeleteMany: vi.fn(),
   checkFindFirst: vi.fn(),
+  checkRunCreate: vi.fn(),
   checkRunFindFirst: vi.fn(),
   checkRunUpdate: vi.fn(),
   spawn: vi.fn(),
@@ -32,6 +33,7 @@ vi.mock("@selfchecks/db", () => ({
       findFirst: mocks.checkFindFirst,
     },
     checkRun: {
+      create: mocks.checkRunCreate,
       findFirst: mocks.checkRunFindFirst,
       update: mocks.checkRunUpdate,
     },
@@ -57,6 +59,7 @@ describe("runCheckById", () => {
   afterEach(async () => {
     vi.clearAllMocks();
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
     await Promise.all(
       tempDirs.splice(0).map((directory) =>
         rm(directory, {
@@ -193,6 +196,120 @@ describe("runCheckById", () => {
     );
     expect(artifactCreateArgs.data.map((artifact) => artifact.path)).not.toContain(
       sharedTracePath,
+    );
+  });
+
+  it("records failed retry attempts as separate runs before returning a passing retry", async () => {
+    const runId = "run_1";
+
+    mocks.checkFindFirst.mockResolvedValue({
+      entrypoint: null,
+      id: "check_1",
+      key: "api-health",
+      name: "API health",
+      request: {
+        assertions: [],
+        headers: {},
+        method: "GET",
+        url: "https://example.test/health",
+      },
+      retryStrategy: {
+        baseBackoffSeconds: 0,
+        maxRetries: 1,
+        type: "FIXED",
+      },
+      runs: [],
+      type: "API",
+    });
+    mocks.checkRunFindFirst.mockResolvedValue({
+      checkId: "check_1",
+      id: runId,
+    });
+    mocks.checkRunCreate.mockImplementation(async (args) => ({
+      checkId: "check_1",
+      id: "run_2",
+      ...args.data,
+    }));
+    mocks.checkRunUpdate.mockImplementation(async (args) => ({
+      checkId: "check_1",
+      id: args.where.id,
+      ...args.data,
+    }));
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response("upstream error", {
+            status: 500,
+            statusText: "Internal Server Error",
+          }),
+        )
+        .mockResolvedValueOnce(
+          new Response('{"ok":true}', {
+            status: 200,
+            statusText: "OK",
+          }),
+        ),
+    );
+
+    await expect(
+      runCheckById({
+        checkId: "check_1",
+        env: [],
+        projectSlug: "default",
+        record: true,
+        reporter: "list",
+        rootDir: "/repo",
+        runId,
+      }),
+    ).resolves.toMatchObject({
+      checkKey: "api-health",
+      runId: "run_2",
+      status: "passed",
+    });
+
+    expect(mocks.checkRunCreate).toHaveBeenCalledWith({
+      data: {
+        attempt: 2,
+        checkId: "check_1",
+        maxAttempts: 2,
+        retryGroupId: runId,
+        startedAt: expect.any(Date),
+        status: "RUNNING",
+        testSessionId: undefined,
+      },
+    });
+    expect(mocks.checkRunUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          result: expect.objectContaining({
+            attempt: 1,
+            attempts: 2,
+            retries: 1,
+            retryGroupId: runId,
+          }),
+          status: "FAILED",
+        }),
+        where: {
+          id: runId,
+        },
+      }),
+    );
+    expect(mocks.checkRunUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          result: expect.objectContaining({
+            attempt: 2,
+            attempts: 2,
+            status: 200,
+          }),
+          status: "PASSED",
+        }),
+        where: {
+          id: "run_2",
+        },
+      }),
     );
   });
 });

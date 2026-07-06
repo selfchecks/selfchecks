@@ -193,12 +193,14 @@ function createCheck(overrides: Partial<DashboardCheckRow>): DashboardCheckRow {
     runState,
     runs: [
       {
+        attempt: 1,
         artifacts,
         createdAt: "2026-06-22T19:25:00.000Z",
         duration: "120 ms",
         durationMs: 120,
         hasRetries: false,
         id: `run-${name}`,
+        maxAttempts: 1,
         occurredAt: "Jun 22 22:25",
         runner: "Local runner",
         runState,

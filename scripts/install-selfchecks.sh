@@ -212,6 +212,7 @@ POSTGRES_DB=selfchecks
 POSTGRES_USER=selfchecks
 POSTGRES_PASSWORD=${postgres_password}
 DATABASE_URL=postgresql://selfchecks:${postgres_password}@postgres:5432/selfchecks?schema=public
+SELFCHECKS_AUTO_MIGRATE=1
 
 REDIS_HOST=redis
 REDIS_PORT=6379

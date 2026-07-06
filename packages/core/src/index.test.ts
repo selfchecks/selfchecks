@@ -8,6 +8,7 @@ import {
   getCheckIdentity,
   normalizeCheckQueueName,
   normalizeTags,
+  retryStrategySchema,
 } from "./index.js";
 
 describe("normalizeTags", () => {
@@ -76,6 +77,35 @@ describe("apiRequestSchema", () => {
       ],
       method: "POST",
     });
+  });
+});
+
+describe("retryStrategySchema", () => {
+  it("accepts Checkly-style retry strategy options", () => {
+    expect(
+      retryStrategySchema.parse({
+        baseBackoffSeconds: 30,
+        maxDurationSeconds: 600,
+        maxRetries: 4,
+        sameRegion: false,
+        type: "LINEAR",
+      }),
+    ).toEqual({
+      baseBackoffSeconds: 30,
+      maxDurationSeconds: 600,
+      maxRetries: 4,
+      sameRegion: false,
+      type: "LINEAR",
+    });
+  });
+
+  it("rejects retry counts above the Checkly limit", () => {
+    expect(() =>
+      retryStrategySchema.parse({
+        maxRetries: 11,
+        type: "FIXED",
+      }),
+    ).toThrow();
   });
 });
 

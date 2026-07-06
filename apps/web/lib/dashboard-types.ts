@@ -61,6 +61,7 @@ export type DashboardRunPerformance = {
 };
 
 export type DashboardRunRow = {
+  attempt: number;
   artifacts: DashboardRunArtifact[];
   createdAt: string;
   duration: string;
@@ -68,8 +69,10 @@ export type DashboardRunRow = {
   errorMessage?: string;
   hasRetries: boolean;
   id: string;
+  maxAttempts: number;
   occurredAt: string;
   performance?: DashboardRunPerformance;
+  retryGroupId?: string;
   runner: string;
   runState: DashboardRunState;
   status: DashboardStatus;

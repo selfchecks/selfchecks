@@ -41,6 +41,7 @@ const journalFixture: JournalData = {
   projectSlug: "default",
   runs: [
     {
+      attempt: 1,
       artifacts: [
         {
           downloadUrl: "/api/runs/run_1/artifacts/artifact_1?download=1",
@@ -65,6 +66,7 @@ const journalFixture: JournalData = {
       groupName: "API / Bff",
       hasRetries: false,
       id: "run_1",
+      maxAttempts: 1,
       occurredAt: "Jul 05 14:20",
       runHref: "/checks/check_1/runs/run_1",
       runner: "Local runner",

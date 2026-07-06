@@ -886,12 +886,14 @@ function markQueuedCheck(check: CheckRow): CheckRow {
     value: 18,
   };
   const queuedRun = {
+    attempt: 1,
     artifacts: [],
     createdAt: new Date().toISOString(),
     duration: "-",
     durationMs: undefined,
     hasRetries: false,
     id: `queued:${check.id}`,
+    maxAttempts: 1,
     occurredAt: "Queued",
     runner: "Local runner",
     runState: "queued" as const,

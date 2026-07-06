@@ -301,6 +301,125 @@ describe("dashboard data", () => {
     });
   });
 
+  it("loads sibling retry attempts for run details", async () => {
+    const firstAttemptAt = new Date("2026-06-24T13:18:03.000Z");
+    const secondAttemptAt = new Date("2026-06-24T13:20:03.000Z");
+
+    mocks.checkRunUpdateMany.mockResolvedValue({ count: 0 });
+    mocks.checkRunFindFirst.mockResolvedValue({
+      artifacts: [],
+      attempt: 2,
+      check: {
+        enabled: true,
+        entrypoint: null,
+        frequencyMinutes: 180,
+        group: {
+          name: "API / Bff",
+        },
+        id: "check_1",
+        key: "bff-health",
+        name: "bff-health",
+        project: {
+          slug: "default",
+        },
+        request: {
+          assertions: [],
+          headers: {},
+          method: "GET",
+          url: "https://example.test/health",
+        },
+        tags: ["api"],
+        type: "API",
+      },
+      checkId: "check_1",
+      createdAt: secondAttemptAt,
+      durationMs: 120,
+      errorMessage: null,
+      finishedAt: secondAttemptAt,
+      id: "run_2",
+      logsPath: null,
+      maxAttempts: 2,
+      result: {
+        status: 200,
+      },
+      retryGroupId: "run_1",
+      startedAt: secondAttemptAt,
+      status: "PASSED",
+    });
+    mocks.checkRunFindMany.mockResolvedValue([
+      {
+        artifacts: [],
+        attempt: 1,
+        checkId: "check_1",
+        createdAt: firstAttemptAt,
+        durationMs: 90,
+        errorMessage: "HTTP 500 Internal Server Error",
+        id: "run_1",
+        logsPath: null,
+        maxAttempts: 2,
+        result: {
+          status: 500,
+        },
+        retryGroupId: "run_1",
+        status: "FAILED",
+      },
+      {
+        artifacts: [],
+        attempt: 2,
+        checkId: "check_1",
+        createdAt: secondAttemptAt,
+        durationMs: 120,
+        errorMessage: null,
+        id: "run_2",
+        logsPath: null,
+        maxAttempts: 2,
+        result: {
+          status: 200,
+        },
+        retryGroupId: "run_1",
+        status: "PASSED",
+      },
+    ]);
+
+    const detail = await getRunDetailData("check_1", "run_2");
+
+    expect(mocks.checkRunFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [
+          {
+            attempt: "asc",
+          },
+          {
+            createdAt: "asc",
+          },
+        ],
+        where: {
+          checkId: "check_1",
+          retryGroupId: "run_1",
+        },
+      }),
+    );
+    expect(detail?.run).toMatchObject({
+      attemptNumber: 2,
+      failedAttempts: 1,
+      maxAttempts: 2,
+    });
+    expect(detail?.run.attempts).toEqual([
+      expect.objectContaining({
+        href: "/checks/check_1/runs/run_1",
+        isCurrent: false,
+        label: "Attempt #1",
+        status: "failing",
+      }),
+      expect.objectContaining({
+        href: "/checks/check_1/runs/run_2",
+        isCurrent: true,
+        label: "Attempt #2",
+        status: "passing",
+      }),
+    ]);
+  });
+
   it("marks failed and cancelled historical result bars with distinct tones", async () => {
     mocks.checkRunUpdateMany.mockResolvedValue({ count: 0 });
     mocks.projectFindUnique.mockResolvedValue({

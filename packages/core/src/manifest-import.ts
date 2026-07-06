@@ -8,6 +8,8 @@ import {
   checkDefinitionSchema,
   type CheckType,
   type DeploySummary,
+  type RetryStrategy,
+  type RetryStrategyType,
 } from "./index.js";
 
 export type ManifestImportResult = DeploySummary;
@@ -379,6 +381,7 @@ function buildCheckFromConfig({
     groupKey: config ? getReferenceProperty(config, "group") : undefined,
     key,
     name,
+    retryStrategy: config ? getRetryStrategyProperty(config, filePath) : undefined,
     tags: config ? (getStringArrayProperty(config, "tags", filePath) ?? []) : [],
     type,
   };
@@ -486,6 +489,115 @@ function getFrequencyProperty(
   return {
     intervalMinutes: value * multiplier,
   };
+}
+
+function getRetryStrategyProperty(
+  objectLiteral: ts.ObjectLiteralExpression,
+  filePath: string,
+): RetryStrategy | undefined {
+  const property = getPropertyAssignment(objectLiteral, "retryStrategy");
+
+  return property ? parseRetryStrategy(property.initializer, filePath) : undefined;
+}
+
+function parseRetryStrategy(
+  expression: ts.Expression,
+  filePath: string,
+): RetryStrategy | undefined {
+  if (ts.isObjectLiteralExpression(expression)) {
+    return getRetryStrategyFromObject(expression, filePath);
+  }
+
+  if (!ts.isCallExpression(expression)) {
+    return undefined;
+  }
+
+  const strategyName = getExpressionName(expression.expression);
+
+  if (strategyName === "noRetries") {
+    return {
+      maxRetries: 0,
+      type: "NO_RETRIES",
+    };
+  }
+
+  const type = getRetryStrategyType(strategyName);
+  const options = expression.arguments[0];
+
+  if (!type || !options || !ts.isObjectLiteralExpression(options)) {
+    return undefined;
+  }
+
+  return {
+    ...getRetryStrategyOptions(options, filePath),
+    type,
+  };
+}
+
+function getRetryStrategyFromObject(
+  objectLiteral: ts.ObjectLiteralExpression,
+  filePath: string,
+): RetryStrategy | undefined {
+  const typeProperty = getPropertyAssignment(objectLiteral, "type");
+  const type =
+    getRetryStrategyType(getStringProperty(objectLiteral, "type", filePath)) ??
+    getRetryStrategyType(
+      typeProperty ? getExpressionName(typeProperty.initializer) : undefined,
+    );
+
+  if (!type) {
+    return undefined;
+  }
+
+  return {
+    ...getRetryStrategyOptions(objectLiteral, filePath),
+    type,
+  };
+}
+
+function getRetryStrategyOptions(
+  objectLiteral: ts.ObjectLiteralExpression,
+  filePath: string,
+): Omit<RetryStrategy, "type"> {
+  return {
+    baseBackoffSeconds: getNumberProperty(objectLiteral, "baseBackoffSeconds"),
+    maxDurationSeconds: getNumberProperty(objectLiteral, "maxDurationSeconds"),
+    maxRetries: getNumberProperty(objectLiteral, "maxRetries"),
+    onlyOn: getStringArrayProperty(objectLiteral, "onlyOn", filePath),
+    sameRegion: getBooleanProperty(objectLiteral, "sameRegion"),
+  };
+}
+
+function getRetryStrategyType(
+  value: string | undefined,
+): RetryStrategyType | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const normalized = value
+    .replace(/Strategy$/, "")
+    .replace(/([a-z])([A-Z])/g, "$1_$2")
+    .replace(/[-\s]+/g, "_")
+    .toUpperCase();
+
+  if (normalized === "NORETRIES" || normalized === "NO_RETRIES") {
+    return "NO_RETRIES";
+  }
+
+  if (normalized === "FIXED") {
+    return "FIXED";
+  }
+
+  if (normalized === "LINEAR") {
+    return "LINEAR";
+  }
+
+  if (normalized === "EXPONENTIAL") {
+    return "EXPONENTIAL";
+  }
+
+  return undefined;
 }
 
 function getReferenceProperty(
@@ -625,6 +737,33 @@ function inferCreateRequest(
       method: "POST",
       url: "{{API_URL}}/general/api/v100/json/{{ACCOUNT}}",
     };
+  }
+
+  return undefined;
+}
+
+function getNumberProperty(
+  objectLiteral: ts.ObjectLiteralExpression,
+  propertyName: string,
+): number | undefined {
+  const property = getPropertyAssignment(objectLiteral, propertyName);
+
+  if (!property) {
+    return undefined;
+  }
+
+  const expression = property.initializer;
+
+  if (ts.isNumericLiteral(expression)) {
+    return Number.parseFloat(expression.text);
+  }
+
+  if (
+    ts.isPrefixUnaryExpression(expression) &&
+    expression.operator === ts.SyntaxKind.MinusToken &&
+    ts.isNumericLiteral(expression.operand)
+  ) {
+    return -Number.parseFloat(expression.operand.text);
   }
 
   return undefined;

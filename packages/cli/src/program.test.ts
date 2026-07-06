@@ -1,7 +1,7 @@
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   type CliCommandOutput,
@@ -155,6 +155,72 @@ describe("createSelfchecksProgram", () => {
     ]);
   });
 
+  it("applies migrations before persisting deployed checks", async () => {
+    const calls: string[] = [];
+    const rootDir = await createTempProject();
+    const migrateDatabase = vi.fn(async () => {
+      calls.push("migrate");
+    });
+    const deployChecks = vi.fn(async ({ summary }) => {
+      calls.push("deploy");
+
+      return {
+        ...summary,
+        created: 0,
+        updated: 1,
+      };
+    });
+    const outputs: CliCommandOutput[] = [];
+    const program = createSelfchecksProgram({
+      deployChecks,
+      migrateDatabase,
+      write: (value) => outputs.push(value),
+    });
+
+    await mkdir(path.join(rootDir, "config/checkly"), { recursive: true });
+    await writeFile(
+      path.join(rootDir, "config/checkly/homepage.check.ts"),
+      `
+        new BrowserCheck("homepage", {
+          name: "Homepage",
+          entrypoint: "homepage.spec.ts"
+        });
+      `,
+    );
+    program.exitOverride();
+    program.configureOutput({
+      writeErr: () => undefined,
+      writeOut: () => undefined,
+    });
+
+    await program.parseAsync([
+      "node",
+      "selfchecks",
+      "deploy",
+      "--project",
+      "account",
+      "--root",
+      rootDir,
+    ]);
+
+    expect(calls).toEqual(["migrate", "deploy"]);
+    expect(migrateDatabase).toHaveBeenCalledOnce();
+    expect(deployChecks).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectSlug: "account",
+        rootDir,
+      }),
+    );
+    expect(outputs[0]).toMatchObject({
+      command: "deploy",
+      status: "deployed",
+      summary: {
+        created: 0,
+        updated: 1,
+      },
+    });
+  });
+
   it("emits normalized test selectors and environment variables", async () => {
     await expect(
       parseCommand([
@@ -234,5 +300,34 @@ describe("createSelfchecksProgram", () => {
         testSessionName: "Deploy v1.2.3",
       },
     ]);
+  });
+
+  it("passes trigger retry overrides into the runner", async () => {
+    const runChecksLocally = vi.fn(async () => ({
+      durationMs: 10,
+      failed: 0,
+      passed: 0,
+      results: [],
+      skipped: 0,
+      total: 0,
+    }));
+    const program = createSelfchecksProgram({
+      runChecksLocally,
+      write: () => undefined,
+    });
+
+    program.exitOverride();
+    program.configureOutput({
+      writeErr: () => undefined,
+      writeOut: () => undefined,
+    });
+
+    await program.parseAsync(["node", "selfchecks", "trigger", "--retries", "2"]);
+
+    expect(runChecksLocally).toHaveBeenCalledWith(
+      expect.objectContaining({
+        retries: 2,
+      }),
+    );
   });
 });

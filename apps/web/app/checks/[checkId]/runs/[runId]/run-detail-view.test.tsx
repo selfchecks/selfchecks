@@ -28,6 +28,21 @@ const detail: RunDetailData = {
   groupName: "API / Bff",
   projectSlug: "default",
   run: {
+    attempt: 1,
+    attemptNumber: 1,
+    attempts: [
+      {
+        createdAtLabel: "Jun 24 16:20",
+        duration: "2.39 s",
+        href: "/checks/check_1/runs/run_1",
+        id: "run_1",
+        isCurrent: true,
+        label: "Attempt #1",
+        runState: "passed",
+        status: "passing",
+        tone: "good",
+      },
+    ],
     artifacts: [
       {
         downloadUrl: "/api/runs/run_1/artifacts/artifact_1?download=1",
@@ -61,9 +76,11 @@ const detail: RunDetailData = {
     createdAtLabel: "Jun 24 16:20",
     duration: "2.39 s",
     durationMs: 2390,
+    failedAttempts: 0,
     finishedAt: "Jun 24 16:20",
     hasRetries: false,
     id: "run_1",
+    maxAttempts: 1,
     jobLog: "GET https://bff.sndsy.ru/gtm.js?id=GTM-MP43XM\n200 OK",
     occurredAt: "Jun 24 16:20",
     performance: {
@@ -188,6 +205,7 @@ describe("RunDetailView", () => {
       screen.getAllByText("https://bff.sndsy.ru/gtm.js?id=GTM-MP43XM").length,
     ).toBeGreaterThan(0);
     expect(screen.getByText("Attempt #1")).toBeTruthy();
+    expect(screen.getByText("Attempt #1 of 1")).toBeTruthy();
     expect(screen.getByText("0/1 failed")).toBeTruthy();
     expect(screen.getByText("Check Duration")).toBeTruthy();
     expect(screen.getByText("Console Errors")).toBeTruthy();
@@ -259,6 +277,59 @@ describe("RunDetailView", () => {
     ).toBeTruthy();
     expect(screen.queryByText("Result data")).toBeNull();
     expect(screen.getByText("trace.zip")).toBeTruthy();
+  });
+
+  it("renders retry attempt navigation links", () => {
+    render(
+      <RunDetailView
+        accountLabel="nikolaev@iprojects.ru"
+        detail={{
+          ...detail,
+          run: {
+            ...detail.run,
+            attempt: 2,
+            attemptNumber: 2,
+            attempts: [
+              {
+                createdAtLabel: "Jun 24 16:18",
+                duration: "90 ms",
+                href: "/checks/check_1/runs/run_1",
+                id: "run_1",
+                isCurrent: false,
+                label: "Attempt #1",
+                runState: "failed",
+                status: "failing",
+                tone: "bad",
+              },
+              {
+                createdAtLabel: "Jun 24 16:20",
+                duration: "2.39 s",
+                href: "/checks/check_1/runs/run_2",
+                id: "run_2",
+                isCurrent: true,
+                label: "Attempt #2",
+                runState: "passed",
+                status: "passing",
+                tone: "good",
+              },
+            ],
+            failedAttempts: 1,
+            hasRetries: true,
+            id: "run_2",
+            maxAttempts: 2,
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("1/2 failed")).toBeTruthy();
+    expect(screen.getByText("Attempt #2 of 2")).toBeTruthy();
+    expect(
+      (screen.getByRole("link", { name: /Attempt #1/ }) as HTMLAnchorElement).href,
+    ).toContain("/checks/check_1/runs/run_1");
+    expect(
+      screen.getByRole("link", { name: /Attempt #2/ }).getAttribute("aria-current"),
+    ).toBe("page");
   });
 
   it("keeps result data for browser runs without AI analysis", () => {

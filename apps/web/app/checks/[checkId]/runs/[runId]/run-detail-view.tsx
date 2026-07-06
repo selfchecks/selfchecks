@@ -66,7 +66,8 @@ export function RunDetailView({ accountLabel, detail }: RunDetailViewProps) {
   const statusText = getResultField(run.resultFields, "Status Text");
   const command = getResultField(run.resultFields, "Command");
   const navigationEntries = buildPageNavigations(run);
-  const failedAttemptCount = run.status === "failing" ? 1 : 0;
+  const failedAttemptCount = run.failedAttempts;
+  const totalAttemptCount = Math.max(run.maxAttempts, run.attempts.length);
   const showResultData = Boolean(run.response) || !run.aiAnalysis;
   const showDataPanels = Boolean(run.request) || showResultData;
   const target = run.request
@@ -142,6 +143,41 @@ export function RunDetailView({ accountLabel, detail }: RunDetailViewProps) {
                   </div>
                 </div>
               </div>
+              <div className="border-t border-slate-800 px-5 py-4">
+                <div className="text-xs font-semibold uppercase text-slate-500">
+                  Attempts
+                </div>
+                <div className="mt-3 grid gap-2">
+                  {run.attempts.map((attempt) => (
+                    <Link
+                      aria-current={attempt.isCurrent ? "page" : undefined}
+                      className={cn(
+                        "flex min-w-0 items-center gap-3 rounded-md border px-3 py-2 text-left text-sm",
+                        attempt.isCurrent
+                          ? "border-blue-500 bg-blue-500/10 text-slate-100"
+                          : "border-slate-800 bg-[#0d1117] text-slate-300 hover:border-slate-700 hover:bg-slate-800/80",
+                      )}
+                      href={attempt.href}
+                      key={attempt.id}
+                    >
+                      <CheckStatusIcon
+                        compact
+                        runState={attempt.runState}
+                        status={attempt.status}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-semibold">
+                          {attempt.label}
+                        </span>
+                        <span className="mt-0.5 block truncate text-xs text-slate-500">
+                          {attempt.duration}
+                        </span>
+                      </span>
+                      <ChevronRight className="h-4 w-4 shrink-0 text-slate-500" />
+                    </Link>
+                  ))}
+                </div>
+              </div>
             </div>
           </aside>
 
@@ -177,9 +213,11 @@ export function RunDetailView({ accountLabel, detail }: RunDetailViewProps) {
                 <div className="min-w-0 text-right text-sm text-slate-400">
                   <div>Project {detail.projectSlug}</div>
                   <div className="mt-1 flex flex-wrap items-center justify-end gap-2">
-                    <span>{failedAttemptCount}/1 failed</span>
+                    <span>
+                      {failedAttemptCount}/{totalAttemptCount} failed
+                    </span>
                     <span className="rounded-md border border-slate-700 px-3 py-1 text-slate-200">
-                      Attempt #1
+                      Attempt #{run.attemptNumber} of {totalAttemptCount}
                     </span>
                   </div>
                 </div>

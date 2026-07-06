@@ -1,8 +1,9 @@
 import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 
-import type { ApiRequest, CheckRunStatus } from "@selfchecks/core";
+import type { ApiRequest, CheckRunStatus, RetryStrategy } from "@selfchecks/core";
 import { normalizeTags } from "@selfchecks/core";
 import {
   prisma,
@@ -44,6 +45,7 @@ export type RunChecksOptions = {
   projectSlug: string;
   record: boolean;
   reporter: string;
+  retries?: number;
   rootDir: string;
   tagSets: string[][];
   testSessionName?: string;
@@ -55,6 +57,7 @@ export type RunCheckByIdOptions = {
   projectSlug: string;
   record: true;
   reporter: string;
+  retries?: number;
   rootDir: string;
   runId?: string;
 };
@@ -80,6 +83,10 @@ export type CollectedRunArtifact = {
 
 const MAX_RESPONSE_BODY_CHARS = 20_000;
 const DEFAULT_ARTIFACTS_DIR = ".selfchecks/artifacts";
+const DEFAULT_RETRY_BACKOFF_SECONDS = 60;
+const DEFAULT_RETRY_MAX_DURATION_SECONDS = 600;
+const DEFAULT_RETRY_MAX_RETRIES = 2;
+const MAX_RETRIES = 10;
 
 export async function runChecks(options: RunChecksOptions): Promise<RunChecksSummary> {
   const startedAt = Date.now();
@@ -149,6 +156,7 @@ export async function runCheckById(
       projectSlug: options.projectSlug,
       record: options.record,
       reporter: options.reporter,
+      retries: options.retries,
       rootDir: options.rootDir,
       tagSets: [],
     },
@@ -224,56 +232,96 @@ async function runCheck(
   session: TestSession | undefined,
   existingRunId?: string,
 ): Promise<RunCheckResult> {
-  const startedAt = new Date();
-  const run = options.record
-    ? await upsertStartedRun(check.id, startedAt, session, existingRunId)
-    : undefined;
+  const retryPlan = resolveRetryPlan(check, options);
+  const maxAttempts = retryPlan.maxRetries + 1;
+  const retryGroupId = existingRunId ?? randomUUID();
+  const firstStartedAt = Date.now();
+  let attemptRunId = existingRunId;
+  let lastResult: RunCheckResult | undefined;
 
-  const result = await executeCheck(check, options, run);
-  const finishedAt = new Date();
-  const durationMs = finishedAt.getTime() - startedAt.getTime();
-  let resultJson = result.resultJson;
-
-  if (run && result.status !== "passed") {
-    const aiAnalysis = await analyzeFailedCheck({
-      check,
-      options,
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const startedAt = new Date();
+    const run = options.record
+      ? await upsertStartedRun(check.id, startedAt, session, attemptRunId, {
+          attempt,
+          maxAttempts,
+          retryGroupId,
+        })
+      : undefined;
+    const result = await executeCheck(check, options, run);
+    const finishedAt = new Date();
+    const durationMs = finishedAt.getTime() - startedAt.getTime();
+    const retryDelayMs = getRetryDelayMs(retryPlan, attempt);
+    const shouldRetry = shouldRetryCheck({
+      attempt,
+      finishedAt,
+      firstStartedAt,
+      maxAttempts,
       result,
+      retryDelayMs,
+      retryPlan,
+    });
+    let resultJson = addRetryMetadata(result.resultJson, {
+      attempt,
+      maxAttempts,
+      retryGroupId,
+      retryPlan,
     });
 
-    if (aiAnalysis) {
-      resultJson = {
-        ...resultJson,
-        aiAnalysis,
-      };
+    if (run && result.status !== "passed" && !shouldRetry) {
+      const aiAnalysis = await analyzeFailedCheck({
+        check,
+        options,
+        result,
+      });
+
+      if (aiAnalysis) {
+        resultJson = {
+          ...resultJson,
+          aiAnalysis,
+        };
+      }
     }
+
+    if (run) {
+      await prisma.checkRun.update({
+        data: {
+          durationMs,
+          errorMessage: result.errorMessage,
+          finishedAt,
+          logsPath: result.logsPath,
+          result: resultJson as Prisma.InputJsonValue,
+          status: toPrismaRunStatus(result.status),
+        },
+        where: {
+          id: run.id,
+        },
+      });
+      await recordRunArtifacts(run.id, result.artifacts ?? []);
+    }
+
+    lastResult = {
+      checkKey: check.key,
+      checkName: check.name,
+      durationMs,
+      errorMessage: result.errorMessage,
+      runId: run?.id,
+      status: result.status,
+    };
+
+    if (!shouldRetry) {
+      return lastResult;
+    }
+
+    await waitForRetry(retryDelayMs);
+    attemptRunId = undefined;
   }
 
-  if (run) {
-    await prisma.checkRun.update({
-      data: {
-        durationMs,
-        errorMessage: result.errorMessage,
-        finishedAt,
-        logsPath: result.logsPath,
-        result: resultJson as Prisma.InputJsonValue,
-        status: toPrismaRunStatus(result.status),
-      },
-      where: {
-        id: run.id,
-      },
-    });
-    await recordRunArtifacts(run.id, result.artifacts ?? []);
+  if (!lastResult) {
+    throw new Error(`Check ${check.key} did not produce a run result.`);
   }
 
-  return {
-    checkKey: check.key,
-    checkName: check.name,
-    durationMs,
-    errorMessage: result.errorMessage,
-    runId: run?.id,
-    status: result.status,
-  };
+  return lastResult;
 }
 
 async function upsertStartedRun(
@@ -281,11 +329,19 @@ async function upsertStartedRun(
   startedAt: Date,
   session: TestSession | undefined,
   existingRunId: string | undefined,
+  retryMetadata: {
+    attempt: number;
+    maxAttempts: number;
+    retryGroupId: string;
+  },
 ): Promise<CheckRun> {
   if (!existingRunId) {
     return prisma.checkRun.create({
       data: {
+        attempt: retryMetadata.attempt,
         checkId,
+        maxAttempts: retryMetadata.maxAttempts,
+        retryGroupId: retryMetadata.retryGroupId,
         startedAt,
         status: "RUNNING",
         testSessionId: session?.id,
@@ -306,6 +362,13 @@ async function upsertStartedRun(
 
   return prisma.checkRun.update({
     data: {
+      attempt: retryMetadata.attempt,
+      durationMs: null,
+      errorMessage: null,
+      finishedAt: null,
+      logsPath: null,
+      maxAttempts: retryMetadata.maxAttempts,
+      retryGroupId: retryMetadata.retryGroupId,
       startedAt,
       status: "RUNNING",
       testSessionId: session?.id,
@@ -313,6 +376,200 @@ async function upsertStartedRun(
     where: {
       id: run.id,
     },
+  });
+}
+
+type RetryPlan = {
+  baseBackoffSeconds: number;
+  maxDurationSeconds: number;
+  maxRetries: number;
+  onlyOn: string[];
+  type: RetryStrategy["type"];
+};
+
+function resolveRetryPlan(check: Check, options: RunChecksOptions): RetryPlan {
+  if (typeof options.retries === "number") {
+    return {
+      baseBackoffSeconds: 0,
+      maxDurationSeconds: DEFAULT_RETRY_MAX_DURATION_SECONDS,
+      maxRetries: clampRetries(options.retries),
+      onlyOn: [],
+      type: options.retries > 0 ? "FIXED" : "NO_RETRIES",
+    };
+  }
+
+  const retryStrategy = normalizeRetryStrategy(check.retryStrategy);
+
+  if (!retryStrategy || retryStrategy.type === "NO_RETRIES") {
+    return {
+      baseBackoffSeconds: 0,
+      maxDurationSeconds: DEFAULT_RETRY_MAX_DURATION_SECONDS,
+      maxRetries: 0,
+      onlyOn: [],
+      type: "NO_RETRIES",
+    };
+  }
+
+  return {
+    baseBackoffSeconds:
+      retryStrategy.baseBackoffSeconds ?? DEFAULT_RETRY_BACKOFF_SECONDS,
+    maxDurationSeconds:
+      retryStrategy.maxDurationSeconds ?? DEFAULT_RETRY_MAX_DURATION_SECONDS,
+    maxRetries: clampRetries(retryStrategy.maxRetries ?? DEFAULT_RETRY_MAX_RETRIES),
+    onlyOn: retryStrategy.onlyOn ?? [],
+    type: retryStrategy.type,
+  };
+}
+
+function normalizeRetryStrategy(value: unknown): RetryStrategy | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const strategy = value as Partial<RetryStrategy>;
+
+  if (
+    strategy.type !== "NO_RETRIES" &&
+    strategy.type !== "FIXED" &&
+    strategy.type !== "LINEAR" &&
+    strategy.type !== "EXPONENTIAL"
+  ) {
+    return undefined;
+  }
+
+  return {
+    ...(typeof strategy.baseBackoffSeconds === "number"
+      ? { baseBackoffSeconds: strategy.baseBackoffSeconds }
+      : {}),
+    ...(typeof strategy.maxDurationSeconds === "number"
+      ? { maxDurationSeconds: strategy.maxDurationSeconds }
+      : {}),
+    ...(typeof strategy.maxRetries === "number"
+      ? { maxRetries: strategy.maxRetries }
+      : {}),
+    ...(Array.isArray(strategy.onlyOn)
+      ? {
+          onlyOn: strategy.onlyOn.filter(
+            (item): item is string => typeof item === "string",
+          ),
+        }
+      : {}),
+    ...(typeof strategy.sameRegion === "boolean"
+      ? { sameRegion: strategy.sameRegion }
+      : {}),
+    type: strategy.type,
+  };
+}
+
+function clampRetries(value: number): number {
+  if (!Number.isSafeInteger(value)) {
+    return 0;
+  }
+
+  return Math.min(MAX_RETRIES, Math.max(0, value));
+}
+
+function getRetryDelayMs(retryPlan: RetryPlan, attempt: number): number {
+  const baseDelayMs = Math.max(0, retryPlan.baseBackoffSeconds) * 1000;
+
+  if (retryPlan.maxRetries <= 0 || retryPlan.type === "NO_RETRIES") {
+    return 0;
+  }
+
+  if (retryPlan.type === "LINEAR") {
+    return baseDelayMs * attempt;
+  }
+
+  if (retryPlan.type === "EXPONENTIAL") {
+    return baseDelayMs * 5 ** (attempt - 1);
+  }
+
+  return baseDelayMs;
+}
+
+function shouldRetryCheck({
+  attempt,
+  finishedAt,
+  firstStartedAt,
+  maxAttempts,
+  result,
+  retryDelayMs,
+  retryPlan,
+}: {
+  attempt: number;
+  finishedAt: Date;
+  firstStartedAt: number;
+  maxAttempts: number;
+  result: CheckExecutionResult;
+  retryDelayMs: number;
+  retryPlan: RetryPlan;
+}): boolean {
+  if (result.status === "passed" || attempt >= maxAttempts) {
+    return false;
+  }
+
+  if (!matchesRetryOnlyOn(result, retryPlan.onlyOn)) {
+    return false;
+  }
+
+  const maxDurationMs = retryPlan.maxDurationSeconds * 1000;
+
+  return finishedAt.getTime() - firstStartedAt + retryDelayMs <= maxDurationMs;
+}
+
+function matchesRetryOnlyOn(result: CheckExecutionResult, onlyOn: string[]): boolean {
+  if (onlyOn.length === 0) {
+    return true;
+  }
+
+  const normalized = onlyOn.map((item) => item.trim().toUpperCase());
+
+  if (!normalized.includes("NETWORK_ERROR")) {
+    return true;
+  }
+
+  const resultJson = result.resultJson as Record<string, unknown>;
+
+  return Boolean(resultJson.error) && typeof resultJson.status === "undefined";
+}
+
+function addRetryMetadata(
+  resultJson: Record<string, unknown>,
+  {
+    attempt,
+    maxAttempts,
+    retryGroupId,
+    retryPlan,
+  }: {
+    attempt: number;
+    maxAttempts: number;
+    retryGroupId: string;
+    retryPlan: RetryPlan;
+  },
+): Record<string, unknown> {
+  return {
+    ...resultJson,
+    attempt,
+    attempts: maxAttempts,
+    retries: maxAttempts - 1,
+    retryGroupId,
+    retryStrategy: {
+      baseBackoffSeconds: retryPlan.baseBackoffSeconds,
+      maxDurationSeconds: retryPlan.maxDurationSeconds,
+      maxRetries: retryPlan.maxRetries,
+      onlyOn: retryPlan.onlyOn,
+      type: retryPlan.type,
+    },
+  };
+}
+
+async function waitForRetry(delayMs: number): Promise<void> {
+  if (delayMs <= 0) {
+    return;
+  }
+
+  await new Promise((resolve) => {
+    setTimeout(resolve, delayMs);
   });
 }
 

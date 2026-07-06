@@ -389,12 +389,15 @@ Local end-to-end smoke flow with the current account checks:
 
 ```bash
 yarn dev:infra
-yarn db:migrate
 yarn checks:deploy:account
 yarn checks:test:account
 yarn checks:test:account:signin
 yarn dev:web
 ```
+
+`selfchecks deploy` applies pending Prisma migrations before writing imported
+checks. Set `SELFCHECKS_AUTO_MIGRATE=0` only when migrations are managed by a
+separate deployment step.
 
 Open `http://localhost:3000`, sign in with the local admin credentials from
 `.env`, and the dashboard will read imported checks and recorded runs from the

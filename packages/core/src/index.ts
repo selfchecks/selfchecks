@@ -52,6 +52,24 @@ export const frequencySchema = z.object({
 });
 export type Frequency = z.infer<typeof frequencySchema>;
 
+export const retryStrategyTypes = [
+  "NO_RETRIES",
+  "FIXED",
+  "LINEAR",
+  "EXPONENTIAL",
+] as const;
+export type RetryStrategyType = (typeof retryStrategyTypes)[number];
+
+export const retryStrategySchema = z.object({
+  baseBackoffSeconds: z.number().int().nonnegative().optional(),
+  maxDurationSeconds: z.number().int().positive().optional(),
+  maxRetries: z.number().int().min(0).max(10).optional(),
+  onlyOn: z.array(z.string().min(1)).optional(),
+  sameRegion: z.boolean().optional(),
+  type: z.enum(retryStrategyTypes),
+});
+export type RetryStrategy = z.infer<typeof retryStrategySchema>;
+
 export const apiAssertionSchema = z.object({
   operator: z.string().min(1),
   source: z.string().min(1),
@@ -78,6 +96,7 @@ export const checkDefinitionSchema = z
     key: z.string().min(1),
     name: z.string().min(1),
     request: apiRequestSchema.optional(),
+    retryStrategy: retryStrategySchema.optional(),
     tags: z.array(z.string()).default([]),
     type: z.enum(checkTypes),
   })

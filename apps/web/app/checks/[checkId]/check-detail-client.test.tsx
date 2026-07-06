@@ -53,6 +53,7 @@ const detail: CheckDetailData = {
     runState: "passed",
     runs: [
       {
+        attempt: 1,
         artifacts: [
           {
             downloadUrl: "/api/runs/run_1/artifacts/artifact_1?download=1",
@@ -69,6 +70,7 @@ const detail: CheckDetailData = {
         durationMs: 2340,
         hasRetries: false,
         id: "run_1",
+        maxAttempts: 1,
         occurredAt: "Jun 24 12:00",
         performance: {
           errors: {
@@ -91,6 +93,7 @@ const detail: CheckDetailData = {
         status: "passing",
       },
       {
+        attempt: 2,
         artifacts: [],
         createdAt: twoDaysAgoIso,
         duration: "2.79 s",
@@ -98,6 +101,7 @@ const detail: CheckDetailData = {
         errorMessage: "Expected status 200",
         hasRetries: true,
         id: "run_2",
+        maxAttempts: 2,
         occurredAt: "Jun 22 12:00",
         performance: {
           errors: {
@@ -121,6 +125,7 @@ const detail: CheckDetailData = {
         tone: "bad",
       },
       {
+        attempt: 1,
         artifacts: [],
         createdAt: twoDaysAgoIso,
         duration: "-",
@@ -128,6 +133,7 @@ const detail: CheckDetailData = {
         errorMessage: "Run was cancelled.",
         hasRetries: false,
         id: "run_3",
+        maxAttempts: 1,
         occurredAt: "Jun 22 13:00",
         runner: "Local runner",
         runState: "cancelled",

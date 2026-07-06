@@ -95,6 +95,7 @@ model Check {
   tags             String[]
   entrypoint       String?
   request          Json?
+  retryStrategy    Json?
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
   deployment       Deployment?  @relation(fields: [deploymentId], references: [id], onDelete: SetNull)
@@ -121,6 +122,9 @@ model CheckRun {
   checkId       String
   testSessionId String?
   status        CheckRunStatus @default(QUEUED)
+  attempt       Int            @default(1)
+  maxAttempts   Int            @default(1)
+  retryGroupId  String?
   startedAt     DateTime?
   finishedAt    DateTime?
   durationMs    Int?
@@ -133,6 +137,7 @@ model CheckRun {
   testSession   TestSession?   @relation(fields: [testSessionId], references: [id], onDelete: SetNull)
 
   @@index([checkId, createdAt])
+  @@index([retryGroupId, attempt])
   @@index([status, createdAt])
 }
 
