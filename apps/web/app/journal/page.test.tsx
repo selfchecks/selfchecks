@@ -112,6 +112,9 @@ describe("JournalPage", () => {
     expect(screen.getByRole("link", { name: "Journal" }).getAttribute("href")).toBe(
       "/journal",
     );
+    expect(screen.queryByRole("link", { name: "Checks" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Apply" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Reset" })).toBeNull();
     expect(
       (screen.getByRole("searchbox", { name: "Search runs" }) as HTMLInputElement)
         .value,
