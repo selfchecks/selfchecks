@@ -23,6 +23,7 @@ import type {
 import type { DashboardSettingsData } from "@/lib/settings-data";
 
 import DashboardClient from "./dashboard-client";
+import { DashboardPageSkeleton } from "./dashboard-loading";
 
 const fixtureGroups: DashboardGroupRow[] = [
   {
@@ -286,6 +287,15 @@ describe("DashboardPage", () => {
     expect(screen.queryByRole("button", { name: "Open support chat" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Support" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+  });
+
+  it("renders the dashboard skeleton while the snapshot is loading", () => {
+    render(<DashboardPageSkeleton />);
+
+    expect(screen.getByLabelText("Loading dashboard data")).toBeTruthy();
+    expect(screen.getByText("Firewatch")).toBeTruthy();
+    expect(screen.getByText("PASSING")).toBeTruthy();
+    expect(screen.getByText("Last results")).toBeTruthy();
   });
 
   it("shows grouped checks and operational metrics", () => {
