@@ -1656,50 +1656,11 @@ function formatRunTimestamp(date: Date, timeZone: string): string {
   const hour = getDatePart(parts, "hour");
   const minute = getDatePart(parts, "minute");
 
-  return `${month} ${day} ${hour}:${minute} (${formatTimezoneOffset(date, timeZone)})`;
+  return `${month} ${day} ${hour}:${minute}`;
 }
 
 function getDatePart(parts: Intl.DateTimeFormatPart[], type: string) {
   return parts.find((part) => part.type === type)?.value ?? "";
-}
-
-function formatTimezoneOffset(date: Date, timeZone: string): string {
-  const offsetMinutes = getTimeZoneOffsetMinutes(date, timeZone);
-  const sign = offsetMinutes >= 0 ? "+" : "-";
-  const absoluteMinutes = Math.abs(offsetMinutes);
-  const hours = Math.trunc(absoluteMinutes / 60);
-  const minutes = absoluteMinutes % 60;
-
-  if (minutes === 0) {
-    return `UTC${sign}${hours}`;
-  }
-
-  return `UTC${sign}${hours}:${String(minutes).padStart(2, "0")}`;
-}
-
-function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
-  const parts = new Intl.DateTimeFormat("en", {
-    day: "2-digit",
-    hour: "2-digit",
-    hourCycle: "h23",
-    minute: "2-digit",
-    month: "2-digit",
-    second: "2-digit",
-    timeZone,
-    year: "numeric",
-  }).formatToParts(date);
-  const value = (type: string) =>
-    Number(parts.find((part) => part.type === type)?.value ?? "0");
-  const zonedTimestamp = Date.UTC(
-    value("year"),
-    value("month") - 1,
-    value("day"),
-    value("hour"),
-    value("minute"),
-    value("second"),
-  );
-
-  return Math.round((zonedTimestamp - date.getTime()) / 60000);
 }
 
 function formatLatestUpdate(checks: CheckWithRuns[], timeZone: string): string {

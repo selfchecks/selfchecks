@@ -92,6 +92,18 @@ type RuntimeSecretDraft = {
 
 const AI_CUSTOM_ENDPOINT_VALUE = "__custom__";
 
+const preferredTimeZoneOptions = [
+  "Europe/Moscow",
+  "UTC",
+  "Europe/London",
+  "Europe/Berlin",
+  "Asia/Dubai",
+  "Asia/Almaty",
+  "Asia/Tokyo",
+  "America/New_York",
+  "America/Los_Angeles",
+];
+
 const dateRangeLabels: Record<DateRange, string> = {
   "24h": "Last 24 hours",
   "7d": "Last 7 days",
@@ -1208,6 +1220,10 @@ function SettingsScreen({
   const [variableRows, setVariableRows] = useState<RuntimeVariableDraft[]>(() =>
     settings.environment.variables.map(createVariableDraft),
   );
+  const timeZoneOptions = useMemo(
+    () => getTimeZoneOptions(basicDraft.timeZone),
+    [basicDraft.timeZone],
+  );
 
   useEffect(() => {
     setBasicDraft({
@@ -1458,35 +1474,27 @@ function SettingsScreen({
             htmlFor="settings-time-zone"
           >
             Timezone
-            <input
-              className="h-10 rounded-md border border-slate-700 bg-[#0f151d] px-3 text-sm text-slate-100 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-              id="settings-time-zone"
-              list="settings-time-zone-options"
-              onChange={(event) =>
-                setBasicDraft((current) => ({
-                  ...current,
-                  timeZone: event.target.value,
-                }))
-              }
-              required
-              type="text"
-              value={basicDraft.timeZone}
-            />
-            <datalist id="settings-time-zone-options">
-              {[
-                "Europe/Moscow",
-                "UTC",
-                "Europe/London",
-                "Europe/Berlin",
-                "Asia/Dubai",
-                "Asia/Almaty",
-                "Asia/Tokyo",
-                "America/New_York",
-                "America/Los_Angeles",
-              ].map((timeZone) => (
-                <option key={timeZone} value={timeZone} />
-              ))}
-            </datalist>
+            <span className="relative">
+              <select
+                className="h-10 w-full appearance-none rounded-md border border-slate-700 bg-[#0f151d] px-3 pr-10 text-sm text-slate-100 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                id="settings-time-zone"
+                onChange={(event) =>
+                  setBasicDraft((current) => ({
+                    ...current,
+                    timeZone: event.target.value,
+                  }))
+                }
+                required
+                value={basicDraft.timeZone}
+              >
+                {timeZoneOptions.map((timeZone) => (
+                  <option key={timeZone} value={timeZone}>
+                    {timeZone}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            </span>
           </label>
         </div>
 
@@ -1926,6 +1934,21 @@ function getInitials(value: string) {
 
 function createDraftId() {
   return Math.random().toString(36).slice(2);
+}
+
+function getTimeZoneOptions(selectedTimeZone: string) {
+  const supportedTimeZones =
+    typeof Intl.supportedValuesOf === "function"
+      ? Intl.supportedValuesOf("timeZone")
+      : [];
+
+  return Array.from(
+    new Set(
+      [selectedTimeZone, ...preferredTimeZoneOptions, ...supportedTimeZones].filter(
+        Boolean,
+      ),
+    ),
+  );
 }
 
 function createVariableDraft(

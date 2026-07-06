@@ -58,14 +58,14 @@ const detail: RunDetailData = {
       },
     ],
     createdAt: "2026-06-24T13:20:03.000Z",
-    createdAtLabel: "Jun 24 16:20 (UTC+3)",
+    createdAtLabel: "Jun 24 16:20",
     duration: "2.39 s",
     durationMs: 2390,
-    finishedAt: "Jun 24 16:20 (UTC+3)",
+    finishedAt: "Jun 24 16:20",
     hasRetries: false,
     id: "run_1",
     jobLog: "GET https://bff.sndsy.ru/gtm.js?id=GTM-MP43XM\n200 OK",
-    occurredAt: "Jun 24 16:20 (UTC+3)",
+    occurredAt: "Jun 24 16:20",
     performance: {
       errors: {
         consoleErrors: 5,
@@ -125,7 +125,7 @@ const detail: RunDetailData = {
       '{\n  "body": "{\\"ok\\":true}",\n  "headers": {\n    "content-type": "application/json"\n  },\n  "status": 200,\n  "statusText": "OK"\n}',
     runner: "Local runner",
     runState: "passed",
-    startedAt: "Jun 24 16:20 (UTC+3)",
+    startedAt: "Jun 24 16:20",
     status: "passing",
   },
 };
@@ -181,7 +181,7 @@ describe("RunDetailView", () => {
     expect(screen.getByText("SelfChecks")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Back to check" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "bff-gtm-js" })).toBeTruthy();
-    expect(screen.getByText("Passed at Jun 24 16:20 (UTC+3)")).toBeTruthy();
+    expect(screen.getByText("Passed at Jun 24 16:20")).toBeTruthy();
     expect(screen.getByText("Check report")).toBeTruthy();
     expect(screen.getAllByText("GET").length).toBeGreaterThan(1);
     expect(

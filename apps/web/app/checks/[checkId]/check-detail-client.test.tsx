@@ -28,7 +28,7 @@ const detail: CheckDetailData = {
     bars: [
       {
         duration: "2.34 s",
-        occurredAt: "Jun 24 12:00 (UTC+3)",
+        occurredAt: "Jun 24 12:00",
         runner: "Local runner",
         runState: "passed",
         status: "passing",
@@ -37,7 +37,7 @@ const detail: CheckDetailData = {
       },
       {
         duration: "2.79 s",
-        occurredAt: "Jun 24 15:00 (UTC+3)",
+        occurredAt: "Jun 24 15:00",
         runner: "Local runner",
         runState: "failed",
         status: "failing",
@@ -69,7 +69,7 @@ const detail: CheckDetailData = {
         durationMs: 2340,
         hasRetries: false,
         id: "run_1",
-        occurredAt: "Jun 24 12:00 (UTC+3)",
+        occurredAt: "Jun 24 12:00",
         performance: {
           errors: {
             consoleErrors: 0,
@@ -98,7 +98,7 @@ const detail: CheckDetailData = {
         errorMessage: "Expected status 200",
         hasRetries: true,
         id: "run_2",
-        occurredAt: "Jun 22 12:00 (UTC+3)",
+        occurredAt: "Jun 22 12:00",
         performance: {
           errors: {
             consoleErrors: 1,
@@ -128,7 +128,7 @@ const detail: CheckDetailData = {
         errorMessage: "Run was cancelled.",
         hasRetries: false,
         id: "run_3",
-        occurredAt: "Jun 22 13:00 (UTC+3)",
+        occurredAt: "Jun 22 13:00",
         runner: "Local runner",
         runState: "cancelled",
         status: "failing",
@@ -263,13 +263,12 @@ describe("CheckDetailClient", () => {
     expect(
       (
         screen.getByRole("link", {
-          name: "Open run result Jun 24 12:00 (UTC+3)",
+          name: "Open run result Jun 24 12:00",
         }) as HTMLAnchorElement
       ).href,
     ).toContain("/checks/check_1/runs/run_1");
     expect(
-      (screen.getByRole("link", { name: "Jun 24 12:00 (UTC+3)" }) as HTMLAnchorElement)
-        .href,
+      (screen.getByRole("link", { name: "Jun 24 12:00" }) as HTMLAnchorElement).href,
     ).toContain("/checks/check_1/runs/run_1");
     expect(
       (screen.getByRole("link", { name: "View trace.zip" }) as HTMLAnchorElement).href,
@@ -285,7 +284,7 @@ describe("CheckDetailClient", () => {
       ...detail.check.runs[index % detail.check.runs.length]!,
       createdAt: new Date(Date.now() - index * 60_000).toISOString(),
       id: `run_dense_${index}`,
-      occurredAt: `Jul 05 ${String(index).padStart(2, "0")}:00 (UTC+0)`,
+      occurredAt: `Jul 05 ${String(index).padStart(2, "0")}:00`,
     }));
 
     renderDetail({
@@ -312,13 +311,11 @@ describe("CheckDetailClient", () => {
   it("renders failed and cancelled run chart bars with dashboard matching colors", async () => {
     renderDetail();
 
-    const failedBar = await screen.findByLabelText(
-      "Failed 2.79 s Jun 22 12:00 (UTC+3)",
-    );
+    const failedBar = await screen.findByLabelText("Failed 2.79 s Jun 22 12:00");
 
     expect(failedBar.querySelector("span")?.className).toContain("bg-red-500");
 
-    const cancelledBar = screen.getByLabelText("Cancelled - Jun 22 13:00 (UTC+3)");
+    const cancelledBar = screen.getByLabelText("Cancelled - Jun 22 13:00");
 
     expect(cancelledBar.querySelector("span")?.className).toContain("bg-slate-500");
   });

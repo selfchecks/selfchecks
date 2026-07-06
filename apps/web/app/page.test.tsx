@@ -170,7 +170,7 @@ function createCheck(overrides: Partial<DashboardCheckRow>): DashboardCheckRow {
     bars: [
       {
         duration: "100 ms",
-        occurredAt: "Jun 22 22:20 (UTC+3)",
+        occurredAt: "Jun 22 22:20",
         runner: "Local runner",
         runState,
         status,
@@ -178,7 +178,7 @@ function createCheck(overrides: Partial<DashboardCheckRow>): DashboardCheckRow {
       },
       {
         duration: "120 ms",
-        occurredAt: "Jun 22 22:25 (UTC+3)",
+        occurredAt: "Jun 22 22:25",
         runner: "Local runner",
         runState,
         status,
@@ -198,7 +198,7 @@ function createCheck(overrides: Partial<DashboardCheckRow>): DashboardCheckRow {
         durationMs: 120,
         hasRetries: false,
         id: `run-${name}`,
-        occurredAt: "Jun 22 22:25 (UTC+3)",
+        occurredAt: "Jun 22 22:25",
         runner: "Local runner",
         runState,
         status,
@@ -558,8 +558,7 @@ describe("DashboardPage", () => {
     renderDashboard();
 
     expect(
-      screen.getAllByLabelText("Passing Local runner 100 ms Jun 22 22:20 (UTC+3)")
-        .length,
+      screen.getAllByLabelText("Passing Local runner 100 ms Jun 22 22:20").length,
     ).toBeGreaterThan(0);
     expect(screen.getAllByRole("tooltip").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Local runner").length).toBeGreaterThan(0);
@@ -576,7 +575,7 @@ describe("DashboardPage", () => {
                 bars: [
                   {
                     duration: "6 ms",
-                    occurredAt: "Jul 05 09:37 (UTC+0)",
+                    occurredAt: "Jul 05 09:37",
                     runner: "Local runner",
                     runState: "failed",
                     status: "failing",
@@ -585,7 +584,7 @@ describe("DashboardPage", () => {
                   },
                   {
                     duration: "-",
-                    occurredAt: "Jul 05 09:38 (UTC+0)",
+                    occurredAt: "Jul 05 09:38",
                     runner: "Local runner",
                     runState: "cancelled",
                     status: "failing",
@@ -614,17 +613,13 @@ describe("DashboardPage", () => {
       />,
     );
 
-    const failedBar = screen.getByLabelText(
-      "Failing Local runner 6 ms Jul 05 09:37 (UTC+0)",
-    );
+    const failedBar = screen.getByLabelText("Failing Local runner 6 ms Jul 05 09:37");
 
     expect(failedBar.querySelector("[aria-hidden='true']")?.className).toContain(
       "bg-red-500",
     );
 
-    const cancelledBar = screen.getByLabelText(
-      "Cancelled Local runner - Jul 05 09:38 (UTC+0)",
-    );
+    const cancelledBar = screen.getByLabelText("Cancelled Local runner - Jul 05 09:38");
 
     expect(cancelledBar.querySelector("[aria-hidden='true']")?.className).toContain(
       "bg-slate-500",
@@ -878,9 +873,9 @@ describe("DashboardPage", () => {
     expect((screen.getByLabelText("Domain") as HTMLInputElement).value).toBe(
       "checks.example.com",
     );
-    expect((screen.getByLabelText("Timezone") as HTMLInputElement).value).toBe(
-      "Europe/Moscow",
-    );
+    expect(
+      (screen.getByRole("combobox", { name: "Timezone" }) as HTMLSelectElement).value,
+    ).toBe("Europe/Moscow");
     expect(screen.queryByLabelText("Login")).toBeNull();
     expect(screen.queryByLabelText("Notification email")).toBeNull();
     expect(screen.getByRole("heading", { name: "Security" })).toBeTruthy();
