@@ -1656,10 +1656,7 @@ function formatRunTimestamp(date: Date, timeZone: string): string {
   const hour = getDatePart(parts, "hour");
   const minute = getDatePart(parts, "minute");
 
-  return `${month} ${day} ${hour}:${minute} (${formatTimezoneOffset(
-    date,
-    timeZone,
-  )})`;
+  return `${month} ${day} ${hour}:${minute} (${formatTimezoneOffset(date, timeZone)})`;
 }
 
 function getDatePart(parts: Intl.DateTimeFormatPart[], type: string) {

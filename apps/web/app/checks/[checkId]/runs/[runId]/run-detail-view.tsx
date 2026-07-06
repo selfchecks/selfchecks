@@ -241,9 +241,7 @@ export function RunDetailView({ accountLabel, detail }: RunDetailViewProps) {
                 <section
                   className={cn(
                     "grid min-w-0 gap-5",
-                    run.request
-                      ? "xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"
-                      : "",
+                    run.request ? "xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]" : "",
                   )}
                 >
                   {run.request ? <RequestDataPanel request={run.request} /> : null}

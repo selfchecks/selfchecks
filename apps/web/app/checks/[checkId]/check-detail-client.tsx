@@ -1576,10 +1576,7 @@ function ArtifactList({ artifacts }: { artifacts: DashboardRunArtifact[] }) {
             key={group.type}
           >
             <Icon className="h-3.5 w-3.5 shrink-0 text-slate-500" />
-            <span
-              className="min-w-0 truncate"
-              title={getArtifactGroupTitle(group)}
-            >
+            <span className="min-w-0 truncate" title={getArtifactGroupTitle(group)}>
               {label}
               {group.count > 1 ? ` × ${group.count}` : ""}
               {primary.size !== "-" ? ` · ${primary.size}` : ""}
