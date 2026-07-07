@@ -51,6 +51,8 @@ const runStateLabels: Record<DashboardRunState, string> = {
   running: "Running",
   timed_out: "Timed out",
 };
+const MAX_RUN_BAR_HEIGHT = 88;
+const MIN_RUN_BAR_HEIGHT = 8;
 
 type DateFilter = "7d" | "24h";
 type StatusFilter = "all" | DashboardStatus;
@@ -1438,6 +1440,13 @@ function calculateRunStats(runs: DashboardRunRow[]): RunStatsView {
 }
 
 function buildRunBars(runs: DashboardRunRow[]) {
+  const maxDurationMs = Math.max(
+    0,
+    ...runs
+      .map((run) => run.durationMs)
+      .filter((duration): duration is number => typeof duration === "number"),
+  );
+
   return [...runs].reverse().map((run) => ({
     duration: run.duration,
     id: run.id,
@@ -1450,8 +1459,22 @@ function buildRunBars(runs: DashboardRunRow[]) {
         runState: run.runState,
         status: run.status,
       }),
-    value: Math.max(8, Math.min(88, Math.round((run.durationMs ?? 500) / 20))),
+    value: getRelativeRunBarHeight(run.durationMs, maxDurationMs),
   }));
+}
+
+function getRelativeRunBarHeight(
+  durationMs: number | undefined,
+  maxDurationMs: number,
+): number {
+  if (typeof durationMs !== "number" || maxDurationMs <= 0) {
+    return MIN_RUN_BAR_HEIGHT;
+  }
+
+  return Math.max(
+    MIN_RUN_BAR_HEIGHT,
+    Math.round((durationMs / maxDurationMs) * MAX_RUN_BAR_HEIGHT),
+  );
 }
 
 function average(values: number[]): number | undefined {

@@ -23,6 +23,8 @@ import { getRuntimeTimeZone } from "./runtime-config";
 const DEFAULT_QUEUED_RUN_TIMEOUT_MINUTES = 30;
 const FIREWATCH_LOOKBACK_DAYS = 7;
 const MAX_LOG_PREVIEW_CHARS = 12_000;
+const MAX_RESULT_BAR_HEIGHT = 44;
+const MIN_RESULT_BAR_HEIGHT = 8;
 
 type DashboardData = {
   firewatch: DashboardFirewatch;
@@ -2194,9 +2196,16 @@ function buildBars(
       runState: "not_run" as const,
       status: "degraded" as const,
       tone: "warn" as const,
-      value: 12,
+      value: MIN_RESULT_BAR_HEIGHT,
     }));
   }
+
+  const maxDurationMs = Math.max(
+    0,
+    ...runs
+      .map((run) => run.durationMs)
+      .filter((duration): duration is number => typeof duration === "number"),
+  );
 
   return [...runs].reverse().map((run) => ({
     duration: formatDuration(run.durationMs ?? undefined),
@@ -2205,8 +2214,22 @@ function buildBars(
     runState: mapRunState(run.status),
     status: mapRunStatus(run.status),
     tone: mapRunTone(run.status),
-    value: Math.max(8, Math.min(44, Math.round((run.durationMs ?? 500) / 40))),
+    value: getRelativeBarHeight(run.durationMs, maxDurationMs),
   }));
+}
+
+function getRelativeBarHeight(
+  durationMs: number | null | undefined,
+  maxDurationMs: number,
+): number {
+  if (typeof durationMs !== "number" || maxDurationMs <= 0) {
+    return MIN_RESULT_BAR_HEIGHT;
+  }
+
+  return Math.max(
+    MIN_RESULT_BAR_HEIGHT,
+    Math.round((durationMs / maxDurationMs) * MAX_RESULT_BAR_HEIGHT),
+  );
 }
 
 function mapRunTone(status: string | undefined): DashboardResultTone {

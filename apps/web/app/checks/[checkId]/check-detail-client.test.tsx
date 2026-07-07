@@ -315,6 +315,46 @@ describe("CheckDetailClient", () => {
     expect(chart.getAttribute("style")).toContain("column-gap: 4px");
   });
 
+  it("scales run chart bars against the displayed runs", async () => {
+    const fullDetail: CheckDetailData = {
+      ...detail,
+      check: {
+        ...detail.check,
+        runs: [
+          {
+            ...detail.check.runs[0]!,
+            duration: "13.16 s",
+            durationMs: 13160,
+            id: "run_slow",
+            occurredAt: "Jul 05 09:40",
+          },
+          {
+            ...detail.check.runs[0]!,
+            duration: "1.90 s",
+            durationMs: 1900,
+            id: "run_fast",
+            occurredAt: "Jul 05 09:38",
+          },
+        ],
+      },
+    };
+
+    renderDetail({
+      fullDetail,
+      initialDetail: fullDetail,
+    });
+
+    const fastBar = await screen.findByLabelText("Passed 1.90 s Jul 05 09:38");
+    const slowBar = screen.getByLabelText("Passed 13.16 s Jul 05 09:40");
+
+    expect(fastBar.querySelector("span")?.getAttribute("style")).toContain(
+      "height: 13px",
+    );
+    expect(slowBar.querySelector("span")?.getAttribute("style")).toContain(
+      "height: 88px",
+    );
+  });
+
   it("renders failed and cancelled run chart bars with dashboard matching colors", async () => {
     renderDetail();
 

@@ -538,6 +538,69 @@ describe("dashboard data", () => {
     ]);
   });
 
+  it("scales dashboard result bars against the displayed runs for each check", async () => {
+    mocks.checkRunUpdateMany.mockResolvedValue({ count: 0 });
+    mocks.projectFindUnique.mockResolvedValue({
+      id: "project_1",
+      slug: "default",
+    });
+    mocks.checkFindMany.mockResolvedValue([
+      {
+        enabled: true,
+        entrypoint: null,
+        frequencyMinutes: 180,
+        group: {
+          name: "API / Bff",
+        },
+        id: "check_1",
+        key: "bff-gtm-js",
+        name: "bff-gtm-js",
+        request: {
+          assertions: [],
+          headers: {},
+          method: "GET",
+          url: "https://example.test/gtm.js",
+        },
+        runs: [
+          {
+            artifacts: [],
+            createdAt: new Date("2026-07-05T09:40:00.000Z"),
+            durationMs: 13160,
+            id: "run_slow",
+            logsPath: null,
+            result: null,
+            status: "PASSED",
+          },
+          {
+            artifacts: [],
+            createdAt: new Date("2026-07-05T09:38:00.000Z"),
+            durationMs: 1900,
+            id: "run_fast",
+            logsPath: null,
+            result: null,
+            status: "PASSED",
+          },
+        ],
+        tags: ["api", "bff"],
+        type: "API",
+      },
+    ]);
+
+    const dashboard = await getDashboardData("default");
+    const bars = dashboard.groups[0]?.children?.[0]?.bars;
+
+    expect(bars).toEqual([
+      expect.objectContaining({
+        duration: "1.90 s",
+        value: 8,
+      }),
+      expect.objectContaining({
+        duration: "13.16 s",
+        value: 44,
+      }),
+    ]);
+  });
+
   it("marks a check as passing when the latest run passed after failed history", async () => {
     mocks.checkRunUpdateMany.mockResolvedValue({ count: 0 });
     mocks.projectFindUnique.mockResolvedValue({
