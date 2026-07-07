@@ -40,7 +40,7 @@ Use source-level compatibility first, not full API emulation.
 The CLI should accept the subset of commands already used in CI:
 
 ```bash
-selfchecks deploy --force
+selfchecks deploy
 selfchecks test --tags app,smoke,pr --tags transport,smoke,pr -e ENVIRONMENT_URL=... --reporter=github --record
 selfchecks trigger --reporter=github --retries=1 --record --test-session-name="Deploy v1.2.3"
 ```
@@ -401,7 +401,10 @@ yarn dev:web
 
 `selfchecks deploy` applies pending Prisma migrations before writing imported
 checks. Set `SELFCHECKS_AUTO_MIGRATE=0` only when migrations are managed by a
-separate deployment step.
+separate deployment step. By default, deploy refuses to remove checks that are
+missing from the imported manifest; rerun with `--force` only after verifying
+the deploy root and parsed summary. Forced removals disable stale checks instead
+of deleting their run history.
 
 Open `http://localhost:3000`, sign in with the local admin credentials from
 `.env`, and the dashboard will read imported checks and recorded runs from the

@@ -2,9 +2,9 @@ import type { DeploySummary } from "@selfchecks/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  checkDeleteMany: vi.fn(),
   checkFindMany: vi.fn(),
   checkGroupDeleteMany: vi.fn(),
+  checkUpdateMany: vi.fn(),
   checkGroupUpsert: vi.fn(),
   checkUpsert: vi.fn(),
   deploymentCreate: vi.fn(),
@@ -25,8 +25,8 @@ describe("persistDeploySummary", () => {
   beforeEach(() => {
     const tx = {
       check: {
-        deleteMany: mocks.checkDeleteMany,
         findMany: mocks.checkFindMany,
+        updateMany: mocks.checkUpdateMany,
         upsert: mocks.checkUpsert,
       },
       checkGroup: {
@@ -61,7 +61,7 @@ describe("persistDeploySummary", () => {
       id: "group_api",
     });
     mocks.checkUpsert.mockResolvedValue({});
-    mocks.checkDeleteMany.mockResolvedValue({
+    mocks.checkUpdateMany.mockResolvedValue({
       count: 1,
     });
     mocks.checkGroupDeleteMany.mockResolvedValue({
@@ -73,7 +73,7 @@ describe("persistDeploySummary", () => {
     vi.clearAllMocks();
   });
 
-  it("upserts project checks, removes stale checks, and returns fresh counters", async () => {
+  it("upserts project checks, disables stale checks when allowed, and returns fresh counters", async () => {
     const summary: DeploySummary = {
       checks: [
         {
@@ -112,6 +112,7 @@ describe("persistDeploySummary", () => {
 
     await expect(
       persistDeploySummary({
+        allowRemovals: true,
         deployedBy: "ci",
         projectSlug: "account",
         rootDir: "/repo",
@@ -195,7 +196,10 @@ describe("persistDeploySummary", () => {
         }),
       }),
     );
-    expect(mocks.checkDeleteMany).toHaveBeenCalledWith({
+    expect(mocks.checkUpdateMany).toHaveBeenCalledWith({
+      data: {
+        enabled: false,
+      },
       where: {
         key: {
           in: ["old-check"],
@@ -206,10 +210,56 @@ describe("persistDeploySummary", () => {
     expect(mocks.checkGroupDeleteMany).toHaveBeenCalledWith({
       where: {
         checks: {
-          none: {},
+          none: {
+            enabled: true,
+          },
         },
         projectId: "project_1",
       },
     });
+  });
+
+  it("refuses to remove stale checks by default", async () => {
+    const summary: DeploySummary = {
+      checks: [
+        {
+          enabled: true,
+          frequency: {
+            intervalMinutes: 5,
+          },
+          groupKey: "api",
+          groupName: "API",
+          key: "api-health",
+          name: "API health",
+          request: {
+            assertions: [],
+            headers: {},
+            method: "GET",
+            url: "https://api.example.test/health",
+          },
+          tags: ["api", "smoke"],
+          type: "api",
+        },
+      ],
+      created: 0,
+      projectSlug: "account",
+      removed: 0,
+      updated: 0,
+      warnings: [],
+    };
+
+    await expect(
+      persistDeploySummary({
+        deployedBy: "ci",
+        projectSlug: "account",
+        rootDir: "/repo",
+        source: "git:abc123",
+        summary,
+      }),
+    ).rejects.toThrow("Refusing to remove 1 stale checks without --force: old-check");
+
+    expect(mocks.deploymentCreate).not.toHaveBeenCalled();
+    expect(mocks.checkUpsert).not.toHaveBeenCalled();
+    expect(mocks.checkUpdateMany).not.toHaveBeenCalled();
   });
 });

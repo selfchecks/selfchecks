@@ -155,6 +155,48 @@ describe("createSelfchecksProgram", () => {
     ]);
   });
 
+  it("uses the config directory as deploy root when --root is omitted", async () => {
+    const rootDir = await createTempProject();
+    const configDir = path.join(rootDir, "config/checkly");
+
+    await mkdir(configDir, { recursive: true });
+    await writeFile(path.join(configDir, "checkly.config.ts"), "export default {};");
+    await writeFile(
+      path.join(configDir, "homepage.check.ts"),
+      `
+        new BrowserCheck("homepage", {
+          name: "Homepage",
+          entrypoint: "homepage.spec.ts"
+        });
+      `,
+    );
+
+    await expect(
+      parseCommand([
+        "deploy",
+        "--dry-run",
+        "--project",
+        "account",
+        "--config",
+        path.join(configDir, "checkly.config.ts"),
+      ]),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        command: "deploy",
+        rootDir: configDir,
+        status: "parsed",
+        summary: expect.objectContaining({
+          checks: [
+            expect.objectContaining({
+              key: "homepage",
+              name: "Homepage",
+            }),
+          ],
+        }),
+      }),
+    ]);
+  });
+
   it("applies migrations before persisting deployed checks", async () => {
     const calls: string[] = [];
     const rootDir = await createTempProject();
@@ -207,6 +249,7 @@ describe("createSelfchecksProgram", () => {
     expect(migrateDatabase).toHaveBeenCalledOnce();
     expect(deployChecks).toHaveBeenCalledWith(
       expect.objectContaining({
+        allowRemovals: false,
         projectSlug: "account",
         rootDir,
       }),
@@ -219,6 +262,51 @@ describe("createSelfchecksProgram", () => {
         updated: 1,
       },
     });
+  });
+
+  it("passes --force through to allow stale check removals", async () => {
+    const rootDir = await createTempProject();
+    const deployChecks = vi.fn(async ({ summary }) => summary);
+    const program = createSelfchecksProgram({
+      deployChecks,
+      migrateDatabase: async () => undefined,
+      write: () => undefined,
+    });
+
+    await mkdir(path.join(rootDir, "config/checkly"), { recursive: true });
+    await writeFile(
+      path.join(rootDir, "config/checkly/homepage.check.ts"),
+      `
+        new BrowserCheck("homepage", {
+          name: "Homepage",
+          entrypoint: "homepage.spec.ts"
+        });
+      `,
+    );
+    program.exitOverride();
+    program.configureOutput({
+      writeErr: () => undefined,
+      writeOut: () => undefined,
+    });
+
+    await program.parseAsync([
+      "node",
+      "selfchecks",
+      "deploy",
+      "--force",
+      "--project",
+      "account",
+      "--root",
+      rootDir,
+    ]);
+
+    expect(deployChecks).toHaveBeenCalledWith(
+      expect.objectContaining({
+        allowRemovals: true,
+        projectSlug: "account",
+        rootDir,
+      }),
+    );
   });
 
   it("emits normalized test selectors and environment variables", async () => {

@@ -4,6 +4,7 @@ import { prisma, Prisma } from "@selfchecks/db";
 type PrismaTransaction = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
 
 export type PersistDeployOptions = {
+  allowRemovals?: boolean;
   deployedBy?: string;
   projectSlug: string;
   rootDir: string;
@@ -12,6 +13,7 @@ export type PersistDeployOptions = {
 };
 
 export async function persistDeploySummary({
+  allowRemovals = false,
   deployedBy = "selfchecks deploy",
   projectSlug,
   rootDir,
@@ -42,6 +44,16 @@ export async function persistDeploySummary({
     });
     const existingKeys = new Set(existingChecks.map((check) => check.key));
     const nextKeys = new Set(summary.checks.map((check) => check.key));
+    const removed = [...existingKeys].filter((key) => !nextKeys.has(key));
+
+    if (removed.length > 0 && !allowRemovals) {
+      const preview = removed.slice(0, 10).join(", ");
+      const suffix = removed.length > 10 ? `, and ${removed.length - 10} more` : "";
+
+      throw new Error(
+        `Refusing to remove ${removed.length} stale checks without --force: ${preview}${suffix}`,
+      );
+    }
 
     const deployment = await tx.deployment.create({
       data: {
@@ -91,10 +103,11 @@ export async function persistDeploySummary({
       });
     }
 
-    const removed = [...existingKeys].filter((key) => !nextKeys.has(key));
-
     if (removed.length > 0) {
-      await tx.check.deleteMany({
+      await tx.check.updateMany({
+        data: {
+          enabled: false,
+        },
         where: {
           key: {
             in: removed,
@@ -107,7 +120,9 @@ export async function persistDeploySummary({
     await tx.checkGroup.deleteMany({
       where: {
         checks: {
-          none: {},
+          none: {
+            enabled: true,
+          },
         },
         projectId: project.id,
       },

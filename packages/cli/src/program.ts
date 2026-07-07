@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import { Command } from "commander";
 
 import { importCheckDefinitions, normalizeTags } from "@selfchecks/core";
@@ -85,6 +87,21 @@ export function parseRetries(value: string): number {
   return retries;
 }
 
+function resolveDeployRootDir(commandOptions: {
+  config?: string | boolean;
+  root?: string | boolean;
+}): string {
+  if (typeof commandOptions.root === "string") {
+    return commandOptions.root;
+  }
+
+  if (typeof commandOptions.config === "string") {
+    return path.dirname(commandOptions.config);
+  }
+
+  return process.cwd();
+}
+
 export function createSelfchecksProgram(
   options: CreateSelfchecksProgramOptions = {},
 ): Command {
@@ -110,11 +127,11 @@ export function createSelfchecksProgram(
     .option("-c, --config <path>", "Path to a Checkly-compatible config file")
     .option("--force", "Deploy even when the diff contains removals")
     .option("--project <slug>", "Project slug", "default")
-    .option("--root <path>", "Repository root", process.cwd())
+    .option("--root <path>", "Repository root")
     .option("--dry-run", "Parse definitions and print the deploy diff only")
     .action(async (commandOptions: Record<string, string | boolean | undefined>) => {
       const projectSlug = String(commandOptions.project ?? "default");
-      const rootDir = String(commandOptions.root ?? process.cwd());
+      const rootDir = resolveDeployRootDir(commandOptions);
       const parsedSummary = await importCheckDefinitions({
         projectSlug,
         rootDir,
@@ -125,6 +142,7 @@ export function createSelfchecksProgram(
             await migrateDatabase();
 
             return deployChecks({
+              allowRemovals: Boolean(commandOptions.force),
               projectSlug,
               rootDir,
               summary: parsedSummary,
