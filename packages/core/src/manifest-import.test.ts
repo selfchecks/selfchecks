@@ -405,4 +405,97 @@ describe("importCheckDefinitions", () => {
       ],
     });
   });
+
+  it("inherits retry strategy from Checkly helper group definitions", async () => {
+    const rootDir = await createTempProject();
+    const checksDir = path.join(rootDir, "src/__checks__/UI/App/billing");
+
+    await mkdir(path.join(rootDir, "src/strategies"), { recursive: true });
+    await mkdir(path.join(rootDir, "src/utils"), { recursive: true });
+    await mkdir(checksDir, { recursive: true });
+    await writeFile(
+      path.join(rootDir, "src/strategies/base.ts"),
+      `
+        import { RetryStrategyBuilder } from 'checkly/constructs';
+
+        export const BaseRetryStrategy = RetryStrategyBuilder.fixedStrategy({
+          baseBackoffSeconds: 0,
+          maxRetries: 2,
+          maxDurationSeconds: 600,
+          sameRegion: false,
+        });
+      `,
+    );
+    await writeFile(
+      path.join(rootDir, "src/utils/checkGroup.ts"),
+      `
+        import { CheckGroupV2 } from 'checkly/constructs';
+        import { BaseRetryStrategy } from '../strategies/base';
+
+        export const createCheckGroup = (name: string, options: Record<string, unknown>) => {
+          const logicalId = name
+            .replace(/ \\/ /gi, '-')
+            .replace(/ /gi, '-')
+            .replace(/[()]/gi, '')
+            .toLocaleLowerCase();
+
+          return new CheckGroupV2(logicalId, {
+            name,
+            activated: true,
+            retryStrategy: BaseRetryStrategy,
+            ...options,
+          });
+        };
+      `,
+    );
+    await writeFile(
+      path.join(checksDir, "group.ts"),
+      `
+        import { createCheckGroup } from '@utils/checkGroup';
+
+        export const billingCheckGroup = createCheckGroup('App / Billing', {
+          tags: ['app', 'billing'],
+        });
+      `,
+    );
+    await writeFile(
+      path.join(checksDir, "rest.limit-checks.check.ts"),
+      `
+        import { Frequency } from 'checkly/constructs';
+        import { createBrowserCheck } from '@utils/browserCheck';
+        import { billingCheckGroup } from './group';
+
+        createBrowserCheck('Limits checks', './rest.limit-checks.spec.ts', {
+          group: billingCheckGroup,
+          frequency: Frequency.EVERY_24H,
+        });
+      `,
+    );
+
+    await expect(
+      importCheckDefinitions({
+        projectSlug: "account",
+        rootDir,
+      }),
+    ).resolves.toMatchObject({
+      checks: [
+        {
+          entrypoint: "src/__checks__/UI/App/billing/rest.limit-checks.spec.ts",
+          groupKey: "app-billing",
+          groupName: "App / Billing",
+          key: "Limits-checks",
+          name: "Limits checks",
+          retryStrategy: {
+            baseBackoffSeconds: 0,
+            maxDurationSeconds: 600,
+            maxRetries: 2,
+            sameRegion: false,
+            type: "FIXED",
+          },
+          type: "browser",
+        },
+      ],
+      warnings: [],
+    });
+  });
 });

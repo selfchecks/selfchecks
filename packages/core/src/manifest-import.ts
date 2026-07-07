@@ -32,7 +32,23 @@ type ParsedCheck = {
 
 type RequestFactoryKind = "api" | "bff" | "unknown";
 
+type GroupDefinition = {
+  key: string;
+  name?: string;
+  retryStrategy?: RetryStrategy;
+};
+
+type GroupFactoryDefinition = {
+  retryStrategy?: RetryStrategy;
+};
+
+type ManifestImportContext = {
+  groups: Map<string, GroupDefinition>;
+  retryStrategies: Map<string, RetryStrategy>;
+};
+
 type ParseContext = {
+  retryStrategies: Map<string, RetryStrategy>;
   requestFactoryKind: RequestFactoryKind;
   requestVariables: Map<string, ApiRequest>;
 };
@@ -49,10 +65,14 @@ const ignoredDirectories = new Set([
 export async function importCheckDefinitions(
   options: ManifestImportOptions,
 ): Promise<ManifestImportResult> {
-  const checkFiles = await findCheckManifestFiles(options.rootDir);
+  const [checkFiles, sourceFiles] = await Promise.all([
+    findCheckManifestFiles(options.rootDir),
+    findManifestSourceFiles(options.rootDir),
+  ]);
+  const importContext = await buildManifestImportContext(options.rootDir, sourceFiles);
   const parsedFiles = await Promise.all(
     checkFiles.map(async (filePath) =>
-      parseCheckManifestFile(options.rootDir, filePath),
+      parseCheckManifestFile(options.rootDir, filePath, importContext),
     ),
   );
   const checks = parsedFiles.flatMap((file) => file.checks);
@@ -95,22 +115,131 @@ export async function findCheckManifestFiles(rootDir: string): Promise<string[]>
   return results.sort();
 }
 
+async function findManifestSourceFiles(rootDir: string): Promise<string[]> {
+  const results: string[] = [];
+
+  async function walk(currentDir: string): Promise<void> {
+    const entries = await readdir(currentDir, {
+      withFileTypes: true,
+    });
+
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        if (!ignoredDirectories.has(entry.name)) {
+          await walk(path.join(currentDir, entry.name));
+        }
+        continue;
+      }
+
+      if (entry.isFile() && isManifestSupportSource(entry.name)) {
+        results.push(path.join(currentDir, entry.name));
+      }
+    }
+  }
+
+  await walk(rootDir);
+
+  return results.sort();
+}
+
+function isManifestSupportSource(fileName: string): boolean {
+  return (
+    fileName.endsWith(".ts") &&
+    !fileName.endsWith(".d.ts") &&
+    !fileName.endsWith(".spec.ts") &&
+    !fileName.endsWith(".test.ts") &&
+    !fileName.endsWith(".test.tsx")
+  );
+}
+
+function createEmptyManifestImportContext(): ManifestImportContext {
+  return {
+    groups: new Map(),
+    retryStrategies: new Map(),
+  };
+}
+
+async function buildManifestImportContext(
+  rootDir: string,
+  sourceFiles: string[],
+): Promise<ManifestImportContext> {
+  const parsedFiles = await Promise.all(
+    sourceFiles.map(async (filePath) => {
+      const sourceText = await readFile(filePath, "utf8");
+      const relativePath = path.relative(rootDir, filePath);
+      const sourceFile = ts.createSourceFile(
+        relativePath,
+        sourceText,
+        ts.ScriptTarget.Latest,
+        true,
+        ts.ScriptKind.TS,
+      );
+
+      return {
+        filePath: relativePath,
+        sourceFile,
+      };
+    }),
+  );
+  const context = createEmptyManifestImportContext();
+
+  for (const parsedFile of parsedFiles) {
+    collectRetryStrategies(
+      parsedFile.sourceFile,
+      parsedFile.filePath,
+      context.retryStrategies,
+    );
+  }
+
+  const groupFactories = new Map<string, GroupFactoryDefinition>();
+
+  for (const parsedFile of parsedFiles) {
+    collectGroupFactoryDefinitions(
+      parsedFile.sourceFile,
+      parsedFile.filePath,
+      context.retryStrategies,
+      groupFactories,
+    );
+  }
+
+  for (const parsedFile of parsedFiles) {
+    collectGroupDefinitions(
+      parsedFile.sourceFile,
+      parsedFile.filePath,
+      context,
+      groupFactories,
+    );
+  }
+
+  return context;
+}
+
 export async function parseCheckManifestFile(
   rootDir: string,
   filePath: string,
+  importContext: ManifestImportContext = createEmptyManifestImportContext(),
 ): Promise<ParsedManifestFile> {
   const sourceText = await readFile(filePath, "utf8");
   const relativePath = path.relative(rootDir, filePath);
-  const result = parseCheckManifestSource(sourceText, relativePath);
+  const result = parseCheckManifestSource(sourceText, relativePath, importContext);
   const group = inferGroupFromPath(relativePath);
 
   return {
-    checks: result.checks.map((check) => ({
-      ...check,
-      entrypoint: normalizeEntrypoint(rootDir, relativePath, check.entrypoint),
-      groupKey: group?.key ?? check.groupKey,
-      groupName: group?.name ?? check.groupName,
-    })),
+    checks: result.checks.map((check) => {
+      const referencedGroup = check.groupKey
+        ? importContext.groups.get(check.groupKey)
+        : undefined;
+      const inferredGroup = group ? importContext.groups.get(group.key) : undefined;
+      const groupDefinition = referencedGroup ?? inferredGroup;
+
+      return {
+        ...check,
+        entrypoint: normalizeEntrypoint(rootDir, relativePath, check.entrypoint),
+        groupKey: group?.key ?? groupDefinition?.key ?? check.groupKey,
+        groupName: group?.name ?? groupDefinition?.name ?? check.groupName,
+        retryStrategy: check.retryStrategy ?? groupDefinition?.retryStrategy,
+      };
+    }),
     filePath: relativePath,
     warnings: result.warnings,
   };
@@ -119,6 +248,7 @@ export async function parseCheckManifestFile(
 export function parseCheckManifestSource(
   sourceText: string,
   filePath: string,
+  importContext: ManifestImportContext = createEmptyManifestImportContext(),
 ): ParsedManifestFile {
   const sourceFile = ts.createSourceFile(
     filePath,
@@ -127,7 +257,7 @@ export function parseCheckManifestSource(
     true,
     ts.ScriptKind.TS,
   );
-  const context = buildParseContext(sourceFile, filePath);
+  const context = buildParseContext(sourceFile, filePath, importContext);
   const checks: CheckDefinition[] = [];
   const warnings: string[] = [];
 
@@ -171,7 +301,240 @@ export function parseCheckManifestSource(
   };
 }
 
-function buildParseContext(sourceFile: ts.SourceFile, filePath: string): ParseContext {
+function collectRetryStrategies(
+  sourceFile: ts.SourceFile,
+  filePath: string,
+  retryStrategies: Map<string, RetryStrategy>,
+): void {
+  function visit(node: ts.Node): void {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer
+    ) {
+      const retryStrategy = resolveRetryStrategyExpression(
+        node.initializer,
+        filePath,
+        retryStrategies,
+      );
+
+      if (retryStrategy) {
+        retryStrategies.set(node.name.text, retryStrategy);
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+}
+
+function collectGroupFactoryDefinitions(
+  sourceFile: ts.SourceFile,
+  filePath: string,
+  retryStrategies: Map<string, RetryStrategy>,
+  groupFactories: Map<string, GroupFactoryDefinition>,
+): void {
+  function recordFactory(name: string, body: ts.Node): void {
+    const retryStrategy = findCheckGroupRetryStrategy(body, filePath, retryStrategies);
+
+    if (retryStrategy) {
+      groupFactories.set(name, {
+        retryStrategy,
+      });
+    }
+  }
+
+  function visit(node: ts.Node): void {
+    if (ts.isFunctionDeclaration(node) && node.name && node.body) {
+      recordFactory(node.name.text, node.body);
+    }
+
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer &&
+      (ts.isArrowFunction(node.initializer) ||
+        ts.isFunctionExpression(node.initializer))
+    ) {
+      recordFactory(node.name.text, node.initializer.body);
+    }
+
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+}
+
+function collectGroupDefinitions(
+  sourceFile: ts.SourceFile,
+  filePath: string,
+  context: ManifestImportContext,
+  groupFactories: Map<string, GroupFactoryDefinition>,
+): void {
+  function visit(node: ts.Node): void {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer
+    ) {
+      const group = parseGroupDefinition(
+        node.initializer,
+        filePath,
+        context.retryStrategies,
+        groupFactories,
+      );
+
+      if (group) {
+        addGroupDefinition(context.groups, node.name.text, group);
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+}
+
+function parseGroupDefinition(
+  expression: ts.Expression,
+  filePath: string,
+  retryStrategies: Map<string, RetryStrategy>,
+  groupFactories: Map<string, GroupFactoryDefinition>,
+): GroupDefinition | undefined {
+  if (ts.isCallExpression(expression)) {
+    return parseGroupFactoryCall(expression, filePath, retryStrategies, groupFactories);
+  }
+
+  if (ts.isNewExpression(expression)) {
+    return parseCheckGroupNewExpression(expression, filePath, retryStrategies);
+  }
+
+  return undefined;
+}
+
+function parseGroupFactoryCall(
+  expression: ts.CallExpression,
+  filePath: string,
+  retryStrategies: Map<string, RetryStrategy>,
+  groupFactories: Map<string, GroupFactoryDefinition>,
+): GroupDefinition | undefined {
+  const factory = groupFactories.get(getExpressionName(expression.expression) ?? "");
+
+  if (!factory) {
+    return undefined;
+  }
+
+  const [nameArg, optionsArg] = [...expression.arguments];
+  const name = nameArg ? extractStringValue(nameArg, filePath) : undefined;
+
+  if (!name) {
+    return undefined;
+  }
+
+  const options =
+    optionsArg && ts.isObjectLiteralExpression(optionsArg) ? optionsArg : undefined;
+
+  return {
+    key: slugify(name),
+    name,
+    retryStrategy:
+      (options
+        ? getRetryStrategyProperty(options, filePath, retryStrategies)
+        : undefined) ?? factory.retryStrategy,
+  };
+}
+
+function parseCheckGroupNewExpression(
+  expression: ts.NewExpression,
+  filePath: string,
+  retryStrategies: Map<string, RetryStrategy>,
+): GroupDefinition | undefined {
+  if (!isCheckGroupConstructName(getExpressionName(expression.expression))) {
+    return undefined;
+  }
+
+  const args = expression.arguments ? [...expression.arguments] : [];
+  const firstArg = args[0];
+  const secondArg = args[1];
+  const key = firstArg ? extractStringValue(firstArg, filePath) : undefined;
+  const config =
+    firstArg && ts.isObjectLiteralExpression(firstArg)
+      ? firstArg
+      : secondArg && ts.isObjectLiteralExpression(secondArg)
+        ? secondArg
+        : undefined;
+  const name = config ? getStringProperty(config, "name", filePath) : undefined;
+
+  if (!key && !name) {
+    return undefined;
+  }
+
+  return {
+    key: key ?? slugify(name ?? ""),
+    name,
+    retryStrategy: config
+      ? getRetryStrategyProperty(config, filePath, retryStrategies)
+      : undefined,
+  };
+}
+
+function addGroupDefinition(
+  groups: Map<string, GroupDefinition>,
+  referenceName: string,
+  group: GroupDefinition,
+): void {
+  groups.set(referenceName, group);
+  groups.set(group.key, group);
+
+  if (group.name) {
+    groups.set(slugify(group.name), group);
+  }
+}
+
+function findCheckGroupRetryStrategy(
+  node: ts.Node,
+  filePath: string,
+  retryStrategies: Map<string, RetryStrategy>,
+): RetryStrategy | undefined {
+  let retryStrategy: RetryStrategy | undefined;
+
+  function visit(currentNode: ts.Node): void {
+    if (retryStrategy) {
+      return;
+    }
+
+    if (
+      ts.isNewExpression(currentNode) &&
+      isCheckGroupConstructName(getExpressionName(currentNode.expression))
+    ) {
+      const args = currentNode.arguments ? [...currentNode.arguments] : [];
+      const config = args.find((arg): arg is ts.ObjectLiteralExpression =>
+        ts.isObjectLiteralExpression(arg),
+      );
+
+      if (config) {
+        retryStrategy = getRetryStrategyProperty(config, filePath, retryStrategies);
+      }
+    }
+
+    ts.forEachChild(currentNode, visit);
+  }
+
+  visit(node);
+
+  return retryStrategy;
+}
+
+function isCheckGroupConstructName(name: string | undefined): boolean {
+  return name === "CheckGroup" || name === "CheckGroupV2";
+}
+
+function buildParseContext(
+  sourceFile: ts.SourceFile,
+  filePath: string,
+  importContext: ManifestImportContext,
+): ParseContext {
   const requestFactoryKind = getRequestFactoryKind(sourceFile);
   const requestVariables = new Map<string, ApiRequest>();
 
@@ -201,6 +564,7 @@ function buildParseContext(sourceFile: ts.SourceFile, filePath: string): ParseCo
   });
 
   return {
+    retryStrategies: importContext.retryStrategies,
     requestFactoryKind,
     requestVariables,
   };
@@ -381,7 +745,9 @@ function buildCheckFromConfig({
     groupKey: config ? getReferenceProperty(config, "group") : undefined,
     key,
     name,
-    retryStrategy: config ? getRetryStrategyProperty(config, filePath) : undefined,
+    retryStrategy: config
+      ? getRetryStrategyProperty(config, filePath, context.retryStrategies)
+      : undefined,
     tags: config ? (getStringArrayProperty(config, "tags", filePath) ?? []) : [],
     type,
   };
@@ -494,10 +860,29 @@ function getFrequencyProperty(
 function getRetryStrategyProperty(
   objectLiteral: ts.ObjectLiteralExpression,
   filePath: string,
+  retryStrategies: Map<string, RetryStrategy> = new Map(),
 ): RetryStrategy | undefined {
   const property = getPropertyAssignment(objectLiteral, "retryStrategy");
 
-  return property ? parseRetryStrategy(property.initializer, filePath) : undefined;
+  return property
+    ? resolveRetryStrategyExpression(property.initializer, filePath, retryStrategies)
+    : undefined;
+}
+
+function resolveRetryStrategyExpression(
+  expression: ts.Expression,
+  filePath: string,
+  retryStrategies: Map<string, RetryStrategy>,
+): RetryStrategy | undefined {
+  const inlineStrategy = parseRetryStrategy(expression, filePath);
+
+  if (inlineStrategy) {
+    return inlineStrategy;
+  }
+
+  const referenceName = getExpressionName(expression);
+
+  return referenceName ? retryStrategies.get(referenceName) : undefined;
 }
 
 function parseRetryStrategy(
