@@ -37,6 +37,9 @@ export function DashboardPageSkeleton({
         <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-slate-800 bg-[#12171f]/95 px-4 backdrop-blur sm:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-3">
             <ServiceMark className="h-9 w-9 shrink-0 rounded-md xl:hidden" />
+            {activeView === "dashboard" ? (
+              <SkeletonLine className="h-9 w-36 rounded-md" />
+            ) : null}
           </div>
           <SkeletonLine className="h-10 w-10 rounded-full bg-lime-600/30" />
         </header>

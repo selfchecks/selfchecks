@@ -23,6 +23,7 @@ import {
   KeyRound,
   LockKeyhole,
   MoreVertical,
+  Play,
   Plus,
   Route,
   Save,
@@ -234,11 +235,20 @@ export default function DashboardClient({
     Object.fromEntries(groups.map((group) => [group.name, Boolean(group.expanded)])),
   );
   const [notice, setNotice] = useState("");
+  const [queueingAllChecks, setQueueingAllChecks] = useState(false);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [tagFilter, setTagFilter] = useState<TagFilter>("all");
   const [traceOnly, setTraceOnly] = useState(false);
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+  const allChecks = useMemo(
+    () => groups.flatMap((group) => group.children ?? []),
+    [groups],
+  );
+  const allRunnableChecks = useMemo(
+    () => allChecks.filter((check) => !isCheckActive(check)),
+    [allChecks],
+  );
   const hasActiveRuns = useMemo(
     () =>
       groups.some((group) =>
@@ -247,11 +257,8 @@ export default function DashboardClient({
     [groups],
   );
   const failedChecks = useMemo(
-    () =>
-      groups
-        .flatMap((group) => group.children ?? [])
-        .filter((check) => check.status === "failing"),
-    [groups],
+    () => allChecks.filter((check) => check.status === "failing"),
+    [allChecks],
   );
   const summaryCards = useMemo(
     () =>
@@ -527,8 +534,8 @@ export default function DashboardClient({
     await runCheckNow(check);
   }
 
-  async function runAllFailedChecks() {
-    const checksToRun = failedChecks;
+  async function queueChecks(checksToQueue: CheckRow[]) {
+    const checksToRun = checksToQueue.filter((check) => !isCheckActive(check));
 
     if (checksToRun.length === 0) {
       return;
@@ -557,6 +564,26 @@ export default function DashboardClient({
     }
   }
 
+  async function runAllFailedChecks() {
+    await queueChecks(failedChecks);
+  }
+
+  async function runAllChecks() {
+    const checksToRun = allRunnableChecks;
+
+    if (checksToRun.length === 0 || queueingAllChecks) {
+      return;
+    }
+
+    setQueueingAllChecks(true);
+
+    try {
+      await queueChecks(checksToRun);
+    } finally {
+      setQueueingAllChecks(false);
+    }
+  }
+
   return (
     <main className="min-h-screen bg-[#0d1117] text-slate-200">
       <h1 className="sr-only">Synthetic checks dashboard</h1>
@@ -570,6 +597,19 @@ export default function DashboardClient({
         <Topbar
           accountMenuOpen={accountMenuOpen}
           accountLabel={settings.basic.login || "Admin"}
+          actions={
+            activeView === "dashboard" ? (
+              <button
+                className="inline-flex h-9 shrink-0 items-center gap-2 rounded-md bg-blue-600 px-3 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={queueingAllChecks || allRunnableChecks.length === 0}
+                onClick={() => void runAllChecks()}
+                type="button"
+              >
+                <Play className="h-4 w-4" />
+                Run all checks
+              </button>
+            ) : null
+          }
           onAccountMenuToggle={() => setAccountMenuOpen((open) => !open)}
           onSettingsClick={openSettings}
         />
@@ -773,6 +813,10 @@ function doesCheckStatusMatch(check: CheckRow, statusFilter: StatusFilter) {
   }
 
   return check.status === statusFilter;
+}
+
+function isCheckActive(check: CheckRow) {
+  return check.runState === "queued" || check.runState === "running";
 }
 
 async function fetchDashboardSnapshot(): Promise<DashboardSnapshot> {
@@ -1137,11 +1181,13 @@ function CheckTypeBadge({ type }: { type: CheckRow["type"] }) {
 function Topbar({
   accountMenuOpen,
   accountLabel,
+  actions,
   onAccountMenuToggle,
   onSettingsClick,
 }: {
   accountMenuOpen: boolean;
   accountLabel: string;
+  actions?: ReactNode;
   onAccountMenuToggle: () => void;
   onSettingsClick: () => void;
 }) {
@@ -1151,6 +1197,7 @@ function Topbar({
     <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-slate-800 bg-[#12171f]/95 px-4 backdrop-blur sm:px-6 lg:px-8">
       <div className="flex min-w-0 items-center gap-3">
         <ServiceMark className="h-9 w-9 shrink-0 rounded-md xl:hidden" />
+        {actions}
       </div>
 
       <div className="relative flex items-center">

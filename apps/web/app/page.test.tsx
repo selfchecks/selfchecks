@@ -266,6 +266,7 @@ describe("DashboardPage", () => {
     expect(screen.getByRole("button", { name: "Open account menu" })).toBeTruthy();
     expect(screen.queryByText("nikolaev@iprojects.ru")).toBeNull();
     expect(screen.queryByText("account")).toBeNull();
+    expect(screen.getByRole("button", { name: "Run all checks" })).toBeTruthy();
     expect(screen.getByText("PASSING")).toBeTruthy();
     expect(screen.getByText("RUNNING")).toBeTruthy();
     expect(screen.getByText("DEGRADED")).toBeTruthy();
@@ -552,6 +553,118 @@ describe("DashboardPage", () => {
     for (const resolvePost of postResolvers) {
       resolvePost();
     }
+  });
+
+  it("queues every runnable check from the topbar action", async () => {
+    const user = userEvent.setup();
+    const passingCheck = createCheck({
+      name: "bff-health",
+      runState: "passed",
+      status: "passing",
+    });
+    const failingCheck = createCheck({
+      name: "signin.browser",
+      runState: "failed",
+      status: "failing",
+      type: "browser",
+    });
+    const queuedCheck = createCheck({
+      name: "already-queued",
+      runState: "queued",
+      status: "degraded",
+      time: "queued",
+    });
+    const runningCheck = createCheck({
+      name: "already-running",
+      runState: "running",
+      status: "degraded",
+      time: "running",
+    });
+    const groups: DashboardGroupRow[] = [
+      {
+        checks: "4 checks",
+        children: [passingCheck, failingCheck, queuedCheck, runningCheck],
+        expanded: false,
+        name: "API / Bff",
+        status: "failing",
+        updated: "about 1 hour ago",
+      },
+    ];
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        return Promise.resolve(
+          new Response(JSON.stringify({ runId: "run_queued", status: "queued" }), {
+            headers: {
+              "content-type": "application/json",
+            },
+            status: 202,
+          }),
+        );
+      }
+
+      expect(input).toBe("/api/dashboard");
+
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            firewatch: emptyFirewatch,
+            groups,
+            summary: {
+              degraded: 0,
+              failing: 1,
+              passing: 1,
+              queued: 1,
+              running: 1,
+            },
+          }),
+          {
+            headers: {
+              "content-type": "application/json",
+            },
+            status: 200,
+          },
+        ),
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <DashboardClient
+        initialFirewatch={emptyFirewatch}
+        initialGroups={groups}
+        initialSettings={fixtureSettings}
+        initialSummary={{
+          degraded: 0,
+          failing: 1,
+          passing: 1,
+          queued: 1,
+          running: 1,
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Run all checks" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/checks/check-bff-health/run", {
+        method: "POST",
+      });
+      expect(fetchMock).toHaveBeenCalledWith("/api/checks/check-signin.browser/run", {
+        method: "POST",
+      });
+    });
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      "/api/checks/check-already-queued/run",
+      {
+        method: "POST",
+      },
+    );
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      "/api/checks/check-already-running/run",
+      {
+        method: "POST",
+      },
+    );
   });
 
   it("explains check status icons", () => {

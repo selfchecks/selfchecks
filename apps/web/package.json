@@ -6,7 +6,7 @@
   "scripts": {
     "build": "next build",
     "dev": "node --env-file-if-exists=../../.env ../../node_modules/next/dist/bin/next dev",
-    "lint": "eslint . --max-warnings=0",
+    "lint": "yarn run -T eslint . --max-warnings=0",
     "start": "node --env-file-if-exists=../../.env ../../node_modules/next/dist/bin/next start",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
