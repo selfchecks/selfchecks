@@ -25,7 +25,11 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   );
 }
 
-async function DashboardData({ activeView }: { activeView: DashboardActiveView }) {
+export async function DashboardData({
+  activeView,
+}: {
+  activeView: DashboardActiveView;
+}) {
   const dashboard = await getDashboardData("default");
   const settings = await getDashboardSettingsData(dashboard.projectSlug);
 

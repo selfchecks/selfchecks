@@ -653,12 +653,9 @@ describe("DashboardPage", () => {
         method: "POST",
       });
     });
-    expect(fetchMock).not.toHaveBeenCalledWith(
-      "/api/checks/check-already-queued/run",
-      {
-        method: "POST",
-      },
-    );
+    expect(fetchMock).not.toHaveBeenCalledWith("/api/checks/check-already-queued/run", {
+      method: "POST",
+    });
     expect(fetchMock).not.toHaveBeenCalledWith(
       "/api/checks/check-already-running/run",
       {

@@ -14,6 +14,17 @@ export default defineConfig({
     },
   },
   test: {
+    coverage: {
+      exclude: [
+        "**/dist/**",
+        "**/.next/**",
+        "**/*.config.*",
+        "**/*types.ts",
+        "**/next-env.d.ts",
+        "vitest.setup.ts",
+      ],
+      provider: "v8",
+    },
     environment: "jsdom",
     include: [
       "packages/**/*.test.ts",
