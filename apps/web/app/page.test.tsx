@@ -860,6 +860,75 @@ describe("DashboardPage", () => {
     expect(screen.queryByText("checkout.ready")).toBeNull();
   });
 
+  it("keeps the last dashboard snapshot when live refresh fails", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      expect(input).toBe("/api/dashboard");
+
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            error: "Unable to load dashboard data.",
+          }),
+          {
+            headers: {
+              "content-type": "application/json",
+            },
+            status: 503,
+          },
+        ),
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <DashboardClient
+        initialGroups={[
+          {
+            checks: "2 checks",
+            children: [
+              createCheck({
+                name: "checkout.running",
+                runState: "running",
+                status: "degraded",
+                time: "running",
+              }),
+              createCheck({
+                name: "checkout.ready",
+                runState: "passed",
+                status: "passing",
+              }),
+            ],
+            expanded: true,
+            name: "API / Checkout",
+            status: "degraded",
+            updated: "running",
+          },
+        ]}
+        initialSettings={fixtureSettings}
+        initialSummary={{
+          degraded: 0,
+          failing: 0,
+          passing: 1,
+          queued: 0,
+          running: 1,
+        }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/dashboard", {
+        cache: "no-store",
+      });
+    });
+    await waitFor(() => {
+      expect(screen.getByText("Unable to refresh run status.")).toBeTruthy();
+    });
+
+    expect(screen.getByText("checkout.running")).toBeTruthy();
+    expect(screen.getByText("checkout.ready")).toBeTruthy();
+    expect(screen.queryByText("No checks match the current filters.")).toBeNull();
+  });
+
   it("opens the account menu and updates passive filter selects", async () => {
     const user = userEvent.setup();
 

@@ -30,6 +30,9 @@ type DashboardData = {
   projectSlug: string;
   summary: DashboardSummary;
 };
+type DashboardDataOptions = {
+  onError?: "empty" | "throw";
+};
 
 export type TestSessionRunCountSummary = {
   failed: number;
@@ -313,7 +316,10 @@ const JOURNAL_DEFAULT_PAGE_SIZE = 20;
 const JOURNAL_MAX_PAGE_SIZE = 100;
 const DASHBOARD_ACTIVE_RUN_STATUSES = ["QUEUED", "RUNNING"] as const;
 
-export async function getDashboardData(projectSlug: string): Promise<DashboardData> {
+export async function getDashboardData(
+  projectSlug: string,
+  options: DashboardDataOptions = {},
+): Promise<DashboardData> {
   const timeZone = getRuntimeTimeZone();
 
   try {
@@ -354,6 +360,11 @@ export async function getDashboardData(projectSlug: string): Promise<DashboardDa
     };
   } catch (error) {
     console.warn("Unable to load dashboard data.", error);
+
+    if (options.onError === "throw") {
+      throw error;
+    }
+
     return createEmptyDashboard(projectSlug);
   }
 }

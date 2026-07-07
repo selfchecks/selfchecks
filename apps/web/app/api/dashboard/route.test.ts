@@ -44,7 +44,9 @@ describe("dashboard route", () => {
         running: 0,
       },
     });
-    expect(mocks.getDashboardData).toHaveBeenCalledWith("account");
+    expect(mocks.getDashboardData).toHaveBeenCalledWith("account", {
+      onError: "throw",
+    });
   });
 
   it("defaults to the local project", async () => {
@@ -62,6 +64,20 @@ describe("dashboard route", () => {
 
     await GET(new Request("http://localhost/api/dashboard"));
 
-    expect(mocks.getDashboardData).toHaveBeenCalledWith("default");
+    expect(mocks.getDashboardData).toHaveBeenCalledWith("default", {
+      onError: "throw",
+    });
+  });
+
+  it("returns a service error when dashboard data cannot be loaded", async () => {
+    mocks.getDashboardData.mockRejectedValue(new Error("database unavailable"));
+
+    const response = await GET(new Request("http://localhost/api/dashboard"));
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    await expect(response.json()).resolves.toEqual({
+      error: "Unable to load dashboard data.",
+    });
   });
 });

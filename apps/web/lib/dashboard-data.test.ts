@@ -427,6 +427,27 @@ describe("dashboard data", () => {
     ]);
   });
 
+  it("throws dashboard loading errors in strict mode", async () => {
+    const error = new Error("database unavailable");
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    mocks.checkRunUpdateMany.mockResolvedValue({ count: 0 });
+    mocks.projectFindUnique.mockResolvedValue({
+      id: "project_1",
+      slug: "default",
+    });
+    mocks.checkFindMany.mockRejectedValue(error);
+
+    try {
+      await expect(getDashboardData("default", { onError: "throw" })).rejects.toThrow(
+        "database unavailable",
+      );
+      expect(warnSpy).toHaveBeenCalledWith("Unable to load dashboard data.", error);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
   it("marks failed and cancelled historical result bars with distinct tones", async () => {
     mocks.checkRunUpdateMany.mockResolvedValue({ count: 0 });
     mocks.projectFindUnique.mockResolvedValue({

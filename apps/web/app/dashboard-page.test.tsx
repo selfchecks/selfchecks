@@ -29,7 +29,7 @@ vi.mock("./dashboard-client", () => ({
   ),
 }));
 
-import { DashboardData } from "./page";
+import { DashboardData } from "./dashboard-page-data";
 
 describe("DashboardData", () => {
   afterEach(() => {
