@@ -53,7 +53,8 @@ const sessionDetailFixture: TestSessionDetailData = {
     id: "session_1",
     name: "Nightly regression",
     runState: "failed",
-    source: "selfchecks test --project default",
+    source:
+      "sendsay-ru/frontend/account | v3.192.41 | c05713df | pipeline https://gitlab.sndsy.ru/sendsay-ru/frontend/account/-/pipelines/6569 | job https://gitlab.sndsy.ru/sendsay-ru/frontend/account/-/jobs/123",
     status: "failing",
     summary: {
       failed: 1,
@@ -95,6 +96,26 @@ describe("TestSessionPage", () => {
     expect(screen.getByRole("heading", { name: "Nightly regression" })).toBeTruthy();
     expect(screen.getByText("Duration 1.2 s")).toBeTruthy();
     expect(screen.getByText("https://example.test")).toBeTruthy();
+    expect(screen.getByText("Repository")).toBeTruthy();
+    expect(screen.getByText("sendsay-ru/frontend/account")).toBeTruthy();
+    expect(screen.getByText("Version")).toBeTruthy();
+    expect(screen.getByText("v3.192.41")).toBeTruthy();
+    expect(screen.getByText("Commit")).toBeTruthy();
+    expect(screen.getByText("c05713df")).toBeTruthy();
+    expect(
+      screen
+        .getByRole("link", {
+          name: "https://gitlab.sndsy.ru/sendsay-ru/frontend/account/-/pipelines/6569",
+        })
+        .getAttribute("href"),
+    ).toBe("https://gitlab.sndsy.ru/sendsay-ru/frontend/account/-/pipelines/6569");
+    expect(
+      screen
+        .getByRole("link", {
+          name: "https://gitlab.sndsy.ru/sendsay-ru/frontend/account/-/jobs/123",
+        })
+        .getAttribute("href"),
+    ).toBe("https://gitlab.sndsy.ru/sendsay-ru/frontend/account/-/jobs/123");
     expect(
       screen
         .getByRole("link", { name: "Open test Homepage smoke" })

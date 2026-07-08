@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { ArrowLeft, ExternalLink, FlaskConical, Link2 } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -26,6 +27,7 @@ export default async function TestSessionPage({ params }: TestSessionPageProps) 
 
   const settings = await getDashboardSettingsData(data.projectSlug);
   const { session } = data;
+  const sourceFields = formatSessionSource(session.source);
 
   return (
     <main className="min-h-screen bg-[#0d1117] text-slate-200">
@@ -96,10 +98,29 @@ export default async function TestSessionPage({ params }: TestSessionPageProps) 
                 <span className="text-slate-600">-</span>
               )}
             </div>
-            <div className="text-slate-500">Source</div>
-            <div className="min-w-0 truncate text-slate-300" title={session.source}>
-              {session.source ?? "-"}
-            </div>
+            {sourceFields.map((field) => (
+              <Fragment key={`${field.label}:${field.value}`}>
+                <div className="text-slate-500">{field.label}</div>
+                <div className="min-w-0">
+                  {field.href ? (
+                    <a
+                      className="inline-flex max-w-full items-center gap-2 truncate text-blue-300 hover:text-blue-200"
+                      href={field.href}
+                      rel="noreferrer"
+                      target="_blank"
+                      title={field.value}
+                    >
+                      <ExternalLink className="h-4 w-4 shrink-0 text-slate-500" />
+                      <span className="truncate">{field.value}</span>
+                    </a>
+                  ) : (
+                    <span className="line-clamp-2 text-slate-300" title={field.value}>
+                      {field.value}
+                    </span>
+                  )}
+                </div>
+              </Fragment>
+            ))}
             <div className="text-slate-500">Tests</div>
             <SummaryPills summary={session.summary} />
           </section>
@@ -109,6 +130,101 @@ export default async function TestSessionPage({ params }: TestSessionPageProps) 
       </div>
     </main>
   );
+}
+
+type SourceField = {
+  href?: string;
+  label: string;
+  value: string;
+};
+
+function formatSessionSource(source: string | undefined): SourceField[] {
+  const rawSource = source?.trim();
+
+  if (!rawSource) {
+    return [
+      {
+        label: "Source",
+        value: "-",
+      },
+    ];
+  }
+
+  const parts = rawSource
+    .split("|")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length <= 1) {
+    return [
+      {
+        label: "Source",
+        value: rawSource,
+      },
+    ];
+  }
+
+  const [repository, version, commit, ...details] = parts;
+  const fields: SourceField[] = [];
+
+  pushSourceField(fields, "Repository", repository);
+  pushSourceField(fields, "Version", version);
+  pushSourceField(fields, "Commit", commit);
+
+  for (const detail of details) {
+    const field = parseSourceDetail(detail);
+
+    fields.push(field);
+  }
+
+  return fields.length > 0 ? fields : [{ label: "Source", value: rawSource }];
+}
+
+function pushSourceField(
+  fields: SourceField[],
+  label: SourceField["label"],
+  value: string | undefined,
+) {
+  if (!value) {
+    return;
+  }
+
+  fields.push({
+    label,
+    value,
+  });
+}
+
+function parseSourceDetail(detail: string): SourceField {
+  const match = detail.match(/^(pipeline|job)\s+(.+)$/i);
+
+  const [, kind, rawValue] = match ?? [];
+
+  if (!kind || !rawValue) {
+    return {
+      label: "Detail",
+      value: detail,
+    };
+  }
+
+  const label = kind.toLowerCase() === "pipeline" ? "Pipeline" : "Job";
+  const value = rawValue.trim();
+
+  return {
+    ...(isHttpUrl(value) ? { href: value } : {}),
+    label,
+    value,
+  };
+}
+
+function isHttpUrl(value: string) {
+  try {
+    const url = new URL(value);
+
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 function SessionChecksTable({ checks }: { checks: TestSessionCheckRow[] }) {
