@@ -1252,7 +1252,9 @@ function mapTestSessionChecks(
     });
 }
 
-function getRunCheckSnapshot(run: TestSessionRunWithCheck | MappableRun): RunCheckSnapshot {
+function getRunCheckSnapshot(
+  run: TestSessionRunWithCheck | MappableRun,
+): RunCheckSnapshot {
   if ("check" in run && run.check) {
     return {
       entrypoint: run.check.entrypoint,

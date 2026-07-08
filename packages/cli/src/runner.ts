@@ -10,12 +10,7 @@ import type {
   RetryStrategy,
 } from "@selfchecks/core";
 import { normalizeTags } from "@selfchecks/core";
-import {
-  prisma,
-  Prisma,
-  type CheckRun,
-  type TestSession,
-} from "@selfchecks/db";
+import { prisma, Prisma, type CheckRun, type TestSession } from "@selfchecks/db";
 
 import { analyzeFailedCheck } from "./ai-analysis.js";
 
@@ -207,8 +202,7 @@ async function findRunnableChecks(options: RunChecksOptions): Promise<RunnableCh
     return options.checks
       .filter((check) => check.enabled)
       .filter(
-        (check) =>
-          !options.checkKeys?.length || options.checkKeys.includes(check.key),
+        (check) => !options.checkKeys?.length || options.checkKeys.includes(check.key),
       )
       .filter((check) => doesCheckMatchTags(check, options.tagSets))
       .map((check) => ({
@@ -269,10 +263,7 @@ async function findRunnableChecks(options: RunChecksOptions): Promise<RunnableCh
   return checks.filter((check) => doesCheckMatchTags(check, options.tagSets));
 }
 
-function doesCheckMatchTags(
-  check: { tags: string[] },
-  tagSets: string[][],
-): boolean {
+function doesCheckMatchTags(check: { tags: string[] }, tagSets: string[][]): boolean {
   if (tagSets.length === 0) {
     return true;
   }
