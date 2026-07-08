@@ -1,4 +1,4 @@
-import { ExternalLink, FlaskConical, Link2 } from "lucide-react";
+import { FlaskConical, Link2 } from "lucide-react";
 import Link from "next/link";
 
 import { AppSidebar } from "@/components/app-sidebar";
@@ -6,7 +6,7 @@ import { ServiceMark } from "@/components/service-mark";
 import { getTestSessionsData, type TestSessionRow } from "@/lib/dashboard-data";
 import { getDashboardSettingsData } from "@/lib/settings-data";
 
-import { RunStateBadge, SummaryPills } from "./test-session-components";
+import { RunStateBadge } from "./test-session-components";
 
 export const dynamic = "force-dynamic";
 
@@ -59,16 +59,18 @@ function TestSessionsTable({ sessions }: { sessions: TestSessionRow[] }) {
   return (
     <section className="overflow-hidden rounded-md border border-slate-800 bg-[#111821]">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1080px] text-left text-sm">
+        <table className="w-full min-w-[1120px] text-left text-sm">
           <thead className="bg-[#121820] text-xs font-semibold uppercase text-slate-500">
             <tr>
               <th className="px-4 py-3">Session</th>
               <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">URL</th>
-              <th className="px-4 py-3">Tests</th>
+              <th className="px-4 py-3">Total</th>
+              <th className="px-4 py-3">Passed</th>
+              <th className="px-4 py-3">Failed</th>
+              <th className="px-4 py-3">Running</th>
+              <th className="px-4 py-3">Queued</th>
               <th className="px-4 py-3">Duration</th>
-              <th className="px-4 py-3">Source</th>
-              <th className="px-4 py-3" aria-label="Actions" />
+              <th className="px-4 py-3">URL</th>
             </tr>
           </thead>
           <tbody>
@@ -78,7 +80,7 @@ function TestSessionsTable({ sessions }: { sessions: TestSessionRow[] }) {
               ))
             ) : (
               <tr>
-                <td className="px-4 py-8 text-center text-slate-500" colSpan={7}>
+                <td className="px-4 py-8 text-center text-slate-500" colSpan={9}>
                   No test sessions recorded.
                 </td>
               </tr>
@@ -108,6 +110,22 @@ function TestSessionTableRow({ session }: { session: TestSessionRow }) {
         <RunStateBadge runState={session.runState} status={session.status} />
       </td>
       <td className="px-4 py-3">
+        <span className="font-semibold text-slate-300">{session.summary.total}</span>
+      </td>
+      <td className="px-4 py-3">
+        <span className="font-semibold text-emerald-300">{session.summary.passed}</span>
+      </td>
+      <td className="px-4 py-3">
+        <span className="font-semibold text-red-300">{session.summary.failed}</span>
+      </td>
+      <td className="px-4 py-3">
+        <span className="font-semibold text-blue-300">{session.summary.running}</span>
+      </td>
+      <td className="px-4 py-3">
+        <span className="font-semibold text-amber-300">{session.summary.queued}</span>
+      </td>
+      <td className="px-4 py-3 text-slate-300">{session.duration}</td>
+      <td className="px-4 py-3">
         {session.targetUrl ? (
           <a
             className="inline-flex max-w-96 items-center gap-2 truncate text-blue-300 hover:text-blue-200"
@@ -122,25 +140,6 @@ function TestSessionTableRow({ session }: { session: TestSessionRow }) {
         ) : (
           <span className="text-slate-600">-</span>
         )}
-      </td>
-      <td className="px-4 py-3">
-        <SummaryPills summary={session.summary} />
-      </td>
-      <td className="px-4 py-3 text-slate-300">{session.duration}</td>
-      <td className="px-4 py-3">
-        <span className="line-clamp-2 max-w-72 text-slate-500">
-          {session.source ?? "-"}
-        </span>
-      </td>
-      <td className="px-4 py-3">
-        <Link
-          aria-label={`Open test session ${session.id}`}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-md text-slate-400 hover:bg-slate-800 hover:text-slate-100"
-          href={session.href}
-          title="Open session"
-        >
-          <ExternalLink className="h-4 w-4" />
-        </Link>
       </td>
     </tr>
   );

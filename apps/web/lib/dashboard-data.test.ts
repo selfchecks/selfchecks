@@ -1115,7 +1115,7 @@ describe("dashboard data", () => {
             checkSnapshotTags: ["app"],
             checkSnapshotType: "BROWSER",
             createdAt: new Date("2026-07-05T11:20:00.000Z"),
-            durationMs: 1000,
+            durationMs: 305000,
             id: "run_1",
             logsPath: null,
             result: null,
@@ -1139,7 +1139,7 @@ describe("dashboard data", () => {
             checkSnapshotTags: ["api"],
             checkSnapshotType: "API",
             createdAt: new Date("2026-07-05T11:19:00.000Z"),
-            durationMs: 20,
+            durationMs: 370,
             id: "run_2",
             logsPath: null,
             result: {
@@ -1175,7 +1175,7 @@ describe("dashboard data", () => {
       }),
     );
     expect(data.sessions[0]).toMatchObject({
-      duration: "1.02 s",
+      duration: "5 min 5 s",
       href: "/test-sessions/session_1",
       id: "session_1",
       runState: "failed",
@@ -1218,7 +1218,7 @@ describe("dashboard data", () => {
             checkSnapshotTags: ["app"],
             checkSnapshotType: "BROWSER",
             createdAt: new Date("2026-07-05T11:20:00.000Z"),
-            durationMs: 1000,
+            durationMs: 3900000,
             id: "run_1",
             logsPath: null,
             result: null,
@@ -1250,6 +1250,7 @@ describe("dashboard data", () => {
       projectSlug: "default",
       sessions: [
         {
+          duration: "1 h 5 min",
           id: "session_1",
           status: "passing",
           summary: {

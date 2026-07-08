@@ -1341,7 +1341,24 @@ function formatTestSessionDuration(runs: TestSessionRunWithCheck[]): string {
     .filter((duration): duration is number => typeof duration === "number")
     .reduce((sum, duration) => sum + duration, 0);
 
-  return durationMs > 0 ? formatDuration(durationMs) : "-";
+  return durationMs > 0 ? formatLongDuration(durationMs) : "-";
+}
+
+function formatLongDuration(value: number): string {
+  if (value < 60_000) {
+    return formatDuration(value);
+  }
+
+  const totalSeconds = Math.round(value / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return minutes > 0 ? `${hours} h ${minutes} min` : `${hours} h`;
+  }
+
+  return seconds > 0 ? `${minutes} min ${seconds} s` : `${minutes} min`;
 }
 
 function formatTestRunTarget(run: TestSessionRunWithCheck): string {

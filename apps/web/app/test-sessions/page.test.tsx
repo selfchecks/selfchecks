@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -74,12 +74,38 @@ describe("TestSessionsPage", () => {
 
     expect(targetUrlLink.getAttribute("href")).toBe("https://example.test");
     expect(targetUrlLink.getAttribute("target")).toBe("_blank");
-    expect(screen.getByText("2.4 s")).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Total" })).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Passed" })).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Failed" })).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Running" })).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Queued" })).toBeTruthy();
     expect(
-      screen
-        .getByRole("link", { name: "Open test session session_1" })
-        .getAttribute("href"),
-    ).toBe("/test-sessions/session_1");
+      screen.getAllByRole("columnheader").map((header) => header.textContent),
+    ).toEqual([
+      "Session",
+      "Status",
+      "Total",
+      "Passed",
+      "Failed",
+      "Running",
+      "Queued",
+      "Duration",
+      "URL",
+    ]);
+    expect(screen.queryByRole("columnheader", { name: "Source" })).toBeNull();
+    expect(
+      screen.queryByRole("link", { name: "Open test session session_1" }),
+    ).toBeNull();
+
+    const sessionRow = screen.getByRole("row", {
+      name: /Nightly regression/,
+    });
+
+    expect(within(sessionRow).getByRole("cell", { name: "3" })).toBeTruthy();
+    expect(within(sessionRow).getByRole("cell", { name: "2" })).toBeTruthy();
+    expect(within(sessionRow).getByRole("cell", { name: "1" })).toBeTruthy();
+    expect(within(sessionRow).getAllByRole("cell", { name: "0" })).toHaveLength(2);
+    expect(screen.getByText("2.4 s")).toBeTruthy();
   });
 
   it("renders an empty state when no test sessions are recorded", async () => {
