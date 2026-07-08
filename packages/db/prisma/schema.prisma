@@ -88,24 +88,24 @@ model CheckGroup {
 }
 
 model Check {
-  id               String       @id @default(cuid())
+  id               String      @id @default(cuid())
   projectId        String
   groupId          String?
   deploymentId     String?
   key              String
   name             String
   type             CheckType
-  enabled          Boolean      @default(true)
+  enabled          Boolean     @default(true)
   frequencyMinutes Int?
   tags             String[]
   entrypoint       String?
   request          Json?
   retryStrategy    Json?
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
-  deployment       Deployment?  @relation(fields: [deploymentId], references: [id], onDelete: SetNull)
-  group            CheckGroup?  @relation(fields: [groupId], references: [id], onDelete: SetNull)
-  project          Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  deployment       Deployment? @relation(fields: [deploymentId], references: [id], onDelete: SetNull)
+  group            CheckGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  project          Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
   runs             CheckRun[]
 
   @@unique([projectId, key])
@@ -113,39 +113,48 @@ model Check {
 }
 
 model TestSession {
-  id        String         @id @default(cuid())
+  id        String          @id @default(cuid())
   kind      TestSessionKind @default(TRIGGER)
   name      String?
   source    String?
   targetUrl String?
   commitSha String?
-  status    CheckRunStatus @default(QUEUED)
-  createdAt DateTime       @default(now())
+  status    CheckRunStatus  @default(QUEUED)
+  createdAt DateTime        @default(now())
   runs      CheckRun[]
 
   @@index([kind, createdAt])
 }
 
 model CheckRun {
-  id            String         @id @default(cuid())
-  checkId       String
-  testSessionId String?
-  status        CheckRunStatus @default(QUEUED)
-  attempt       Int            @default(1)
-  maxAttempts   Int            @default(1)
-  retryGroupId  String?
-  startedAt     DateTime?
-  finishedAt    DateTime?
-  durationMs    Int?
-  errorMessage  String?
-  logsPath      String?
-  result        Json?
-  createdAt     DateTime       @default(now())
-  artifacts     Artifact[]
-  check         Check          @relation(fields: [checkId], references: [id], onDelete: Cascade)
-  testSession   TestSession?   @relation(fields: [testSessionId], references: [id], onDelete: SetNull)
+  id                       String         @id @default(cuid())
+  checkId                  String?
+  testSessionId            String?
+  status                   CheckRunStatus @default(QUEUED)
+  attempt                  Int            @default(1)
+  maxAttempts              Int            @default(1)
+  retryGroupId             String?
+  startedAt                DateTime?
+  finishedAt               DateTime?
+  durationMs               Int?
+  errorMessage             String?
+  logsPath                 String?
+  result                   Json?
+  checkSnapshotKey         String?
+  checkSnapshotName        String?
+  checkSnapshotType        CheckType?
+  checkSnapshotTags        String[]       @default([])
+  checkSnapshotEntrypoint  String?
+  checkSnapshotRequest     Json?
+  checkSnapshotGroupName   String?
+  checkSnapshotProjectSlug String?
+  createdAt                DateTime       @default(now())
+  artifacts                Artifact[]
+  check                    Check?         @relation(fields: [checkId], references: [id], onDelete: Cascade)
+  testSession              TestSession?   @relation(fields: [testSessionId], references: [id], onDelete: SetNull)
 
   @@index([checkId, createdAt])
+  @@index([checkSnapshotProjectSlug])
   @@index([testSessionId, status, createdAt])
   @@index([retryGroupId, attempt])
   @@index([status, createdAt])
@@ -186,15 +195,15 @@ model Notification {
 }
 
 model AiSettings {
-  id                String   @id @default(cuid())
-  projectId         String   @unique
-  apiEndpoint       String
-  apiKeyCiphertext  String?
-  model             String
-  responseLanguage  String
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id               String   @id @default(cuid())
+  projectId        String   @unique
+  apiEndpoint      String
+  apiKeyCiphertext String?
+  model            String
+  responseLanguage String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  project          Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
 
 model RuntimeEnvironment {

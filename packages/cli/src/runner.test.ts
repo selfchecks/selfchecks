@@ -322,17 +322,23 @@ describe("runCheckById", () => {
       status: "passed",
     });
 
-    expect(mocks.checkRunCreate).toHaveBeenCalledWith({
-      data: {
-        attempt: 2,
-        checkId: "check_1",
-        maxAttempts: 2,
-        retryGroupId: runId,
-        startedAt: expect.any(Date),
-        status: "RUNNING",
-        testSessionId: undefined,
-      },
-    });
+    expect(mocks.checkRunCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          checkSnapshotKey: "api-health",
+          checkSnapshotName: "API health",
+          checkSnapshotProjectSlug: "default",
+          checkSnapshotType: "API",
+          attempt: 2,
+          checkId: "check_1",
+          maxAttempts: 2,
+          retryGroupId: runId,
+          startedAt: expect.any(Date),
+          status: "RUNNING",
+          testSessionId: undefined,
+        }),
+      }),
+    );
     expect(mocks.checkRunUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -419,6 +425,7 @@ describe("runChecks", () => {
 
     expect(mocks.testSessionCreate).toHaveBeenCalledWith({
       data: {
+        commitSha: undefined,
         kind: "TEST",
         name: undefined,
         source: "/repo",
@@ -434,6 +441,104 @@ describe("runChecks", () => {
         id: "session_1",
       },
     });
+  });
+
+  it("records local test definitions as check run snapshots", async () => {
+    mocks.testSessionCreate.mockResolvedValue({
+      id: "session_1",
+      status: "RUNNING",
+    });
+    mocks.checkRunCreate.mockImplementation(async (args) => ({
+      id: "run_1",
+      ...args.data,
+    }));
+    mocks.checkRunUpdate.mockImplementation(async (args) => ({
+      id: args.where.id,
+      ...args.data,
+    }));
+    mocks.testSessionUpdate.mockResolvedValue({
+      id: "session_1",
+      status: "PASSED",
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response('{"ok":true}', {
+          status: 200,
+          statusText: "OK",
+        }),
+      ),
+    );
+
+    await expect(
+      runChecks({
+        checkKeys: ["api-health"],
+        checks: [
+          {
+            enabled: true,
+            groupName: "API",
+            key: "api-health",
+            name: "API health",
+            request: {
+              assertions: [],
+              headers: {},
+              method: "GET",
+              url: "https://example.test/health",
+            },
+            tags: ["smoke"],
+            type: "api",
+          },
+        ],
+        env: [],
+        projectSlug: "default",
+        record: true,
+        reporter: "list",
+        rootDir: "/repo/config/checkly",
+        runMode: "test",
+        source: "developers/frontend/account | v1.2.3 | abc123",
+        tagSets: [],
+        testSessionCommitSha: "abc123",
+        testSessionName: "Release v1.2.3",
+      }),
+    ).resolves.toMatchObject({
+      failed: 0,
+      passed: 1,
+      sessionId: "session_1",
+      total: 1,
+    });
+
+    expect(mocks.checkFindMany).not.toHaveBeenCalled();
+    expect(mocks.projectFindUnique).not.toHaveBeenCalled();
+    expect(mocks.testSessionCreate).toHaveBeenCalledWith({
+      data: {
+        commitSha: "abc123",
+        kind: "TEST",
+        name: "Release v1.2.3",
+        source: "developers/frontend/account | v1.2.3 | abc123",
+        status: "RUNNING",
+        targetUrl: undefined,
+      },
+    });
+    expect(mocks.checkRunCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.not.objectContaining({
+          checkId: expect.anything(),
+        }),
+      }),
+    );
+    expect(mocks.checkRunCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          checkSnapshotGroupName: "API",
+          checkSnapshotKey: "api-health",
+          checkSnapshotName: "API health",
+          checkSnapshotProjectSlug: "default",
+          checkSnapshotTags: ["smoke"],
+          checkSnapshotType: "API",
+          testSessionId: "session_1",
+        }),
+      }),
+    );
   });
 
   it("records CLI monitoring runs as trigger sessions", async () => {
@@ -464,6 +569,7 @@ describe("runChecks", () => {
 
     expect(mocks.testSessionCreate).toHaveBeenCalledWith({
       data: {
+        commitSha: undefined,
         kind: "TRIGGER",
         name: "Deploy v1.2.3",
         source: "/repo",

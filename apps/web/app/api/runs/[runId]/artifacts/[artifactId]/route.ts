@@ -5,6 +5,7 @@ import { Readable } from "node:stream";
 
 import { NextResponse } from "next/server";
 
+import { getArtifactFileName } from "@/lib/artifact-names";
 import { prisma } from "@/lib/prisma";
 import { verifyTraceAccessToken } from "@/lib/trace-access";
 
@@ -67,7 +68,7 @@ export async function GET(request: Request, context: RouteContext) {
     return createErrorResponse(request, url, "Artifact file was not found.", 404);
   }
 
-  const fileName = path.basename(artifact.path);
+  const fileName = getArtifactFileName(artifact);
   const disposition =
     url.searchParams.get("download") === "1" ? "attachment" : "inline";
   const stream = Readable.toWeb(createReadStream(artifact.path));

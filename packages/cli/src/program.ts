@@ -185,8 +185,13 @@ export function createSelfchecksProgram(
           normalizeTags(tagSet.split(",")),
         );
         const env = commandOptions.env.map(parseEnv);
+        const imported = await importCheckDefinitions({
+          projectSlug: commandOptions.project,
+          rootDir: commandOptions.root,
+        });
         const summary = await runChecksLocally({
           checkKeys: commandOptions.check,
+          checks: imported.checks,
           env,
           projectSlug: commandOptions.project,
           record: Boolean(commandOptions.record),

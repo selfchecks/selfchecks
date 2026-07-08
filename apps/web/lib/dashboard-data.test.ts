@@ -157,7 +157,7 @@ describe("dashboard data", () => {
           createdAt,
           id: "artifact_1",
           mimeType: "application/zip",
-          path: "/tmp/trace.zip",
+          path: "/tmp/artifacts/run_1/test-results/paid-content-email-draft-creation-chromium/trace.zip",
           sizeBytes: 43_008,
           type: "TRACE",
         },
@@ -236,11 +236,18 @@ describe("dashboard data", () => {
     expect(mocks.checkRunFindFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
-          check: {
-            enabled: true,
-          },
-          checkId: "check_1",
           id: "run_1",
+          OR: [
+            {
+              check: {
+                enabled: true,
+                id: "check_1",
+              },
+            },
+            {
+              checkSnapshotKey: "check_1",
+            },
+          ],
         },
       }),
     );
@@ -301,7 +308,7 @@ describe("dashboard data", () => {
     });
     expect(detail?.run.artifacts[0]).toMatchObject({
       downloadUrl: "/api/runs/run_1/artifacts/artifact_1?download=1",
-      name: "trace.zip",
+      name: "paid-content-email-draft-creation-chromium.trace.zip",
       size: "42.0 KB",
       type: "trace",
       viewUrl: "/runs/run_1/artifacts/artifact_1/trace",
@@ -401,7 +408,14 @@ describe("dashboard data", () => {
           },
         ],
         where: {
-          checkId: "check_1",
+          OR: [
+            {
+              checkId: "check_1",
+            },
+            {
+              checkSnapshotKey: "bff-health",
+            },
+          ],
           retryGroupId: "run_1",
         },
       }),
@@ -1090,20 +1104,16 @@ describe("dashboard data", () => {
         runs: [
           {
             artifacts: [],
-            check: {
-              enabled: true,
-              entrypoint: "signin.spec.ts",
-              group: {
-                name: "Browser",
-              },
-              id: "check_1",
-              key: "signin",
-              name: "Signin",
-              request: null,
-              tags: ["app"],
-              type: "BROWSER",
-            },
-            checkId: "check_1",
+            check: null,
+            checkId: null,
+            checkSnapshotEntrypoint: "signin.spec.ts",
+            checkSnapshotGroupName: "Browser",
+            checkSnapshotKey: "signin",
+            checkSnapshotName: "Signin",
+            checkSnapshotProjectSlug: "default",
+            checkSnapshotRequest: null,
+            checkSnapshotTags: ["app"],
+            checkSnapshotType: "BROWSER",
             createdAt: new Date("2026-07-05T11:20:00.000Z"),
             durationMs: 1000,
             id: "run_1",
@@ -1113,25 +1123,21 @@ describe("dashboard data", () => {
           },
           {
             artifacts: [],
-            check: {
-              enabled: true,
-              entrypoint: null,
-              group: {
-                name: "API / Bff",
-              },
-              id: "check_2",
-              key: "bff-health",
-              name: "bff-health",
-              request: {
-                assertions: [],
-                headers: {},
-                method: "GET",
-                url: "https://example.test/health",
-              },
-              tags: ["api"],
-              type: "API",
+            check: null,
+            checkId: null,
+            checkSnapshotEntrypoint: null,
+            checkSnapshotGroupName: "API / Bff",
+            checkSnapshotKey: "bff-health",
+            checkSnapshotName: "bff-health",
+            checkSnapshotProjectSlug: "default",
+            checkSnapshotRequest: {
+              assertions: [],
+              headers: {},
+              method: "GET",
+              url: "https://example.test/health",
             },
-            checkId: "check_2",
+            checkSnapshotTags: ["api"],
+            checkSnapshotType: "API",
             createdAt: new Date("2026-07-05T11:19:00.000Z"),
             durationMs: 20,
             id: "run_2",
@@ -1153,10 +1159,16 @@ describe("dashboard data", () => {
           kind: "TEST",
           runs: {
             some: {
-              check: {
-                enabled: true,
-                projectId: "project_1",
-              },
+              OR: [
+                {
+                  check: {
+                    projectId: "project_1",
+                  },
+                },
+                {
+                  checkSnapshotProjectSlug: "default",
+                },
+              ],
             },
           },
         },
@@ -1177,6 +1189,75 @@ describe("dashboard data", () => {
         total: 2,
       },
       targetUrl: "https://example.test",
+    });
+  });
+
+  it("loads snapshot-only test sessions without a persisted project row", async () => {
+    mocks.checkRunUpdateMany.mockResolvedValue({ count: 0 });
+    mocks.projectFindUnique.mockResolvedValue(null);
+    mocks.projectFindFirst.mockResolvedValue(null);
+    mocks.testSessionFindMany.mockResolvedValue([
+      {
+        createdAt: new Date("2026-07-05T11:20:00.000Z"),
+        id: "session_1",
+        name: "Release v1.2.3",
+        source: "developers/frontend/account | v1.2.3",
+        status: "PASSED",
+        targetUrl: "https://example.test",
+        runs: [
+          {
+            artifacts: [],
+            check: null,
+            checkId: null,
+            checkSnapshotEntrypoint: "signin.spec.ts",
+            checkSnapshotGroupName: "Browser",
+            checkSnapshotKey: "signin",
+            checkSnapshotName: "Signin",
+            checkSnapshotProjectSlug: "default",
+            checkSnapshotRequest: null,
+            checkSnapshotTags: ["app"],
+            checkSnapshotType: "BROWSER",
+            createdAt: new Date("2026-07-05T11:20:00.000Z"),
+            durationMs: 1000,
+            id: "run_1",
+            logsPath: null,
+            result: null,
+            status: "PASSED",
+          },
+        ],
+      },
+    ]);
+
+    const data = await getTestSessionsData("default");
+
+    expect(mocks.testSessionFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          kind: "TEST",
+          runs: {
+            some: {
+              OR: [
+                {
+                  checkSnapshotProjectSlug: "default",
+                },
+              ],
+            },
+          },
+        },
+      }),
+    );
+    expect(data).toMatchObject({
+      projectSlug: "default",
+      sessions: [
+        {
+          id: "session_1",
+          status: "passing",
+          summary: {
+            passed: 1,
+            total: 1,
+          },
+        },
+      ],
     });
   });
 });

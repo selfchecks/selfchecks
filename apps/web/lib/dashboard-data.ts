@@ -16,6 +16,7 @@ import type {
   DashboardStatus,
   DashboardSummary,
 } from "./dashboard-types";
+import { getArtifactFileName } from "./artifact-names";
 import { prisma } from "./prisma";
 import { getRunResultTone } from "./run-result-tone";
 import { getRuntimeTimeZone } from "./runtime-config";
@@ -260,7 +261,15 @@ type MappableRun = {
   createdAt: Date;
   durationMs: number | null;
   errorMessage: string | null;
-  checkId?: string;
+  checkId?: string | null;
+  checkSnapshotEntrypoint?: string | null;
+  checkSnapshotGroupName?: string | null;
+  checkSnapshotKey?: string | null;
+  checkSnapshotName?: string | null;
+  checkSnapshotProjectSlug?: string | null;
+  checkSnapshotRequest?: unknown;
+  checkSnapshotTags?: string[];
+  checkSnapshotType?: string | null;
   id: string;
   logsPath: string | null;
   attempt?: number | null;
@@ -301,8 +310,8 @@ type TestSessionRunWithCheck = MappableRun & {
     request: unknown;
     tags: string[];
     type: string;
-  };
-  checkId: string;
+  } | null;
+  checkId: string | null;
 };
 type TestSessionWithRuns = {
   createdAt: Date;
@@ -312,6 +321,33 @@ type TestSessionWithRuns = {
   source: string | null;
   status: string;
   targetUrl: string | null;
+};
+type RunCheckSnapshot = {
+  entrypoint: string | null;
+  groupName: string;
+  id: string;
+  key: string;
+  name: string;
+  projectSlug: string;
+  request: unknown;
+  tags: string[];
+  type: string;
+};
+type JournalRunWithCheck = MappableRun & {
+  check: {
+    frequencyMinutes: number | null;
+    group: {
+      name: string;
+    } | null;
+    id: string;
+    key: string;
+    name: string;
+    tags: string[];
+    type: string;
+  };
+  testSession: {
+    name: string | null;
+  } | null;
 };
 
 const JOURNAL_DEFAULT_PAGE_SIZE = 20;
@@ -551,11 +587,18 @@ export async function getRunDetailData(
         },
       },
       where: {
-        check: {
-          enabled: true,
-        },
-        checkId,
         id: runId,
+        OR: [
+          {
+            check: {
+              enabled: true,
+              id: checkId,
+            },
+          },
+          {
+            checkSnapshotKey: checkId,
+          },
+        ],
       },
     });
 
@@ -563,32 +606,33 @@ export async function getRunDetailData(
       return undefined;
     }
 
-    const request = formatRunRequest(run.check.request, run.result);
-    const attemptRuns = await fetchRunAttempts(run);
+    const check = getRunCheckSnapshot(run as TestSessionRunWithCheck);
+    const request = formatRunRequest(check.request, run.result);
+    const attemptRuns = await fetchRunAttempts(run as MappableRun);
     const attempts = attemptRuns.map((attemptRun) =>
-      mapAttemptNavigationRun(attemptRun, run.checkId, run.id, timeZone),
+      mapAttemptNavigationRun(attemptRun, check.id, run.id, timeZone),
     );
     const maxAttempts = Math.max(getRunMaxAttempts(run), attempts.length);
 
     return {
       check: {
-        id: run.check.id,
-        name: run.check.name,
+        id: check.id,
+        name: check.name,
         settings: {
-          enabled: run.check.enabled,
-          entrypoint: run.check.entrypoint ?? undefined,
+          enabled: run.check?.enabled ?? false,
+          entrypoint: check.entrypoint ?? undefined,
           frequency:
-            typeof run.check.frequencyMinutes === "number"
+            typeof run.check?.frequencyMinutes === "number"
               ? `${run.check.frequencyMinutes} min`
               : "manual",
-          key: run.check.key,
-          request: formatRequestSettings(run.check.request),
+          key: check.key,
+          request: formatRequestSettings(check.request),
         },
-        tags: run.check.tags,
-        type: run.check.type.toLowerCase() as DashboardCheckRow["type"],
+        tags: check.tags,
+        type: check.type.toLowerCase() as DashboardCheckRow["type"],
       },
-      groupName: run.check.group?.name ?? "Ungrouped",
-      projectSlug: run.check.project.slug,
+      groupName: check.groupName,
+      projectSlug: check.projectSlug,
       run: {
         ...mapRun(run, timeZone),
         attemptNumber: getRunAttempt(run),
@@ -678,6 +722,8 @@ export async function getJournalData(
       where,
     });
 
+    const journalRuns = runs.filter(hasJournalCheck);
+
     return {
       filters: {
         ...filters,
@@ -689,12 +735,12 @@ export async function getJournalData(
         hasPrevious: page > 1,
         page,
         pageSize: filters.pageSize,
-        to: skip + runs.length,
+        to: skip + journalRuns.length,
         total,
         totalPages,
       },
       projectSlug: project.slug,
-      runs: runs.map((run) => mapJournalRun(run, timeZone)),
+      runs: journalRuns.map((run) => mapJournalRun(run, timeZone)),
     };
   } catch (error) {
     console.warn("Unable to load journal data.", error);
@@ -711,13 +757,21 @@ export async function getTestSessionsData(
     await cancelStaleQueuedRuns();
 
     const project = await findProjectForDashboard(projectSlug);
-
-    if (!project) {
-      return {
-        projectSlug,
-        sessions: [],
-      };
-    }
+    const resolvedProjectSlug = project?.slug ?? projectSlug;
+    const projectRunFilters: Prisma.CheckRunWhereInput[] = [
+      ...(project
+        ? [
+            {
+              check: {
+                projectId: project.id,
+              },
+            },
+          ]
+        : []),
+      {
+        checkSnapshotProjectSlug: resolvedProjectSlug,
+      },
+    ];
 
     const sessions = await prisma.testSession.findMany({
       include: {
@@ -747,17 +801,14 @@ export async function getTestSessionsData(
         kind: "TEST",
         runs: {
           some: {
-            check: {
-              enabled: true,
-              projectId: project.id,
-            },
+            OR: projectRunFilters,
           },
         },
       },
     });
 
     return {
-      projectSlug: project.slug,
+      projectSlug: resolvedProjectSlug,
       sessions: sessions.map((session) =>
         mapTestSession(session as TestSessionWithRuns, timeZone),
       ),
@@ -816,12 +867,11 @@ export async function getTestSessionData(
     }
 
     const mappedSession = mapTestSession(session as TestSessionWithRuns, timeZone);
-    const runs = (session.runs as TestSessionRunWithCheck[]).filter(
-      (run) => run.check.enabled,
-    );
+    const runs = session.runs as TestSessionRunWithCheck[];
+    const firstCheck = runs[0] ? getRunCheckSnapshot(runs[0]) : undefined;
 
     return {
-      projectSlug: runs[0]?.check.project?.slug ?? "default",
+      projectSlug: firstCheck?.projectSlug ?? "default",
       session: {
         ...mappedSession,
         checks: mapTestSessionChecks(runs, session.id),
@@ -871,7 +921,14 @@ export async function getTestSessionCheckData(
             },
           ],
           where: {
-            checkId,
+            OR: [
+              {
+                checkId,
+              },
+              {
+                checkSnapshotKey: checkId,
+              },
+            ],
           },
         },
       },
@@ -880,10 +937,14 @@ export async function getTestSessionCheckData(
         kind: "TEST",
         runs: {
           some: {
-            checkId,
-            check: {
-              enabled: true,
-            },
+            OR: [
+              {
+                checkId,
+              },
+              {
+                checkSnapshotKey: checkId,
+              },
+            ],
           },
         },
       },
@@ -892,26 +953,26 @@ export async function getTestSessionCheckData(
     const runs = (session?.runs ?? []) as TestSessionRunWithCheck[];
     const firstRun = runs[0];
 
-    if (!session || !firstRun || !firstRun.check.enabled) {
+    if (!session || !firstRun) {
       return undefined;
     }
 
+    const check = getRunCheckSnapshot(firstRun);
+
     return {
       check: {
-        id: firstRun.check.id,
-        key: firstRun.check.key,
-        name: firstRun.check.name,
-        tags: firstRun.check.tags,
+        id: check.id,
+        key: check.key,
+        name: check.name,
+        tags: check.tags,
         target: formatTestRunTarget(firstRun),
-        type: firstRun.check.type.toLowerCase() as DashboardCheckRow["type"],
+        type: check.type.toLowerCase() as DashboardCheckRow["type"],
       },
-      groupName: firstRun.check.group?.name ?? "Ungrouped",
-      projectSlug: firstRun.check.project?.slug ?? "default",
+      groupName: check.groupName,
+      projectSlug: check.projectSlug,
       runs: runs.map((run) => ({
         ...mapRun(run, timeZone),
-        runHref: `/checks/${encodeURIComponent(run.check.id)}/runs/${encodeURIComponent(
-          run.id,
-        )}`,
+        runHref: buildRunHref(getRunCheckSnapshot(run).id, run.id),
       })),
       session: mapTestSession(session as TestSessionWithRuns, timeZone),
     };
@@ -1127,7 +1188,7 @@ function mapTestSession(
   session: TestSessionWithRuns,
   timeZone: string,
 ): TestSessionRow {
-  const runs = session.runs.filter((run) => run.check.enabled);
+  const runs = session.runs;
   const latestRuns = getLatestRunsByCheck(runs);
   const summary = summarizeTestSessionRuns(latestRuns);
 
@@ -1154,13 +1215,15 @@ function mapTestSessionChecks(
   const runsByCheck = new Map<string, TestSessionRunWithCheck[]>();
 
   for (const run of runs) {
-    runsByCheck.set(run.check.id, [...(runsByCheck.get(run.check.id) ?? []), run]);
+    const check = getRunCheckSnapshot(run);
+
+    runsByCheck.set(check.id, [...(runsByCheck.get(check.id) ?? []), run]);
   }
 
   return [...runsByCheck.values()]
     .map((checkRuns) => {
       const latestRun = getLatestRun(checkRuns);
-      const check = latestRun.check;
+      const check = getRunCheckSnapshot(latestRun);
 
       return {
         checkHref: `/test-sessions/${encodeURIComponent(
@@ -1171,10 +1234,8 @@ function mapTestSessionChecks(
         checkName: check.name,
         checkType: check.type.toLowerCase() as DashboardCheckRow["type"],
         duration: formatDuration(latestRun.durationMs ?? undefined),
-        groupName: check.group?.name ?? "Ungrouped",
-        latestRunHref: `/checks/${encodeURIComponent(
-          check.id,
-        )}/runs/${encodeURIComponent(latestRun.id)}`,
+        groupName: check.groupName,
+        latestRunHref: buildRunHref(check.id, latestRun.id),
         runCount: checkRuns.length,
         runState: mapRunState(latestRun.status),
         status: mapRunStatus(latestRun.status),
@@ -1191,16 +1252,49 @@ function mapTestSessionChecks(
     });
 }
 
+function getRunCheckSnapshot(run: TestSessionRunWithCheck | MappableRun): RunCheckSnapshot {
+  if ("check" in run && run.check) {
+    return {
+      entrypoint: run.check.entrypoint,
+      groupName: run.check.group?.name ?? "Ungrouped",
+      id: run.check.id,
+      key: run.check.key,
+      name: run.check.name,
+      projectSlug: run.check.project?.slug ?? "default",
+      request: run.check.request,
+      tags: run.check.tags,
+      type: run.check.type,
+    };
+  }
+
+  return {
+    entrypoint: run.checkSnapshotEntrypoint ?? null,
+    groupName: run.checkSnapshotGroupName ?? "Ungrouped",
+    id: run.checkSnapshotKey ?? run.checkId ?? run.id,
+    key: run.checkSnapshotKey ?? run.checkId ?? run.id,
+    name: run.checkSnapshotName ?? run.checkSnapshotKey ?? "Unknown check",
+    projectSlug: run.checkSnapshotProjectSlug ?? "default",
+    request: run.checkSnapshotRequest,
+    tags: run.checkSnapshotTags ?? [],
+    type: run.checkSnapshotType ?? "BROWSER",
+  };
+}
+
+function buildRunHref(checkId: string, runId: string): string {
+  return `/checks/${encodeURIComponent(checkId)}/runs/${encodeURIComponent(runId)}`;
+}
+
 function getLatestRunsByCheck(
   runs: TestSessionRunWithCheck[],
 ): TestSessionRunWithCheck[] {
   const runsByCheck = new Map<string, TestSessionRunWithCheck>();
 
   for (const run of runs) {
-    const current = runsByCheck.get(run.check.id);
+    const check = getRunCheckSnapshot(run);
+    const current = runsByCheck.get(check.id);
 
     if (!current || run.createdAt > current.createdAt) {
-      runsByCheck.set(run.check.id, run);
+      runsByCheck.set(check.id, run);
     }
   }
 
@@ -1255,13 +1349,14 @@ function formatTestRunTarget(run: TestSessionRunWithCheck): string {
     return resultUrl;
   }
 
-  const request = formatRequestSettings(run.check.request);
+  const check = getRunCheckSnapshot(run);
+  const request = formatRequestSettings(check.request);
 
   if (request) {
     return `${request.method} ${request.url}`;
   }
 
-  return run.check.entrypoint ?? "-";
+  return check.entrypoint ?? "-";
 }
 
 function statusSortRank(runState: DashboardRunState): number {
@@ -1284,25 +1379,13 @@ function statusSortRank(runState: DashboardRunState): number {
   return 4;
 }
 
-function mapJournalRun(
-  run: MappableRun & {
-    check: {
-      frequencyMinutes: number | null;
-      group: {
-        name: string;
-      } | null;
-      id: string;
-      key: string;
-      name: string;
-      tags: string[];
-      type: string;
-    };
-    testSession: {
-      name: string | null;
-    } | null;
-  },
-  timeZone: string,
-): JournalRunRow {
+function hasJournalCheck<T extends { check: unknown | null }>(
+  run: T,
+): run is T & { check: NonNullable<T["check"]> } {
+  return Boolean(run.check);
+}
+
+function mapJournalRun(run: JournalRunWithCheck, timeZone: string): JournalRunRow {
   return {
     ...mapRun(run, timeZone),
     checkHref: `/checks/${encodeURIComponent(run.check.id)}`,
@@ -1509,12 +1592,14 @@ function mapRun(run: MappableRun, timeZone: string): DashboardRunRow {
   };
 }
 
-async function fetchRunAttempts(run: MappableRun & { checkId: string }) {
+async function fetchRunAttempts(run: MappableRun) {
   const retryGroupId = run.retryGroupId?.trim();
 
   if (!retryGroupId) {
     return [run];
   }
+
+  const check = getRunCheckSnapshot(run);
 
   const runs = await prisma.checkRun.findMany({
     include: {
@@ -1533,7 +1618,18 @@ async function fetchRunAttempts(run: MappableRun & { checkId: string }) {
       },
     ],
     where: {
-      checkId: run.checkId,
+      OR: [
+        ...(run.checkId
+          ? [
+              {
+                checkId: run.checkId,
+              },
+            ]
+          : []),
+        {
+          checkSnapshotKey: check.key,
+        },
+      ],
       retryGroupId,
     },
   });
@@ -2035,7 +2131,7 @@ function mapRunArtifacts(run: MappableRun): DashboardRunArtifact[] {
     downloadUrl: buildArtifactUrl(run.id, artifact.id, true),
     id: artifact.id,
     mimeType: artifact.mimeType ?? undefined,
-    name: path.basename(artifact.path),
+    name: getArtifactFileName(artifact),
     size: formatBytes(artifact.sizeBytes ?? undefined),
     type: artifact.type.toLowerCase() as DashboardRunArtifact["type"],
     viewUrl: buildArtifactViewUrl(run.id, artifact.id, artifact.type),

@@ -18,6 +18,23 @@ async function createTempProject(): Promise<string> {
   return dir;
 }
 
+async function createTempChecklyProject(): Promise<string> {
+  const rootDir = await createTempProject();
+
+  await mkdir(path.join(rootDir, "config/checkly"), { recursive: true });
+  await writeFile(
+    path.join(rootDir, "config/checkly/homepage.check.ts"),
+    `
+      new BrowserCheck("homepage", {
+        name: "Homepage",
+        entrypoint: "homepage.spec.ts"
+      });
+    `,
+  );
+
+  return rootDir;
+}
+
 afterEach(async () => {
   const { rm } = await import("node:fs/promises");
   await Promise.all(
@@ -310,6 +327,8 @@ describe("createSelfchecksProgram", () => {
   });
 
   it("emits normalized test selectors and environment variables", async () => {
+    const rootDir = await createTempChecklyProject();
+
     await expect(
       parseCommand([
         "test",
@@ -322,6 +341,8 @@ describe("createSelfchecksProgram", () => {
         "--reporter",
         "github",
         "--record",
+        "--root",
+        rootDir,
       ]),
     ).resolves.toEqual([
       {
@@ -336,7 +357,7 @@ describe("createSelfchecksProgram", () => {
         projectSlug: "default",
         record: true,
         reporter: "github",
-        rootDir: process.cwd(),
+        rootDir,
         status: "completed",
         summary: {
           durationMs: 10,
@@ -355,6 +376,7 @@ describe("createSelfchecksProgram", () => {
   });
 
   it("runs the test command as a recorded test session", async () => {
+    const rootDir = await createTempChecklyProject();
     const runChecksLocally = vi.fn(async () => ({
       durationMs: 10,
       failed: 0,
@@ -379,6 +401,8 @@ describe("createSelfchecksProgram", () => {
       "selfchecks",
       "test",
       "--record",
+      "--root",
+      rootDir,
       "-e",
       "ENVIRONMENT_URL=https://example.test",
     ]);

@@ -2,12 +2,12 @@ import crypto from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
-import type { Check } from "@selfchecks/db";
 import { prisma } from "@selfchecks/db";
 
 import type {
   CheckExecutionResult,
   CollectedRunArtifact,
+  RunnableCheck,
   RunChecksOptions,
 } from "./runner.js";
 
@@ -41,7 +41,7 @@ export async function analyzeFailedCheck({
   options,
   result,
 }: {
-  check: Check;
+  check: RunnableCheck;
   options: RunChecksOptions;
   result: CheckExecutionResult;
 }): Promise<Record<string, unknown> | undefined> {
@@ -108,7 +108,7 @@ async function readAiSettings(projectSlug: string): Promise<AiSettings | undefin
 }
 
 async function buildFailureContext(
-  check: Check,
+  check: RunnableCheck,
   options: RunChecksOptions,
   result: CheckExecutionResult,
 ) {
@@ -193,7 +193,7 @@ async function requestAiAnalysis(settings: AiSettings, context: string) {
   return content;
 }
 
-async function readCheckSource(check: Check, rootDir: string) {
+async function readCheckSource(check: RunnableCheck, rootDir: string) {
   if (!check.entrypoint) {
     return undefined;
   }

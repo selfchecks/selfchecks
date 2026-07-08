@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -32,6 +32,7 @@ async function createTempFile(name: string, content: string) {
   const filePath = path.join(directory, name);
 
   tempDirs.push(directory);
+  await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, content);
 
   return filePath;
@@ -65,7 +66,10 @@ describe("artifact route", () => {
   });
 
   it("streams a stored artifact for viewing or download", async () => {
-    const filePath = await createTempFile("trace.zip", "trace payload");
+    const filePath = await createTempFile(
+      "test-results/paid-content-email-draft-creation-chromium/trace.zip",
+      "trace payload",
+    );
     mocks.artifactFindFirst.mockResolvedValue({
       mimeType: "application/zip",
       path: filePath,
@@ -80,6 +84,9 @@ describe("artifact route", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("application/zip");
     expect(response.headers.get("content-disposition")).toContain("attachment");
+    expect(response.headers.get("content-disposition")).toContain(
+      "paid-content-email-draft-creation-chromium.trace.zip",
+    );
     await expect(response.text()).resolves.toBe("trace payload");
     expect(mocks.artifactFindFirst).toHaveBeenCalledWith({
       select: {

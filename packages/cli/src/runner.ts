@@ -3,12 +3,16 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 
-import type { ApiRequest, CheckRunStatus, RetryStrategy } from "@selfchecks/core";
+import type {
+  ApiRequest,
+  CheckDefinition,
+  CheckRunStatus,
+  RetryStrategy,
+} from "@selfchecks/core";
 import { normalizeTags } from "@selfchecks/core";
 import {
   prisma,
   Prisma,
-  type Check,
   type CheckRun,
   type TestSession,
 } from "@selfchecks/db";
@@ -41,6 +45,7 @@ export type RunChecksSummary = {
 
 export type RunChecksOptions = {
   checkKeys?: string[];
+  checks?: CheckDefinition[];
   env: EnvVar[];
   projectSlug: string;
   record: boolean;
@@ -48,7 +53,9 @@ export type RunChecksOptions = {
   retries?: number;
   rootDir: string;
   runMode?: "monitoring" | "test";
+  source?: string;
   tagSets: string[][];
+  testSessionCommitSha?: string;
   testSessionName?: string;
 };
 
@@ -63,9 +70,32 @@ export type RunCheckByIdOptions = {
   runId?: string;
 };
 
-type RunnableCheck = Check & {
+export type RunnableCheck = {
+  entrypoint: string | null;
+  group?: {
+    name: string;
+  } | null;
+  id?: string;
+  key: string;
+  name: string;
+  request: unknown;
+  retryStrategy: unknown;
   runs: CheckRun[];
+  tags: string[];
+  type: "API" | "BROWSER";
 };
+
+type CheckRunSnapshotData = Pick<
+  Prisma.CheckRunUncheckedCreateInput,
+  | "checkSnapshotEntrypoint"
+  | "checkSnapshotGroupName"
+  | "checkSnapshotKey"
+  | "checkSnapshotName"
+  | "checkSnapshotProjectSlug"
+  | "checkSnapshotRequest"
+  | "checkSnapshotTags"
+  | "checkSnapshotType"
+>;
 
 export type CheckExecutionResult = {
   artifacts?: CollectedRunArtifact[];
@@ -156,6 +186,7 @@ export async function runCheckById(
   return runCheck(
     check,
     {
+      checks: undefined,
       checkKeys: [check.key],
       env: options.env,
       projectSlug: options.projectSlug,
@@ -172,6 +203,31 @@ export async function runCheckById(
 }
 
 async function findRunnableChecks(options: RunChecksOptions): Promise<RunnableCheck[]> {
+  if (options.checks) {
+    return options.checks
+      .filter((check) => check.enabled)
+      .filter(
+        (check) =>
+          !options.checkKeys?.length || options.checkKeys.includes(check.key),
+      )
+      .filter((check) => doesCheckMatchTags(check, options.tagSets))
+      .map((check) => ({
+        entrypoint: check.entrypoint ?? null,
+        group: check.groupName
+          ? {
+              name: check.groupName,
+            }
+          : null,
+        key: check.key,
+        name: check.name,
+        request: check.request ?? null,
+        retryStrategy: check.retryStrategy ?? null,
+        runs: [],
+        tags: check.tags,
+        type: check.type.toUpperCase() as "API" | "BROWSER",
+      }));
+  }
+
   const project = await prisma.project.findUnique({
     select: {
       id: true,
@@ -187,6 +243,7 @@ async function findRunnableChecks(options: RunChecksOptions): Promise<RunnableCh
 
   const checks = await prisma.check.findMany({
     include: {
+      group: true,
       runs: {
         orderBy: {
           createdAt: "desc",
@@ -212,7 +269,10 @@ async function findRunnableChecks(options: RunChecksOptions): Promise<RunnableCh
   return checks.filter((check) => doesCheckMatchTags(check, options.tagSets));
 }
 
-function doesCheckMatchTags(check: Check, tagSets: string[][]): boolean {
+function doesCheckMatchTags(
+  check: { tags: string[] },
+  tagSets: string[][],
+): boolean {
   if (tagSets.length === 0) {
     return true;
   }
@@ -228,8 +288,9 @@ async function createRunSession(options: RunChecksOptions): Promise<TestSession>
   return prisma.testSession.create({
     data: {
       kind: isTestSession ? "TEST" : "TRIGGER",
+      commitSha: options.testSessionCommitSha,
       name: options.testSessionName,
-      source: options.rootDir,
+      source: options.source ?? options.rootDir,
       status: "RUNNING",
       targetUrl: isTestSession ? resolveTestSessionTargetUrl(options.env) : undefined,
     },
@@ -277,7 +338,7 @@ async function runCheck(
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const startedAt = new Date();
     const run = options.record
-      ? await upsertStartedRun(check.id, startedAt, session, attemptRunId, {
+      ? await upsertStartedRun(check, options, startedAt, session, attemptRunId, {
           attempt,
           maxAttempts,
           retryGroupId,
@@ -360,7 +421,8 @@ async function runCheck(
 }
 
 async function upsertStartedRun(
-  checkId: string,
+  check: RunnableCheck,
+  options: RunChecksOptions,
   startedAt: Date,
   session: TestSession | undefined,
   existingRunId: string | undefined,
@@ -370,44 +432,52 @@ async function upsertStartedRun(
     retryGroupId: string;
   },
 ): Promise<CheckRun> {
+  const snapshot = buildCheckRunSnapshot(check, options);
+
   if (!existingRunId) {
-    return prisma.checkRun.create({
-      data: {
-        attempt: retryMetadata.attempt,
-        checkId,
-        maxAttempts: retryMetadata.maxAttempts,
-        retryGroupId: retryMetadata.retryGroupId,
-        startedAt,
-        status: "RUNNING",
-        testSessionId: session?.id,
-      },
-    });
-  }
-
-  const run = await prisma.checkRun.findFirst({
-    where: {
-      checkId,
-      id: existingRunId,
-    },
-  });
-
-  if (!run) {
-    throw new Error(`Run ${existingRunId} was not found for check ${checkId}.`);
-  }
-
-  return prisma.checkRun.update({
-    data: {
+    const data: Prisma.CheckRunUncheckedCreateInput = {
       attempt: retryMetadata.attempt,
-      durationMs: null,
-      errorMessage: null,
-      finishedAt: null,
-      logsPath: null,
+      ...(check.id ? { checkId: check.id } : {}),
+      ...snapshot,
       maxAttempts: retryMetadata.maxAttempts,
       retryGroupId: retryMetadata.retryGroupId,
       startedAt,
       status: "RUNNING",
       testSessionId: session?.id,
+    };
+
+    return prisma.checkRun.create({
+      data,
+    });
+  }
+
+  const run = await prisma.checkRun.findFirst({
+    where: {
+      id: existingRunId,
+      ...(check.id ? { checkId: check.id } : {}),
     },
+  });
+
+  if (!run) {
+    throw new Error(`Run ${existingRunId} was not found for check ${check.key}.`);
+  }
+
+  const data: Prisma.CheckRunUncheckedUpdateInput = {
+    attempt: retryMetadata.attempt,
+    ...snapshot,
+    durationMs: null,
+    errorMessage: null,
+    finishedAt: null,
+    logsPath: null,
+    maxAttempts: retryMetadata.maxAttempts,
+    retryGroupId: retryMetadata.retryGroupId,
+    startedAt,
+    status: "RUNNING",
+    testSessionId: session?.id,
+  };
+
+  return prisma.checkRun.update({
+    data,
     where: {
       id: run.id,
     },
@@ -422,7 +492,7 @@ type RetryPlan = {
   type: RetryStrategy["type"];
 };
 
-function resolveRetryPlan(check: Check, options: RunChecksOptions): RetryPlan {
+function resolveRetryPlan(check: RunnableCheck, options: RunChecksOptions): RetryPlan {
   if (typeof options.retries === "number") {
     return {
       baseBackoffSeconds: 0,
@@ -609,7 +679,7 @@ async function waitForRetry(delayMs: number): Promise<void> {
 }
 
 async function executeCheck(
-  check: Check,
+  check: RunnableCheck,
   options: RunChecksOptions,
   run: CheckRun | undefined,
 ): Promise<CheckExecutionResult> {
@@ -632,7 +702,7 @@ async function executeCheck(
 }
 
 async function runBrowserCheck(
-  check: Check,
+  check: RunnableCheck,
   options: RunChecksOptions,
   run: CheckRun | undefined,
 ): Promise<CheckExecutionResult> {
@@ -692,7 +762,7 @@ async function runBrowserCheck(
 }
 
 async function runApiCheck(
-  check: Check,
+  check: RunnableCheck,
   options: RunChecksOptions,
 ): Promise<CheckExecutionResult> {
   const request = check.request as ApiRequest | null;
@@ -1097,6 +1167,22 @@ function findSnapshotUpdateArtifactName(
   return (
     suffixMatch?.snapshotName ?? names.byActualName.get(path.basename(artifactPath))
   );
+}
+
+function buildCheckRunSnapshot(
+  check: RunnableCheck,
+  options: RunChecksOptions,
+): CheckRunSnapshotData {
+  return {
+    checkSnapshotEntrypoint: check.entrypoint,
+    checkSnapshotGroupName: check.group?.name,
+    checkSnapshotKey: check.key,
+    checkSnapshotName: check.name,
+    checkSnapshotProjectSlug: options.projectSlug,
+    checkSnapshotRequest: check.request as Prisma.InputJsonValue,
+    checkSnapshotTags: check.tags,
+    checkSnapshotType: check.type,
+  };
 }
 
 function cleanOutputPath(value: string | undefined): string {
