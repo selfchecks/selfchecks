@@ -123,11 +123,13 @@ describe("TestSessionCheckPage", () => {
     expect(
       screen.getByRole("link", { name: /Jul 05 14:20/ }).getAttribute("href"),
     ).toBe("/checks/check_1/runs/run_1");
+    expect(
+      screen.getAllByRole("columnheader").map((header) => header.textContent),
+    ).toEqual(["Run", "Status", "Attempt", "Duration", "Error"]);
     expect(screen.getByText("#2 of 2")).toBeTruthy();
     expect(screen.getByText("locator not found")).toBeTruthy();
-    expect(
-      screen.getByRole("link", { name: "Open run run_1" }).getAttribute("href"),
-    ).toBe("/checks/check_1/runs/run_1");
+    expect(screen.queryByRole("columnheader", { name: "Artifacts" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Open run run_1" })).toBeNull();
   });
 
   it("delegates to notFound when the check is missing from the session", async () => {

@@ -1,4 +1,4 @@
-import { ArrowLeft, ExternalLink, FlaskConical } from "lucide-react";
+import { ArrowLeft, FlaskConical } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -9,11 +9,7 @@ import {
 } from "@/lib/dashboard-data";
 import { getDashboardSettingsData } from "@/lib/settings-data";
 
-import {
-  ArtifactSummary,
-  RunStateBadge,
-  runStateLabels,
-} from "../../../test-session-components";
+import { RunStateBadge, runStateLabels } from "../../../test-session-components";
 
 export const dynamic = "force-dynamic";
 
@@ -138,9 +134,7 @@ function SessionCheckRunsTable({ data }: { data: TestSessionCheckDetailData }) {
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Attempt</th>
               <th className="px-4 py-3">Duration</th>
-              <th className="px-4 py-3">Artifacts</th>
               <th className="px-4 py-3">Error</th>
-              <th className="px-4 py-3" aria-label="Actions" />
             </tr>
           </thead>
           <tbody>
@@ -167,23 +161,10 @@ function SessionCheckRunsTable({ data }: { data: TestSessionCheckDetailData }) {
                   #{run.attempt} of {run.maxAttempts}
                 </td>
                 <td className="px-4 py-3 text-slate-300">{run.duration}</td>
-                <td className="px-4 py-3">
-                  <ArtifactSummary artifacts={run.artifacts} />
-                </td>
                 <td className="max-w-[24rem] px-4 py-3 text-slate-500">
                   <span className="line-clamp-2">
                     {run.errorMessage ?? runStateLabels[run.runState]}
                   </span>
-                </td>
-                <td className="px-4 py-3">
-                  <Link
-                    aria-label={`Open run ${run.id}`}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-md text-slate-400 hover:bg-slate-800 hover:text-slate-100"
-                    href={run.runHref}
-                    title="Open run"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                  </Link>
                 </td>
               </tr>
             ))}
