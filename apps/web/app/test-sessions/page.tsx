@@ -109,13 +109,16 @@ function TestSessionTableRow({ session }: { session: TestSessionRow }) {
       </td>
       <td className="px-4 py-3">
         {session.targetUrl ? (
-          <span
-            className="inline-flex max-w-96 items-center gap-2 truncate text-slate-300"
+          <a
+            className="inline-flex max-w-96 items-center gap-2 truncate text-blue-300 hover:text-blue-200"
+            href={session.targetUrl}
+            rel="noreferrer"
+            target="_blank"
             title={session.targetUrl}
           >
             <Link2 className="h-4 w-4 shrink-0 text-slate-500" />
             <span className="truncate">{session.targetUrl}</span>
-          </span>
+          </a>
         ) : (
           <span className="text-slate-600">-</span>
         )}

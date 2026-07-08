@@ -68,7 +68,12 @@ describe("TestSessionsPage", () => {
     expect(
       screen.getByRole("link", { name: /Nightly regression/ }).getAttribute("href"),
     ).toBe("/test-sessions/session_1");
-    expect(screen.getByText("https://example.test")).toBeTruthy();
+    const targetUrlLink = screen.getByRole("link", {
+      name: "https://example.test",
+    });
+
+    expect(targetUrlLink.getAttribute("href")).toBe("https://example.test");
+    expect(targetUrlLink.getAttribute("target")).toBe("_blank");
     expect(screen.getByText("2.4 s")).toBeTruthy();
     expect(
       screen
