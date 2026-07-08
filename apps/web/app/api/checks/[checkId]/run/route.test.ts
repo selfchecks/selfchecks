@@ -108,6 +108,7 @@ describe("run check route", () => {
     expect(mocks.checkRunCreate).toHaveBeenCalledWith({
       data: {
         checkId: "check_1",
+        runSource: "MANUAL",
         status: "QUEUED",
       },
       select: {
@@ -128,6 +129,7 @@ describe("run check route", () => {
         projectSlug: "account",
         rootDir: "/repo/config/checkly",
         runId: "run_1",
+        runSource: "MANUAL",
         type: "api",
       },
       {

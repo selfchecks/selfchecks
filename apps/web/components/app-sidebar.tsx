@@ -1,12 +1,24 @@
 "use client";
 
-import { FlaskConical, History, Home, Settings2, type LucideIcon } from "lucide-react";
+import {
+  FlaskConical,
+  History,
+  Home,
+  ListChecks,
+  Settings2,
+  type LucideIcon,
+} from "lucide-react";
 import Link from "next/link";
 
 import { ServiceMark } from "@/components/service-mark";
 import { cn } from "@/lib/utils";
 
-export type AppSidebarItem = "home" | "journal" | "settings" | "test-sessions";
+export type AppSidebarItem =
+  | "home"
+  | "journal"
+  | "queue"
+  | "settings"
+  | "test-sessions";
 
 type SidebarEntry = {
   href: string;
@@ -17,6 +29,7 @@ type SidebarEntry = {
 
 const sidebarItems: SidebarEntry[] = [
   { href: "/", icon: Home, id: "home", label: "Home" },
+  { href: "/?view=queue", icon: ListChecks, id: "queue", label: "Queue" },
   { href: "/journal", icon: History, id: "journal", label: "Journal" },
   {
     href: "/test-sessions",
@@ -30,10 +43,12 @@ const sidebarItems: SidebarEntry[] = [
 export function AppSidebar({
   activeItem,
   onHomeClick,
+  onQueueClick,
   onSettingsClick,
 }: {
   activeItem?: AppSidebarItem;
   onHomeClick?: () => void;
+  onQueueClick?: () => void;
   onSettingsClick?: () => void;
 }) {
   return (
@@ -89,6 +104,21 @@ export function AppSidebar({
                   className={className}
                   key={item.id}
                   onClick={onSettingsClick}
+                  type="button"
+                >
+                  <Icon className="h-4 w-4 shrink-0" />
+                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                </button>
+              );
+            }
+
+            if (item.id === "queue" && onQueueClick) {
+              return (
+                <button
+                  aria-current={active ? "page" : undefined}
+                  className={className}
+                  key={item.id}
+                  onClick={onQueueClick}
                   type="button"
                 >
                   <Icon className="h-4 w-4 shrink-0" />

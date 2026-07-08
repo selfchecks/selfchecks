@@ -1,7 +1,7 @@
 import { type Job } from "bullmq";
 
 import { type CheckType } from "@selfchecks/core";
-import { runCheckById, type EnvVar } from "@selfchecks/cli/runner";
+import { runCheckById, type CheckRunSource, type EnvVar } from "@selfchecks/cli/runner";
 import { prisma } from "@selfchecks/db";
 
 export type CheckJob = {
@@ -12,6 +12,7 @@ export type CheckJob = {
   reporter?: string;
   rootDir: string;
   runId?: string;
+  runSource?: CheckRunSource;
   type: CheckType;
 };
 
@@ -39,6 +40,7 @@ export async function handleCheckJob(
       reporter: job.data.reporter ?? "list",
       rootDir: job.data.rootDir,
       runId: job.data.runId,
+      runSource: job.data.runSource,
     });
   } catch (error) {
     if (job.data.runId) {

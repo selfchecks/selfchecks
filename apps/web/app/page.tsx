@@ -11,7 +11,12 @@ type DashboardPageProps = {
 
 export default async function DashboardPage({ searchParams }: DashboardPageProps) {
   const params = searchParams ? await searchParams : {};
-  const initialActiveView = params.view === "settings" ? "settings" : "dashboard";
+  const initialActiveView =
+    params.view === "settings"
+      ? "settings"
+      : params.view === "queue"
+        ? "queue"
+        : "dashboard";
 
   return (
     <Suspense fallback={<DashboardPageSkeleton activeView={initialActiveView} />}>

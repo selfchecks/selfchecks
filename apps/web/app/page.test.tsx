@@ -18,6 +18,7 @@ import type {
   DashboardCheckRow,
   DashboardFirewatch,
   DashboardGroupRow,
+  DashboardQueueRow,
   DashboardSummary,
 } from "@/lib/dashboard-types";
 import type { DashboardSettingsData } from "@/lib/settings-data";
@@ -238,10 +239,32 @@ function createCheck(overrides: Partial<DashboardCheckRow>): DashboardCheckRow {
   } as DashboardCheckRow;
 }
 
-function renderDashboard() {
+function createQueueRow(overrides: Partial<DashboardQueueRow>): DashboardQueueRow {
+  const runState = overrides.runState ?? "queued";
+  const checkName = overrides.checkName ?? "checkout.ready";
+
+  return {
+    branch: "production",
+    checkHref: `/checks/check-${checkName}`,
+    checkId: `check-${checkName}`,
+    checkName,
+    createdAt: "2026-07-05T09:40:00.000Z",
+    createdAtLabel: "Jul 05 12:40",
+    groupName: "API / Checkout",
+    id: `run-${checkName}`,
+    runState,
+    source: "manual",
+    sourceLabel: "Manual",
+    type: "api",
+    ...overrides,
+  };
+}
+
+function renderDashboard(options: { queue?: DashboardQueueRow[] } = {}) {
   render(
     <DashboardClient
       initialGroups={fixtureGroups}
+      initialQueue={options.queue}
       initialSettings={fixtureSettings}
       initialSummary={fixtureSummary}
     />,
@@ -261,17 +284,19 @@ describe("DashboardPage", () => {
       screen.getByRole("heading", { name: "Synthetic checks dashboard" }),
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Home" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Queue" })).toBeTruthy();
     expect(screen.getByRole("button", { name: /SelfChecks/ })).toBeTruthy();
     expect(screen.queryByText("Available now")).toBeNull();
     expect(screen.getByRole("button", { name: "Open account menu" })).toBeTruthy();
     expect(screen.queryByText("nikolaev@iprojects.ru")).toBeNull();
     expect(screen.queryByText("account")).toBeNull();
     expect(screen.getByRole("button", { name: "Run all checks" })).toBeTruthy();
+    expect(screen.getByRole("status", { name: "Running 0, queued 0" })).toBeTruthy();
     expect(screen.getByText("PASSING")).toBeTruthy();
-    expect(screen.getByText("RUNNING")).toBeTruthy();
     expect(screen.getByText("DEGRADED")).toBeTruthy();
-    expect(screen.getByText("QUEUED")).toBeTruthy();
     expect(screen.getByText("FAILING")).toBeTruthy();
+    expect(screen.queryByText("RUNNING")).toBeNull();
+    expect(screen.queryByText("QUEUED")).toBeNull();
     const firewatchToggle = screen.getByRole("button", { name: "Firewatch" });
 
     expect(firewatchToggle.getAttribute("aria-expanded")).toBe("false");
@@ -544,7 +569,7 @@ describe("DashboardPage", () => {
       ).toBeNull();
       expect(screen.getAllByText("queued").length).toBeGreaterThan(0);
       expect(screen.getByRole("button", { name: /DEGRADED 0/ })).toBeTruthy();
-      expect(screen.getByRole("button", { name: /QUEUED 2/ })).toBeTruthy();
+      expect(screen.getByRole("status", { name: "Running 0, queued 2" })).toBeTruthy();
     });
     expect(fetchMock).not.toHaveBeenCalledWith("/api/checks/check-bff-health/run", {
       method: "POST",
@@ -805,8 +830,25 @@ describe("DashboardPage", () => {
     expect(screen.queryByText("API / Bff")).toBeNull();
   });
 
-  it("filters running checks from the summary card and status filter", async () => {
+  it("shows active queue rows from the sidebar without dashboard filters", async () => {
     const user = userEvent.setup();
+    const runningRow = createQueueRow({
+      branch: "developers/frontend/account | v1.2.3 | abc123",
+      checkHref: "/test-sessions/session_1/checks/checkout.running",
+      checkName: "checkout.running",
+      createdAt: "2026-07-05T09:39:00.000Z",
+      runState: "running",
+      source: "cli",
+      sourceLabel: "CLI",
+      type: "browser",
+    });
+    const queuedRow = createQueueRow({
+      checkName: "checkout.queued",
+      createdAt: "2026-07-05T09:40:00.000Z",
+      runState: "queued",
+      source: "schedule",
+      sourceLabel: "Schedule",
+    });
 
     render(
       <DashboardClient
@@ -832,32 +874,42 @@ describe("DashboardPage", () => {
             updated: "running",
           },
         ]}
+        initialQueue={[queuedRow, runningRow]}
         initialSettings={fixtureSettings}
         initialSummary={{
           degraded: 0,
           failing: 0,
           passing: 1,
-          queued: 0,
+          queued: 1,
           running: 1,
         }}
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: /RUNNING/ }));
+    expect(screen.getByRole("status", { name: "Running 1, queued 1" })).toBeTruthy();
 
+    await user.click(screen.getByRole("button", { name: "Queue" }));
+
+    expect(screen.getByRole("heading", { name: "Queue" })).toBeTruthy();
+    expect(screen.getByText("2 active tests")).toBeTruthy();
+    expect(screen.queryByRole("searchbox", { name: "Search checks" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Status" })).toBeNull();
     expect(screen.getByText("checkout.running")).toBeTruthy();
-    expect(screen.queryByText("checkout.ready")).toBeNull();
+    expect(screen.getByText("checkout.queued")).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: "checkout.running" }).getAttribute("href"),
+    ).toBe("/test-sessions/session_1/checks/checkout.running");
+    expect(
+      screen.getByText("developers/frontend/account | v1.2.3 | abc123"),
+    ).toBeTruthy();
+    expect(screen.getByText("CLI")).toBeTruthy();
+    expect(screen.getByText("Schedule")).toBeTruthy();
 
-    await user.click(screen.getByRole("button", { name: "Running" }));
-    await user.click(screen.getByRole("option", { name: "All statuses" }));
+    const tableText = screen.getByRole("table").textContent ?? "";
 
-    expect(screen.getByText("checkout.ready")).toBeTruthy();
-
-    await user.click(screen.getByRole("button", { name: "Status" }));
-    await user.click(screen.getByRole("option", { name: "Running" }));
-
-    expect(screen.getByText("checkout.running")).toBeTruthy();
-    expect(screen.queryByText("checkout.ready")).toBeNull();
+    expect(tableText.indexOf("checkout.running")).toBeLessThan(
+      tableText.indexOf("checkout.queued"),
+    );
   });
 
   it("keeps the last dashboard snapshot when live refresh fails", async () => {

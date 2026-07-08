@@ -38,6 +38,8 @@ export type RunChecksSummary = {
   total: number;
 };
 
+export type CheckRunSource = "CLI" | "MANUAL" | "SCHEDULE";
+
 export type RunChecksOptions = {
   checkKeys?: string[];
   checks?: CheckDefinition[];
@@ -48,6 +50,7 @@ export type RunChecksOptions = {
   retries?: number;
   rootDir: string;
   runMode?: "monitoring" | "test";
+  runSource?: CheckRunSource;
   source?: string;
   tagSets: string[][];
   testSessionCommitSha?: string;
@@ -63,6 +66,7 @@ export type RunCheckByIdOptions = {
   retries?: number;
   rootDir: string;
   runId?: string;
+  runSource?: CheckRunSource;
 };
 
 export type RunnableCheck = {
@@ -190,6 +194,7 @@ export async function runCheckById(
       retries: options.retries,
       rootDir: options.rootDir,
       runMode: "monitoring",
+      runSource: options.runSource,
       tagSets: [],
     },
     undefined,
@@ -424,6 +429,7 @@ async function upsertStartedRun(
   },
 ): Promise<CheckRun> {
   const snapshot = buildCheckRunSnapshot(check, options);
+  const runSource = options.runSource ?? "CLI";
 
   if (!existingRunId) {
     const data: Prisma.CheckRunUncheckedCreateInput = {
@@ -432,6 +438,7 @@ async function upsertStartedRun(
       ...snapshot,
       maxAttempts: retryMetadata.maxAttempts,
       retryGroupId: retryMetadata.retryGroupId,
+      runSource,
       startedAt,
       status: "RUNNING",
       testSessionId: session?.id,
@@ -462,6 +469,7 @@ async function upsertStartedRun(
     logsPath: null,
     maxAttempts: retryMetadata.maxAttempts,
     retryGroupId: retryMetadata.retryGroupId,
+    runSource,
     startedAt,
     status: "RUNNING",
     testSessionId: session?.id,

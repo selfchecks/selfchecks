@@ -36,6 +36,7 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { AppSidebar } from "@/components/app-sidebar";
@@ -46,6 +47,7 @@ import type {
   DashboardFirewatch,
   DashboardFirewatchRow,
   DashboardGroupRow,
+  DashboardQueueRow,
   DashboardRunState,
   DashboardStatus,
   DashboardSummary,
@@ -57,8 +59,8 @@ import type {
 } from "@/lib/settings-data";
 
 type Status = DashboardStatus;
-type ActiveView = "dashboard" | "settings";
-type StatusFilter = Status | "queued" | "running" | "all";
+type ActiveView = "dashboard" | "queue" | "settings";
+type StatusFilter = Status | "all";
 type TagFilter = "all" | "api" | "regress";
 type TypeFilter = "all" | "api" | "browser";
 type DateRange = "24h" | "7d" | "all";
@@ -66,11 +68,13 @@ type TraceFilter = "all" | "with-traces";
 type DashboardSnapshot = {
   firewatch: DashboardFirewatch;
   groups: GroupRow[];
+  queue: QueueRow[];
   summary: DashboardSummary;
 };
 
 type CheckRow = DashboardCheckRow;
 type GroupRow = DashboardGroupRow;
+type QueueRow = DashboardQueueRow;
 type FilterOption<T extends string> = {
   label: string;
   menuLabel?: string;
@@ -116,8 +120,6 @@ const statusFilterLabels: Record<StatusFilter, string> = {
   degraded: "Degraded",
   failing: "Failing",
   passing: "Passing",
-  queued: "Queued",
-  running: "Running",
 };
 
 const runStateTooltipContent: Record<
@@ -180,9 +182,7 @@ const dateRangeOptions = [
 const statusFilterOptions = [
   { label: statusFilterLabels.all, menuLabel: "All statuses", value: "all" },
   { label: statusFilterLabels.passing, value: "passing" },
-  { label: statusFilterLabels.running, value: "running" },
   { label: statusFilterLabels.degraded, value: "degraded" },
-  { label: statusFilterLabels.queued, value: "queued" },
   { label: statusFilterLabels.failing, value: "failing" },
 ] satisfies Array<FilterOption<StatusFilter>>;
 
@@ -207,12 +207,14 @@ export default function DashboardClient({
   initialActiveView = "dashboard",
   initialFirewatch = createEmptyFirewatchSnapshot(),
   initialGroups,
+  initialQueue,
   initialSettings,
   initialSummary,
 }: {
   initialActiveView?: ActiveView;
   initialFirewatch?: DashboardFirewatch;
   initialGroups: GroupRow[];
+  initialQueue?: QueueRow[];
   initialSettings: DashboardSettingsData;
   initialSummary: DashboardSummary;
 }) {
@@ -220,10 +222,11 @@ export default function DashboardClient({
   const [dashboard, setDashboard] = useState<DashboardSnapshot>(() => ({
     firewatch: initialFirewatch,
     groups: initialGroups,
+    queue: initialQueue ?? [],
     summary: initialSummary,
   }));
   const [settings, setSettings] = useState<DashboardSettingsData>(initialSettings);
-  const { firewatch, groups, summary } = dashboard;
+  const { firewatch, groups, queue, summary } = dashboard;
   const optimisticQueuedCheckIdsRef = useRef<Set<string>>(new Set());
   const router = useRouter();
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -251,11 +254,13 @@ export default function DashboardClient({
   );
   const hasActiveRuns = useMemo(
     () =>
+      queue.length > 0 ||
       groups.some((group) =>
         group.children?.some((check) => ["queued", "running"].includes(check.runState)),
       ),
-    [groups],
+    [groups, queue.length],
   );
+  const shouldRefreshDashboard = activeView === "queue" || hasActiveRuns;
   const failedChecks = useMemo(
     () => allChecks.filter((check) => check.status === "failing"),
     [allChecks],
@@ -270,22 +275,10 @@ export default function DashboardClient({
           value: String(summary.passing),
         },
         {
-          label: "RUNNING",
-          status: "running",
-          tone: "border-blue-950/80 bg-blue-950/75 text-blue-400 shadow-blue-950/20",
-          value: String(summary.running),
-        },
-        {
           label: "DEGRADED",
           status: "degraded",
           tone: "border-orange-950/80 bg-orange-950/75 text-orange-400 shadow-orange-950/20",
           value: String(summary.degraded),
-        },
-        {
-          label: "QUEUED",
-          status: "queued",
-          tone: "border-yellow-950/80 bg-yellow-950/75 text-yellow-400 shadow-yellow-950/20",
-          value: String(summary.queued),
         },
         {
           label: "FAILING",
@@ -350,7 +343,7 @@ export default function DashboardClient({
   }, [activeActionMenu]);
 
   useEffect(() => {
-    if (!hasActiveRuns) {
+    if (!shouldRefreshDashboard) {
       return;
     }
 
@@ -389,7 +382,7 @@ export default function DashboardClient({
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [hasActiveRuns]);
+  }, [shouldRefreshDashboard]);
 
   const filteredGroups = useMemo<GroupRow[]>(() => {
     const nextGroups: GroupRow[] = [];
@@ -462,6 +455,12 @@ export default function DashboardClient({
     setActiveActionMenu(null);
   }
 
+  function openQueue() {
+    setActiveView("queue");
+    setAccountMenuOpen(false);
+    setActiveActionMenu(null);
+  }
+
   function toggleGroup(groupName: string) {
     setExpandedGroups((current) => ({
       ...current,
@@ -496,11 +495,17 @@ export default function DashboardClient({
     ]);
     setDashboard((current) => {
       const nextGroups = markDashboardChecksQueued(current.groups, checkIdSet);
+      const nextQueue = addOptimisticQueuedRows(
+        current.queue,
+        current.groups,
+        checkIdSet,
+      );
 
       return {
         firewatch: removeFirewatchRows(current.firewatch, checkIdSet),
         groups: nextGroups,
-        summary: summarizeDashboardGroups(nextGroups),
+        queue: nextQueue,
+        summary: summarizeDashboardSnapshot(nextGroups, nextQueue),
       };
     });
   }
@@ -588,8 +593,15 @@ export default function DashboardClient({
     <main className="min-h-screen bg-[#0d1117] text-slate-200">
       <h1 className="sr-only">Synthetic checks dashboard</h1>
       <AppSidebar
-        activeItem={activeView === "settings" ? "settings" : "home"}
+        activeItem={
+          activeView === "settings"
+            ? "settings"
+            : activeView === "queue"
+              ? "queue"
+              : "home"
+        }
         onHomeClick={resetDashboard}
+        onQueueClick={openQueue}
         onSettingsClick={openSettings}
       />
 
@@ -611,13 +623,15 @@ export default function DashboardClient({
             ) : null
           }
           onAccountMenuToggle={() => setAccountMenuOpen((open) => !open)}
+          queuedCount={summary.queued}
+          runningCount={summary.running}
           onSettingsClick={openSettings}
         />
 
         <section className="mx-auto flex w-full max-w-[1760px] flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8">
           {activeView === "dashboard" ? (
             <>
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {summaryCards.map((card) => (
                   <button
                     aria-pressed={statusFilter === card.status}
@@ -737,6 +751,8 @@ export default function DashboardClient({
                 onRunCheckNow={(check) => void runCheckNow(check)}
               />
             </>
+          ) : activeView === "queue" ? (
+            <QueueScreen queue={queue} />
           ) : (
             <SettingsScreen onSettingsChange={setSettings} settings={settings} />
           )}
@@ -796,14 +812,6 @@ function doesCheckStatusMatch(check: CheckRow, statusFilter: StatusFilter) {
     return true;
   }
 
-  if (statusFilter === "running") {
-    return check.runState === "running";
-  }
-
-  if (statusFilter === "queued") {
-    return check.runState === "queued";
-  }
-
   if (statusFilter === "degraded") {
     return (
       check.status === "degraded" &&
@@ -834,6 +842,7 @@ async function fetchDashboardSnapshot(): Promise<DashboardSnapshot> {
   return {
     firewatch: payload.firewatch ?? createEmptyFirewatchSnapshot(),
     groups: payload.groups,
+    queue: payload.queue ?? [],
     summary: payload.summary,
   };
 }
@@ -864,11 +873,13 @@ function applyOptimisticQueuedSnapshot(
   }
 
   const groups = markDashboardChecksQueued(dashboard.groups, checkIds);
+  const queue = addOptimisticQueuedRows(dashboard.queue, dashboard.groups, checkIds);
 
   return {
     firewatch: removeFirewatchRows(dashboard.firewatch, checkIds),
     groups,
-    summary: summarizeDashboardGroups(groups),
+    queue,
+    summary: summarizeDashboardSnapshot(groups, queue),
   };
 }
 
@@ -961,6 +972,75 @@ function markQueuedCheck(check: CheckRow): CheckRow {
     },
     status: "degraded",
     time: "queued",
+  };
+}
+
+function addOptimisticQueuedRows(
+  queue: QueueRow[],
+  groups: GroupRow[],
+  checkIds: Set<string>,
+): QueueRow[] {
+  const existingCheckIds = new Set(queue.map((row) => row.checkId));
+  const createdAt = new Date().toISOString();
+  const rows: QueueRow[] = [];
+
+  for (const group of groups) {
+    for (const check of group.children ?? []) {
+      if (!checkIds.has(check.id) || existingCheckIds.has(check.id)) {
+        continue;
+      }
+
+      rows.push({
+        branch: "production",
+        checkHref: `/checks/${encodeURIComponent(check.id)}`,
+        checkId: check.id,
+        checkName: check.name,
+        createdAt,
+        createdAtLabel: "Queued",
+        groupName: group.name,
+        id: `queued:${check.id}`,
+        runState: "queued",
+        source: "manual",
+        sourceLabel: "Manual",
+        type: check.type,
+      });
+    }
+  }
+
+  return [...queue, ...rows].sort(compareQueueRows);
+}
+
+function compareQueueRows(left: QueueRow, right: QueueRow): number {
+  const stateRank = queueStateRank(left.runState) - queueStateRank(right.runState);
+
+  if (stateRank !== 0) {
+    return stateRank;
+  }
+
+  const createdAtRank =
+    new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
+
+  if (createdAtRank !== 0) {
+    return createdAtRank;
+  }
+
+  return left.checkName.localeCompare(right.checkName);
+}
+
+function queueStateRank(runState: QueueRow["runState"]): number {
+  return runState === "running" ? 0 : 1;
+}
+
+function summarizeDashboardSnapshot(
+  groups: GroupRow[],
+  queue: QueueRow[],
+): DashboardSummary {
+  const summary = summarizeDashboardGroups(groups);
+
+  return {
+    ...summary,
+    queued: queue.filter((row) => row.runState === "queued").length,
+    running: queue.filter((row) => row.runState === "running").length,
   };
 }
 
@@ -1184,12 +1264,16 @@ function Topbar({
   actions,
   onAccountMenuToggle,
   onSettingsClick,
+  queuedCount,
+  runningCount,
 }: {
   accountMenuOpen: boolean;
   accountLabel: string;
   actions?: ReactNode;
   onAccountMenuToggle: () => void;
   onSettingsClick: () => void;
+  queuedCount: number;
+  runningCount: number;
 }) {
   const initials = getInitials(accountLabel);
 
@@ -1200,7 +1284,8 @@ function Topbar({
         {actions}
       </div>
 
-      <div className="relative flex items-center">
+      <div className="relative flex items-center gap-4">
+        <QueueIndicators queuedCount={queuedCount} runningCount={runningCount} />
         <button
           aria-expanded={accountMenuOpen}
           aria-label="Open account menu"
@@ -1234,6 +1319,131 @@ function Topbar({
       </div>
     </header>
   );
+}
+
+function QueueIndicators({
+  queuedCount,
+  runningCount,
+}: {
+  queuedCount: number;
+  runningCount: number;
+}) {
+  return (
+    <div
+      aria-label={`Running ${runningCount}, queued ${queuedCount}`}
+      className="flex items-center gap-3 text-sm font-semibold text-slate-300"
+      role="status"
+    >
+      <span className="inline-flex items-center gap-1.5">
+        <span className="h-2.5 w-2.5 rounded-full bg-blue-400" />
+        <span>{runningCount}</span>
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <span className="h-2.5 w-2.5 rounded-full bg-yellow-400" />
+        <span>{queuedCount}</span>
+      </span>
+    </div>
+  );
+}
+
+function QueueScreen({ queue }: { queue: QueueRow[] }) {
+  const sortedQueue = [...queue].sort(compareQueueRows);
+
+  return (
+    <>
+      <div>
+        <h2 className="text-3xl font-semibold text-slate-100">Queue</h2>
+        <p className="mt-1 text-sm text-slate-500">
+          {queue.length === 1 ? "1 active test" : `${queue.length} active tests`}
+        </p>
+      </div>
+
+      <section className="overflow-hidden rounded-md border border-slate-800 bg-[#111821]">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[920px] table-fixed text-left text-sm">
+            <thead className="bg-[#121820] text-xs font-semibold uppercase text-slate-500">
+              <tr>
+                <th className="w-[42%] px-4 py-3">Name</th>
+                <th className="w-[10%] px-4 py-3">Type</th>
+                <th className="w-[32%] px-4 py-3">Branch</th>
+                <th className="w-[16%] px-4 py-3">Source</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedQueue.length > 0 ? (
+                sortedQueue.map((row) => <QueueTableRow key={row.id} row={row} />)
+              ) : (
+                <tr>
+                  <td className="px-4 py-8 text-center text-slate-500" colSpan={4}>
+                    No running or queued tests.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </>
+  );
+}
+
+function QueueTableRow({ row }: { row: QueueRow }) {
+  return (
+    <tr className="border-t border-slate-800 align-top hover:bg-slate-900/40">
+      <td className="px-4 py-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <QueueStateDot runState={row.runState} />
+          <div className="min-w-0">
+            <Link
+              className="block truncate font-medium text-blue-300 hover:text-blue-200"
+              href={row.checkHref}
+              title={`${row.groupName} / ${row.checkName}`}
+            >
+              {row.checkName}
+            </Link>
+            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+              <span className="truncate">{row.groupName}</span>
+              <span className="text-slate-700">/</span>
+              <span className={cn("font-semibold", getQueueStateTextClass(row))}>
+                {row.runState === "running" ? "Running" : "Queued"}
+              </span>
+              <span className="text-slate-700">/</span>
+              <span>{row.createdAtLabel}</span>
+            </div>
+          </div>
+        </div>
+      </td>
+      <td className="px-4 py-3">
+        <CheckTypeBadge type={row.type} />
+      </td>
+      <td className="px-4 py-3">
+        <span className="line-clamp-2 text-slate-300" title={row.branch}>
+          {row.branch}
+        </span>
+      </td>
+      <td className="px-4 py-3">
+        <span className="inline-flex h-7 items-center rounded-md border border-slate-700 px-2 text-xs font-semibold text-slate-300">
+          {row.sourceLabel}
+        </span>
+      </td>
+    </tr>
+  );
+}
+
+function QueueStateDot({ runState }: { runState: QueueRow["runState"] }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full",
+        runState === "running" ? "bg-blue-400" : "bg-yellow-400",
+      )}
+    />
+  );
+}
+
+function getQueueStateTextClass(row: QueueRow) {
+  return row.runState === "running" ? "text-blue-300" : "text-yellow-300";
 }
 
 function SettingsScreen({

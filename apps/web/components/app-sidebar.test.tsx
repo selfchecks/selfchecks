@@ -20,6 +20,9 @@ describe("AppSidebar", () => {
 
     expect(screen.getByRole("button", { name: /SelfChecks/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Home" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Queue" }).getAttribute("href")).toBe(
+      "/?view=queue",
+    );
     expect(screen.getByRole("link", { name: "Journal" }).getAttribute("href")).toBe(
       "/journal",
     );

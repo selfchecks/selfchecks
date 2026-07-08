@@ -8,6 +8,8 @@ import type {
   DashboardFirewatch,
   DashboardFirewatchRow,
   DashboardGroupRow,
+  DashboardQueueRow,
+  DashboardQueueSource,
   DashboardRunArtifact,
   DashboardRunPerformance,
   DashboardRunRow,
@@ -31,6 +33,7 @@ type DashboardData = {
   firewatch: DashboardFirewatch;
   groups: DashboardGroupRow[];
   projectSlug: string;
+  queue: DashboardQueueRow[];
   summary: DashboardSummary;
 };
 type DashboardDataOptions = {
@@ -61,8 +64,29 @@ export type TestSessionRow = {
 };
 
 export type TestSessionsData = {
+  filters: {
+    page: number;
+    pageSize: number;
+    query: string;
+  };
+  pagination: {
+    from: number;
+    hasNext: boolean;
+    hasPrevious: boolean;
+    page: number;
+    pageSize: number;
+    to: number;
+    total: number;
+    totalPages: number;
+  };
   projectSlug: string;
   sessions: TestSessionRow[];
+};
+
+export type TestSessionsDataOptions = {
+  page?: number;
+  pageSize?: number;
+  query?: string;
 };
 
 export type TestSessionCheckRow = {
@@ -276,6 +300,8 @@ type MappableRun = {
   maxAttempts?: number | null;
   result: unknown;
   retryGroupId?: string | null;
+  runSource?: string | null;
+  startedAt?: Date | null;
   status: string;
 };
 type CheckWithRuns = {
@@ -349,9 +375,36 @@ type JournalRunWithCheck = MappableRun & {
     name: string | null;
   } | null;
 };
+type ActiveQueueRunWithCheck = MappableRun & {
+  check: {
+    enabled: boolean;
+    entrypoint: string | null;
+    group: {
+      name: string;
+    } | null;
+    id: string;
+    key: string;
+    name: string;
+    project: {
+      slug: string;
+    };
+    request: unknown;
+    tags: string[];
+    type: string;
+  } | null;
+  checkId: string | null;
+  testSession: {
+    id: string;
+    kind: "TEST" | "TRIGGER";
+    source: string | null;
+  } | null;
+  testSessionId: string | null;
+};
 
 const JOURNAL_DEFAULT_PAGE_SIZE = 20;
 const JOURNAL_MAX_PAGE_SIZE = 100;
+const TEST_SESSIONS_DEFAULT_PAGE_SIZE = 20;
+const TEST_SESSIONS_MAX_PAGE_SIZE = 100;
 const DASHBOARD_ACTIVE_RUN_STATUSES = ["QUEUED", "RUNNING"] as const;
 
 export async function getDashboardData(
@@ -387,14 +440,18 @@ export async function getDashboardData(
       return createEmptyDashboard(projectSlug);
     }
 
-    const checks = await fetchChecks(project.id);
+    const [checks, queue] = await Promise.all([
+      fetchChecks(project.id),
+      fetchActiveQueue(project.id, project.slug, timeZone),
+    ]);
     const groups = buildGroups(checks, timeZone);
 
     return {
       firewatch: buildFirewatch(checks, timeZone),
       groups,
       projectSlug: project.slug,
-      summary: summarizeGroups(groups),
+      queue,
+      summary: applyQueueCounts(summarizeGroups(groups), queue),
     };
   } catch (error) {
     console.warn("Unable to load dashboard data.", error);
@@ -750,7 +807,9 @@ export async function getJournalData(
 
 export async function getTestSessionsData(
   projectSlug: string,
+  options: TestSessionsDataOptions = {},
 ): Promise<TestSessionsData> {
+  const filters = normalizeTestSessionsFilters(options);
   const timeZone = getRuntimeTimeZone();
 
   try {
@@ -772,6 +831,11 @@ export async function getTestSessionsData(
         checkSnapshotProjectSlug: resolvedProjectSlug,
       },
     ];
+    const where = buildTestSessionsWhere(projectRunFilters, filters);
+    const total = await prisma.testSession.count({ where });
+    const totalPages = Math.max(1, Math.ceil(total / filters.pageSize));
+    const page = Math.min(filters.page, totalPages);
+    const skip = (page - 1) * filters.pageSize;
 
     const sessions = await prisma.testSession.findMany({
       include: {
@@ -791,23 +855,34 @@ export async function getTestSessionsData(
           orderBy: {
             createdAt: "desc",
           },
+          where: {
+            OR: projectRunFilters,
+          },
         },
       },
       orderBy: {
         createdAt: "desc",
       },
-      take: 100,
-      where: {
-        kind: "TEST",
-        runs: {
-          some: {
-            OR: projectRunFilters,
-          },
-        },
-      },
+      skip,
+      take: filters.pageSize,
+      where,
     });
 
     return {
+      filters: {
+        ...filters,
+        page,
+      },
+      pagination: {
+        from: total === 0 ? 0 : skip + 1,
+        hasNext: page < totalPages,
+        hasPrevious: page > 1,
+        page,
+        pageSize: filters.pageSize,
+        to: skip + sessions.length,
+        total,
+        totalPages,
+      },
       projectSlug: resolvedProjectSlug,
       sessions: sessions.map((session) =>
         mapTestSession(session as TestSessionWithRuns, timeZone),
@@ -817,6 +892,17 @@ export async function getTestSessionsData(
     console.warn("Unable to load test sessions data.", error);
 
     return {
+      filters,
+      pagination: {
+        from: 0,
+        hasNext: false,
+        hasPrevious: false,
+        page: filters.page,
+        pageSize: filters.pageSize,
+        to: 0,
+        total: 0,
+        totalPages: 1,
+      },
       projectSlug,
       sessions: [],
     };
@@ -1000,6 +1086,23 @@ function normalizeJournalFilters(options: JournalDataOptions): JournalData["filt
   };
 }
 
+function normalizeTestSessionsFilters(
+  options: TestSessionsDataOptions,
+): TestSessionsData["filters"] {
+  const pageSize = clampInteger(
+    options.pageSize,
+    TEST_SESSIONS_DEFAULT_PAGE_SIZE,
+    1,
+    TEST_SESSIONS_MAX_PAGE_SIZE,
+  );
+
+  return {
+    page: clampInteger(options.page, 1, 1, Number.MAX_SAFE_INTEGER),
+    pageSize,
+    query: options.query?.trim() ?? "",
+  };
+}
+
 function normalizeJournalRange(
   value: JournalRangeFilter | undefined,
 ): JournalRangeFilter {
@@ -1109,6 +1212,118 @@ function buildJournalWhere(
   }
 
   return where;
+}
+
+function buildTestSessionsWhere(
+  projectRunFilters: Prisma.CheckRunWhereInput[],
+  filters: TestSessionsData["filters"],
+): Prisma.TestSessionWhereInput {
+  const where: Prisma.TestSessionWhereInput = {
+    kind: "TEST",
+    runs: {
+      some: {
+        OR: projectRunFilters,
+      },
+    },
+  };
+  const query = filters.query.trim();
+
+  if (!query) {
+    return where;
+  }
+
+  where.AND = [
+    {
+      OR: [
+        {
+          id: {
+            contains: query,
+            mode: "insensitive",
+          },
+        },
+        {
+          name: {
+            contains: query,
+            mode: "insensitive",
+          },
+        },
+        {
+          source: {
+            contains: query,
+            mode: "insensitive",
+          },
+        },
+        {
+          targetUrl: {
+            contains: query,
+            mode: "insensitive",
+          },
+        },
+        {
+          runs: {
+            some: {
+              OR: buildTestSessionRunSearchFilters(query),
+            },
+          },
+        },
+      ],
+    },
+  ];
+
+  return where;
+}
+
+function buildTestSessionRunSearchFilters(query: string): Prisma.CheckRunWhereInput[] {
+  const containsQuery = {
+    contains: query,
+    mode: "insensitive" as const,
+  };
+
+  return [
+    {
+      id: containsQuery,
+    },
+    {
+      errorMessage: containsQuery,
+    },
+    {
+      check: {
+        key: containsQuery,
+      },
+    },
+    {
+      check: {
+        name: containsQuery,
+      },
+    },
+    {
+      check: {
+        tags: {
+          has: query,
+        },
+      },
+    },
+    {
+      checkSnapshotKey: containsQuery,
+    },
+    {
+      checkSnapshotName: containsQuery,
+    },
+    {
+      checkSnapshotGroupName: containsQuery,
+    },
+    {
+      checkSnapshotEntrypoint: containsQuery,
+    },
+    {
+      checkSnapshotProjectSlug: containsQuery,
+    },
+    {
+      checkSnapshotTags: {
+        has: query,
+      },
+    },
+  ];
 }
 
 function mapJournalStatusFilter(
@@ -1460,6 +1675,153 @@ async function fetchChecks(projectId: string) {
       projectId,
     },
   });
+}
+
+async function fetchActiveQueue(
+  projectId: string,
+  projectSlug: string,
+  timeZone: string,
+): Promise<DashboardQueueRow[]> {
+  const runs = await prisma.checkRun.findMany({
+    include: {
+      artifacts: {
+        orderBy: {
+          createdAt: "desc",
+        },
+      },
+      check: {
+        include: {
+          group: true,
+          project: {
+            select: {
+              slug: true,
+            },
+          },
+        },
+      },
+      testSession: {
+        select: {
+          id: true,
+          kind: true,
+          source: true,
+        },
+      },
+    },
+    orderBy: {
+      createdAt: "asc",
+    },
+    where: {
+      OR: [
+        {
+          check: {
+            projectId,
+          },
+        },
+        {
+          checkSnapshotProjectSlug: projectSlug,
+        },
+      ],
+      status: {
+        in: [...DASHBOARD_ACTIVE_RUN_STATUSES],
+      },
+    },
+  });
+
+  return (runs as ActiveQueueRunWithCheck[])
+    .map((run) => mapQueueRun(run, timeZone))
+    .sort(compareQueueRows);
+}
+
+function mapQueueRun(
+  run: ActiveQueueRunWithCheck,
+  timeZone: string,
+): DashboardQueueRow {
+  const check = getRunCheckSnapshot(run);
+  const source = mapQueueSource(run);
+
+  return {
+    branch: getQueueBranch(run),
+    checkHref: buildQueueCheckHref(run, check.id),
+    checkId: check.id,
+    checkName: check.name,
+    createdAt: run.createdAt.toISOString(),
+    createdAtLabel: formatRunTimestamp(run.createdAt, timeZone),
+    groupName: check.groupName,
+    id: run.id,
+    runState: mapActiveRunState(run.status),
+    source,
+    sourceLabel: formatQueueSource(source),
+    type: check.type.toLowerCase() as DashboardCheckRow["type"],
+  };
+}
+
+function compareQueueRows(left: DashboardQueueRow, right: DashboardQueueRow): number {
+  const stateRank = queueStateRank(left.runState) - queueStateRank(right.runState);
+
+  if (stateRank !== 0) {
+    return stateRank;
+  }
+
+  const createdAtRank =
+    new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
+
+  if (createdAtRank !== 0) {
+    return createdAtRank;
+  }
+
+  return left.checkName.localeCompare(right.checkName);
+}
+
+function queueStateRank(runState: DashboardQueueRow["runState"]): number {
+  return runState === "running" ? 0 : 1;
+}
+
+function mapActiveRunState(status: string): DashboardQueueRow["runState"] {
+  return status === "RUNNING" ? "running" : "queued";
+}
+
+function getQueueBranch(run: ActiveQueueRunWithCheck): string {
+  const source = run.testSession?.source?.trim();
+
+  return source || "production";
+}
+
+function buildQueueCheckHref(run: ActiveQueueRunWithCheck, checkId: string): string {
+  if (run.testSession?.kind === "TEST") {
+    return `/test-sessions/${encodeURIComponent(
+      run.testSession.id,
+    )}/checks/${encodeURIComponent(checkId)}`;
+  }
+
+  if (run.check?.id) {
+    return `/checks/${encodeURIComponent(run.check.id)}`;
+  }
+
+  return buildRunHref(checkId, run.id);
+}
+
+function mapQueueSource(run: ActiveQueueRunWithCheck): DashboardQueueSource {
+  if (run.runSource === "SCHEDULE") {
+    return "schedule";
+  }
+
+  if (run.runSource === "CLI" || run.testSession) {
+    return "cli";
+  }
+
+  return "manual";
+}
+
+function formatQueueSource(source: DashboardQueueSource): string {
+  if (source === "schedule") {
+    return "Schedule";
+  }
+
+  if (source === "cli") {
+    return "CLI";
+  }
+
+  return "Manual";
 }
 
 function buildGroups(checks: CheckWithRuns[], timeZone: string): DashboardGroupRow[] {
@@ -2247,6 +2609,17 @@ function summarizeGroups(groups: DashboardGroupRow[]): DashboardSummary {
     );
 }
 
+function applyQueueCounts(
+  summary: DashboardSummary,
+  queue: DashboardQueueRow[],
+): DashboardSummary {
+  return {
+    ...summary,
+    queued: queue.filter((row) => row.runState === "queued").length,
+    running: queue.filter((row) => row.runState === "running").length,
+  };
+}
+
 function summarizeStatus(statuses: DashboardStatus[]): DashboardStatus {
   if (statuses.includes("failing")) {
     return "failing";
@@ -2514,6 +2887,7 @@ function createEmptyDashboard(projectSlug: string): DashboardData {
     },
     groups: [],
     projectSlug,
+    queue: [],
     summary: {
       degraded: 0,
       failing: 0,

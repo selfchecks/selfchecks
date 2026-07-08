@@ -152,3 +152,20 @@ export type DashboardSummary = {
   queued: number;
   running: number;
 };
+
+export type DashboardQueueSource = "cli" | "manual" | "schedule";
+
+export type DashboardQueueRow = {
+  branch: string;
+  checkHref: string;
+  checkId: string;
+  checkName: string;
+  createdAt: string;
+  createdAtLabel: string;
+  groupName: string;
+  id: string;
+  runState: Extract<DashboardRunState, "queued" | "running">;
+  source: DashboardQueueSource;
+  sourceLabel: string;
+  type: DashboardCheckRow["type"];
+};

@@ -24,6 +24,7 @@ type CheckJob = {
   projectSlug: string;
   rootDir: string;
   runId: string;
+  runSource: "MANUAL";
   type: CheckType;
 };
 
@@ -117,6 +118,7 @@ export async function POST(_request: Request, context: RouteContext) {
   const run = await prisma.checkRun.create({
     data: {
       checkId: check.id,
+      runSource: "MANUAL",
       status: "QUEUED",
     },
     select: {
@@ -136,6 +138,7 @@ export async function POST(_request: Request, context: RouteContext) {
         projectSlug: check.project.slug,
         rootDir,
         runId: run.id,
+        runSource: "MANUAL",
         type: toCheckType(check.type),
       },
       {

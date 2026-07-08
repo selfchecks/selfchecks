@@ -20,6 +20,21 @@ import type { TestSessionsData } from "@/lib/dashboard-data";
 import TestSessionsPage from "./page";
 
 const testSessionsFixture: TestSessionsData = {
+  filters: {
+    page: 2,
+    pageSize: 10,
+    query: "release",
+  },
+  pagination: {
+    from: 11,
+    hasNext: false,
+    hasPrevious: true,
+    page: 2,
+    pageSize: 10,
+    to: 11,
+    total: 11,
+    totalPages: 2,
+  },
   projectSlug: "default",
   sessions: [
     {
@@ -58,13 +73,36 @@ describe("TestSessionsPage", () => {
       },
     });
 
-    render(await TestSessionsPage());
+    render(
+      await TestSessionsPage({
+        searchParams: Promise.resolve({
+          page: "2",
+          pageSize: "10",
+          q: "release",
+        }),
+      }),
+    );
 
-    expect(mocks.getTestSessionsData).toHaveBeenCalledWith("default");
+    expect(mocks.getTestSessionsData).toHaveBeenCalledWith("default", {
+      page: 2,
+      pageSize: 10,
+      query: "release",
+    });
     expect(mocks.getDashboardSettingsData).toHaveBeenCalledWith("default");
     expect(screen.getByRole("heading", { name: "Test sessions" })).toBeTruthy();
-    expect(screen.getByText("1 recorded test session")).toBeTruthy();
+    expect(screen.getAllByText("11-11 of 11 test sessions").length).toBe(2);
     expect(screen.getByText("Project default")).toBeTruthy();
+    expect(
+      (
+        screen.getByRole("searchbox", {
+          name: "Search test sessions",
+        }) as HTMLInputElement
+      ).value,
+    ).toBe("release");
+    expect(
+      (screen.getByRole("combobox", { name: "Rows per page" }) as HTMLSelectElement)
+        .value,
+    ).toBe("10");
     expect(
       screen.getByRole("link", { name: /Nightly regression/ }).getAttribute("href"),
     ).toBe("/test-sessions/session_1");
@@ -106,10 +144,29 @@ describe("TestSessionsPage", () => {
     expect(within(sessionRow).getByRole("cell", { name: "1" })).toBeTruthy();
     expect(within(sessionRow).getAllByRole("cell", { name: "0" })).toHaveLength(2);
     expect(screen.getByText("2.4 s")).toBeTruthy();
+    expect(screen.getByText("Page 2 of 2")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Previous" }).getAttribute("href")).toBe(
+      "/test-sessions?q=release&pageSize=10",
+    );
   });
 
   it("renders an empty state when no test sessions are recorded", async () => {
     mocks.getTestSessionsData.mockResolvedValue({
+      filters: {
+        page: 1,
+        pageSize: 20,
+        query: "",
+      },
+      pagination: {
+        from: 0,
+        hasNext: false,
+        hasPrevious: false,
+        page: 1,
+        pageSize: 20,
+        to: 0,
+        total: 0,
+        totalPages: 1,
+      },
       projectSlug: "default",
       sessions: [],
     });
@@ -119,9 +176,11 @@ describe("TestSessionsPage", () => {
       },
     });
 
-    render(await TestSessionsPage());
+    render(await TestSessionsPage({}));
 
-    expect(screen.getByText("0 recorded test sessions")).toBeTruthy();
-    expect(screen.getByText("No test sessions recorded.")).toBeTruthy();
+    expect(screen.getAllByText("0 test sessions").length).toBe(2);
+    expect(
+      screen.getByText("No test sessions match the current filters."),
+    ).toBeTruthy();
   });
 });

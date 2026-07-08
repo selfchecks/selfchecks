@@ -218,6 +218,7 @@ export async function scheduleDueChecks({
     const run = await prisma.checkRun.create({
       data: {
         checkId: check.id,
+        runSource: "SCHEDULE",
         status: "QUEUED",
       },
       select: {
@@ -238,6 +239,7 @@ export async function scheduleDueChecks({
           reporter: config.reporter,
           rootDir,
           runId: run.id,
+          runSource: "SCHEDULE",
           type: toCheckType(check.type),
         },
         {

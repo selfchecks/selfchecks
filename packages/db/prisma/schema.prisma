@@ -21,6 +21,12 @@ enum CheckRunStatus {
   CANCELLED
 }
 
+enum CheckRunSource {
+  SCHEDULE
+  MANUAL
+  CLI
+}
+
 enum ArtifactType {
   LOG
   SCREENSHOT
@@ -127,12 +133,13 @@ model TestSession {
 }
 
 model CheckRun {
-  id                       String         @id @default(cuid())
+  id                       String          @id @default(cuid())
   checkId                  String?
   testSessionId            String?
-  status                   CheckRunStatus @default(QUEUED)
-  attempt                  Int            @default(1)
-  maxAttempts              Int            @default(1)
+  status                   CheckRunStatus  @default(QUEUED)
+  runSource                CheckRunSource?
+  attempt                  Int             @default(1)
+  maxAttempts              Int             @default(1)
   retryGroupId             String?
   startedAt                DateTime?
   finishedAt               DateTime?
@@ -143,15 +150,15 @@ model CheckRun {
   checkSnapshotKey         String?
   checkSnapshotName        String?
   checkSnapshotType        CheckType?
-  checkSnapshotTags        String[]       @default([])
+  checkSnapshotTags        String[]        @default([])
   checkSnapshotEntrypoint  String?
   checkSnapshotRequest     Json?
   checkSnapshotGroupName   String?
   checkSnapshotProjectSlug String?
-  createdAt                DateTime       @default(now())
+  createdAt                DateTime        @default(now())
   artifacts                Artifact[]
-  check                    Check?         @relation(fields: [checkId], references: [id], onDelete: Cascade)
-  testSession              TestSession?   @relation(fields: [testSessionId], references: [id], onDelete: SetNull)
+  check                    Check?          @relation(fields: [checkId], references: [id], onDelete: Cascade)
+  testSession              TestSession?    @relation(fields: [testSessionId], references: [id], onDelete: SetNull)
 
   @@index([checkId, createdAt])
   @@index([checkSnapshotProjectSlug])

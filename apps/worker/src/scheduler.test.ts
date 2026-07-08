@@ -148,6 +148,7 @@ describe("scheduleDueChecks", () => {
     expect(mocks.checkRunCreate).toHaveBeenCalledWith({
       data: {
         checkId: "check_1",
+        runSource: "SCHEDULE",
         status: "QUEUED",
       },
       select: {
@@ -169,6 +170,7 @@ describe("scheduleDueChecks", () => {
         reporter: "dot",
         rootDir: "/repo/config/checkly",
         runId: "run_1",
+        runSource: "SCHEDULE",
         type: "api",
       },
       {

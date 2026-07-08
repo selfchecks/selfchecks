@@ -5,6 +5,7 @@ import {
   FlaskConical,
   History,
   Home,
+  ListChecks,
   Route,
   Search,
   Settings2,
@@ -15,7 +16,7 @@ import {
 import { ServiceMark } from "@/components/service-mark";
 import { cn } from "@/lib/utils";
 
-type DashboardActiveView = "dashboard" | "settings";
+type DashboardActiveView = "dashboard" | "queue" | "settings";
 
 export function DashboardPageSkeleton({
   activeView = "dashboard",
@@ -41,11 +42,23 @@ export function DashboardPageSkeleton({
               <SkeletonLine className="h-9 w-36 rounded-md" />
             ) : null}
           </div>
-          <SkeletonLine className="h-10 w-10 rounded-full bg-lime-600/30" />
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
+              <SkeletonLine className="h-3 w-8" />
+              <SkeletonLine className="h-3 w-8" />
+            </div>
+            <SkeletonLine className="h-10 w-10 rounded-full bg-lime-600/30" />
+          </div>
         </header>
 
         <section className="mx-auto flex w-full max-w-[1760px] flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8">
-          {activeView === "settings" ? <SettingsSkeleton /> : <DashboardSkeleton />}
+          {activeView === "settings" ? (
+            <SettingsSkeleton />
+          ) : activeView === "queue" ? (
+            <QueueSkeleton />
+          ) : (
+            <DashboardSkeleton />
+          )}
         </section>
       </div>
     </main>
@@ -55,6 +68,7 @@ export function DashboardPageSkeleton({
 function SkeletonSidebar({ activeView }: { activeView: DashboardActiveView }) {
   const items = [
     { icon: Home, id: "dashboard", label: "Home" },
+    { icon: ListChecks, id: "queue", label: "Queue" },
     { icon: History, id: "journal", label: "Journal" },
     { icon: FlaskConical, id: "test-sessions", label: "Test sessions" },
     { icon: Settings2, id: "settings", label: "Settings" },
@@ -101,8 +115,8 @@ function SkeletonSidebar({ activeView }: { activeView: DashboardActiveView }) {
 function DashboardSkeleton() {
   return (
     <>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        {["PASSING", "RUNNING", "DEGRADED", "QUEUED", "FAILING"].map((label) => (
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {["PASSING", "DEGRADED", "FAILING"].map((label) => (
           <div
             className="rounded-md border border-slate-800 bg-[#11161d] px-5 py-4 shadow-lg shadow-black/10"
             key={label}
@@ -150,6 +164,55 @@ function DashboardSkeleton() {
       </div>
 
       <ChecksTableSkeleton />
+    </>
+  );
+}
+
+function QueueSkeleton() {
+  return (
+    <>
+      <div>
+        <SkeletonLine className="h-9 w-32" />
+        <SkeletonLine className="mt-2 h-4 w-28" />
+      </div>
+      <section className="overflow-hidden rounded-md border border-slate-800 bg-[#111821]">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[920px] table-fixed text-left text-sm">
+            <thead className="bg-[#121820] text-xs font-semibold uppercase text-slate-500">
+              <tr>
+                <th className="w-[42%] px-4 py-3">Name</th>
+                <th className="w-[10%] px-4 py-3">Type</th>
+                <th className="w-[32%] px-4 py-3">Branch</th>
+                <th className="w-[16%] px-4 py-3">Source</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from({ length: 4 }, (_, index) => (
+                <tr className="border-t border-slate-800" key={index}>
+                  <td className="px-4 py-3">
+                    <div className="flex items-start gap-3">
+                      <SkeletonLine className="mt-1.5 h-2.5 w-2.5 rounded-full" />
+                      <div className="min-w-0 flex-1">
+                        <SkeletonLine className="h-5 w-56 max-w-full" />
+                        <SkeletonLine className="mt-2 h-4 w-72 max-w-full" />
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <SkeletonLine className="h-5 w-12" />
+                  </td>
+                  <td className="px-4 py-3">
+                    <SkeletonLine className="h-5 w-64 max-w-full" />
+                  </td>
+                  <td className="px-4 py-3">
+                    <SkeletonLine className="h-7 w-20" />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
     </>
   );
 }

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   checkFindFirst: vi.fn(),
@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   checkRunUpdateMany: vi.fn(),
   projectFindFirst: vi.fn(),
   projectFindUnique: vi.fn(),
+  testSessionCount: vi.fn(),
   testSessionFindFirst: vi.fn(),
   testSessionFindMany: vi.fn(),
 }));
@@ -30,6 +31,7 @@ vi.mock("@/lib/prisma", () => ({
       findUnique: mocks.projectFindUnique,
     },
     testSession: {
+      count: mocks.testSessionCount,
       findFirst: mocks.testSessionFindFirst,
       findMany: mocks.testSessionFindMany,
     },
@@ -45,9 +47,67 @@ import {
   getTestSessionsData,
 } from "./dashboard-data";
 
+function createActiveQueueRun({
+  id,
+  status,
+  testSession = null,
+}: {
+  id: string;
+  status: "QUEUED" | "RUNNING";
+  testSession?: {
+    id: string;
+    kind: "TEST" | "TRIGGER";
+    source: string | null;
+  } | null;
+}) {
+  return {
+    artifacts: [],
+    check: {
+      enabled: true,
+      entrypoint: null,
+      group: {
+        name: "API / Bff",
+      },
+      id: "check_1",
+      key: "bff-health",
+      name: "bff-health",
+      project: {
+        slug: "default",
+      },
+      request: {
+        assertions: [],
+        headers: {},
+        method: "GET",
+        url: "https://example.test/health",
+      },
+      tags: ["api", "bff"],
+      type: "API",
+    },
+    checkId: "check_1",
+    createdAt: new Date("2026-07-05T09:40:00.000Z"),
+    durationMs: null,
+    errorMessage: null,
+    id,
+    logsPath: null,
+    result: null,
+    runSource: testSession ? "CLI" : "SCHEDULE",
+    status,
+    testSession,
+    testSessionId: testSession?.id ?? null,
+  };
+}
+
 describe("dashboard data", () => {
+  beforeEach(() => {
+    mocks.checkRunCount.mockResolvedValue(0);
+    mocks.checkRunFindMany.mockResolvedValue([]);
+    mocks.checkRunUpdateMany.mockResolvedValue({ count: 0 });
+    mocks.testSessionCount.mockResolvedValue(0);
+    mocks.testSessionFindMany.mockResolvedValue([]);
+  });
+
   afterEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     vi.useRealTimers();
     delete process.env.SELFCHECKS_QUEUED_RUN_TIMEOUT_MINUTES;
   });
@@ -518,6 +578,12 @@ describe("dashboard data", () => {
         type: "API",
       },
     ]);
+    mocks.checkRunFindMany.mockResolvedValue([
+      createActiveQueueRun({
+        id: "run_queued",
+        status: "QUEUED",
+      }),
+    ]);
 
     const dashboard = await getDashboardData("default");
     const check = dashboard.groups[0]?.children?.[0];
@@ -598,6 +664,12 @@ describe("dashboard data", () => {
         tags: ["api", "bff"],
         type: "API",
       },
+    ]);
+    mocks.checkRunFindMany.mockResolvedValue([
+      createActiveQueueRun({
+        id: "run_running",
+        status: "RUNNING",
+      }),
     ]);
 
     const dashboard = await getDashboardData("default");
@@ -738,6 +810,12 @@ describe("dashboard data", () => {
         type: "API",
       },
     ]);
+    mocks.checkRunFindMany.mockResolvedValue([
+      createActiveQueueRun({
+        id: "run_running",
+        status: "RUNNING",
+      }),
+    ]);
 
     const dashboard = await getDashboardData("default");
     const check = dashboard.groups[0]?.children?.[0];
@@ -751,6 +829,78 @@ describe("dashboard data", () => {
       failing: 0,
       passing: 0,
       queued: 0,
+      running: 1,
+    });
+  });
+
+  it("maps active queue rows for production checks and test session snapshots", async () => {
+    mocks.projectFindUnique.mockResolvedValue({
+      id: "project_1",
+      slug: "default",
+    });
+    mocks.checkFindMany.mockResolvedValue([]);
+    mocks.checkRunFindMany.mockResolvedValue([
+      {
+        ...createActiveQueueRun({
+          id: "run_manual",
+          status: "QUEUED",
+        }),
+        runSource: "MANUAL",
+      },
+      {
+        artifacts: [],
+        check: null,
+        checkId: null,
+        checkSnapshotEntrypoint: "tests/signin.spec.ts",
+        checkSnapshotGroupName: "Browser",
+        checkSnapshotKey: "signin",
+        checkSnapshotName: "Sign in",
+        checkSnapshotProjectSlug: "default",
+        checkSnapshotRequest: null,
+        checkSnapshotTags: ["smoke"],
+        checkSnapshotType: "BROWSER",
+        createdAt: new Date("2026-07-05T09:39:00.000Z"),
+        durationMs: null,
+        errorMessage: null,
+        id: "run_cli",
+        logsPath: null,
+        result: null,
+        runSource: "CLI",
+        status: "RUNNING",
+        testSession: {
+          id: "session_1",
+          kind: "TEST",
+          source: "developers/frontend/account | v1.2.3 | abc123",
+        },
+        testSessionId: "session_1",
+      },
+    ]);
+
+    const dashboard = await getDashboardData("default");
+
+    expect(dashboard.queue).toEqual([
+      expect.objectContaining({
+        branch: "developers/frontend/account | v1.2.3 | abc123",
+        checkHref: "/test-sessions/session_1/checks/signin",
+        checkId: "signin",
+        checkName: "Sign in",
+        runState: "running",
+        source: "cli",
+        sourceLabel: "CLI",
+        type: "browser",
+      }),
+      expect.objectContaining({
+        branch: "production",
+        checkHref: "/checks/check_1",
+        checkName: "bff-health",
+        runState: "queued",
+        source: "manual",
+        sourceLabel: "Manual",
+        type: "api",
+      }),
+    ]);
+    expect(dashboard.summary).toMatchObject({
+      queued: 1,
       running: 1,
     });
   });
@@ -801,6 +951,17 @@ describe("dashboard data", () => {
         tags: ["api", "bff"],
         type: "API",
       },
+    ]);
+    mocks.checkRunFindMany.mockResolvedValue([
+      createActiveQueueRun({
+        id: "run_running_test",
+        status: "RUNNING",
+        testSession: {
+          id: "session_1",
+          kind: "TEST",
+          source: "selfchecks test",
+        },
+      }),
     ]);
 
     const dashboard = await getDashboardData("default");
@@ -1093,6 +1254,7 @@ describe("dashboard data", () => {
       id: "project_1",
       slug: "default",
     });
+    mocks.testSessionCount.mockResolvedValue(2);
     mocks.testSessionFindMany.mockResolvedValue([
       {
         createdAt: new Date("2026-07-05T11:20:00.000Z"),
@@ -1151,11 +1313,67 @@ describe("dashboard data", () => {
       },
     ]);
 
-    const data = await getTestSessionsData("default");
+    const data = await getTestSessionsData("default", {
+      page: 2,
+      pageSize: 1,
+      query: "signin",
+    });
 
+    expect(mocks.testSessionCount).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        AND: [
+          {
+            OR: expect.arrayContaining([
+              {
+                targetUrl: {
+                  contains: "signin",
+                  mode: "insensitive",
+                },
+              },
+              {
+                runs: {
+                  some: {
+                    OR: expect.arrayContaining([
+                      {
+                        checkSnapshotKey: {
+                          contains: "signin",
+                          mode: "insensitive",
+                        },
+                      },
+                    ]),
+                  },
+                },
+              },
+            ]),
+          },
+        ],
+        kind: "TEST",
+        runs: {
+          some: {
+            OR: [
+              {
+                check: {
+                  projectId: "project_1",
+                },
+              },
+              {
+                checkSnapshotProjectSlug: "default",
+              },
+            ],
+          },
+        },
+      }),
+    });
     expect(mocks.testSessionFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
+        skip: 1,
+        take: 1,
         where: {
+          AND: [
+            {
+              OR: expect.any(Array),
+            },
+          ],
           kind: "TEST",
           runs: {
             some: {
@@ -1174,6 +1392,21 @@ describe("dashboard data", () => {
         },
       }),
     );
+    expect(data.filters).toEqual({
+      page: 2,
+      pageSize: 1,
+      query: "signin",
+    });
+    expect(data.pagination).toMatchObject({
+      from: 2,
+      hasNext: false,
+      hasPrevious: true,
+      page: 2,
+      pageSize: 1,
+      to: 2,
+      total: 2,
+      totalPages: 2,
+    });
     expect(data.sessions[0]).toMatchObject({
       duration: "5 min 5 s",
       href: "/test-sessions/session_1",
@@ -1196,6 +1429,7 @@ describe("dashboard data", () => {
     mocks.checkRunUpdateMany.mockResolvedValue({ count: 0 });
     mocks.projectFindUnique.mockResolvedValue(null);
     mocks.projectFindFirst.mockResolvedValue(null);
+    mocks.testSessionCount.mockResolvedValue(1);
     mocks.testSessionFindMany.mockResolvedValue([
       {
         createdAt: new Date("2026-07-05T11:20:00.000Z"),
@@ -1247,6 +1481,21 @@ describe("dashboard data", () => {
       }),
     );
     expect(data).toMatchObject({
+      filters: {
+        page: 1,
+        pageSize: 20,
+        query: "",
+      },
+      pagination: {
+        from: 1,
+        hasNext: false,
+        hasPrevious: false,
+        page: 1,
+        pageSize: 20,
+        to: 1,
+        total: 1,
+        totalPages: 1,
+      },
       projectSlug: "default",
       sessions: [
         {

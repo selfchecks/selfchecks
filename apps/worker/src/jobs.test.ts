@@ -45,6 +45,7 @@ describe("handleCheckJob", () => {
           reporter: "dot",
           rootDir: "/repo/config/checkly",
           runId: "run_1",
+          runSource: "SCHEDULE",
           type: "browser",
         },
       }),
@@ -65,6 +66,7 @@ describe("handleCheckJob", () => {
       reporter: "dot",
       rootDir: "/repo/config/checkly",
       runId: "run_1",
+      runSource: "SCHEDULE",
     });
   });
 
