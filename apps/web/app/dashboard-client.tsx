@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  type CSSProperties,
   type FormEvent,
   type ReactNode,
   useEffect,
@@ -99,6 +100,9 @@ type RuntimeSecretDraft = {
   updatedAt?: string;
   value: string;
   valueMasked?: string;
+};
+type RangeFillStyle = CSSProperties & {
+  "--settings-range-fill": string;
 };
 
 const AI_CUSTOM_ENDPOINT_VALUE = "__custom__";
@@ -1984,6 +1988,7 @@ function SettingsScreen({
                       ),
                     }))
                   }
+                  style={getRangeFillStyle(value, field.min, field.max)}
                   type="range"
                   value={value}
                 />
@@ -2245,7 +2250,7 @@ function SettingsScreen({
               ))}
               <button
                 aria-label="Add variable"
-                className="mt-1 inline-flex h-10 w-fit items-center gap-2 rounded-md border border-slate-700 px-3 text-sm font-medium text-slate-200 hover:bg-slate-800"
+                className="mt-1 inline-flex h-10 w-fit items-center gap-2 rounded-md bg-blue-600 px-3 text-sm font-semibold text-white hover:bg-blue-500"
                 onClick={() =>
                   setVariableRows((current) => [...current, createVariableDraft()])
                 }
@@ -2318,7 +2323,7 @@ function SettingsScreen({
               ))}
               <button
                 aria-label="Add secret"
-                className="mt-1 inline-flex h-10 w-fit items-center gap-2 rounded-md border border-slate-700 px-3 text-sm font-medium text-slate-200 hover:bg-slate-800"
+                className="mt-1 inline-flex h-10 w-fit items-center gap-2 rounded-md bg-blue-600 px-3 text-sm font-semibold text-white hover:bg-blue-500"
                 onClick={() =>
                   setSecretRows((current) => [...current, createSecretDraft()])
                 }
@@ -2377,6 +2382,16 @@ function getTimeZoneOptions(selectedTimeZone: string) {
       ),
     ),
   );
+}
+
+function getRangeFillStyle(value: number, min: number, max: number): RangeFillStyle {
+  const range = max - min;
+  const fill = range > 0 ? ((value - min) / range) * 100 : 0;
+  const clampedFill = Math.min(100, Math.max(0, fill));
+
+  return {
+    "--settings-range-fill": `${clampedFill}%`,
+  };
 }
 
 function createVariableDraft(
