@@ -13,6 +13,11 @@ import { normalizeTags } from "@selfchecks/core";
 import { prisma, Prisma, type CheckRun, type TestSession } from "@selfchecks/db";
 
 import { analyzeFailedCheck } from "./ai-analysis.js";
+import {
+  BROWSER_PERFORMANCE_COLLECTOR_SCRIPT,
+  collectBrowserPerformanceFromArtifacts,
+  collectBrowserPerformanceFromDirectory,
+} from "./browser-performance.js";
 
 export type EnvVar = {
   name: string;
@@ -716,6 +721,7 @@ async function runBrowserCheck(
 
   const artifactStartedAt = Date.now();
   const artifactPaths = createBrowserArtifactPaths(options.rootDir, run?.id);
+  await writeBrowserPerformanceCollector(artifactPaths.performanceCollectorPath);
   const logs = await runProcess({
     args: [
       "playwright",
@@ -727,12 +733,19 @@ async function runBrowserCheck(
       artifactPaths.testResultsDir,
       "--reporter",
       options.reporter,
+      "--trace",
+      "on",
     ],
     command: "npx",
     env: options.env,
     processEnv: {
       PLAYWRIGHT_BLOB_OUTPUT_DIR: artifactPaths.blobReportDir,
       PLAYWRIGHT_HTML_OUTPUT_DIR: artifactPaths.htmlReportDir,
+      SELFCHECKS_BROWSER_PERFORMANCE_DIR: artifactPaths.performanceDir,
+      NODE_OPTIONS: mergeNodeOptions(
+        process.env.NODE_OPTIONS,
+        `--require=${artifactPaths.performanceCollectorPath}`,
+      ),
     },
     rootDir: options.rootDir,
   });
@@ -746,6 +759,9 @@ async function runBrowserCheck(
         artifactPaths.blobReportDir,
       ])
     : [];
+  const performance =
+    (await collectBrowserPerformanceFromDirectory(artifactPaths.performanceDir)) ??
+    (await collectBrowserPerformanceFromArtifacts(artifacts));
 
   return {
     artifacts,
@@ -755,6 +771,7 @@ async function runBrowserCheck(
       artifactOutputDir: artifactPaths.testResultsDir,
       command: `npx playwright test ${check.entrypoint}`,
       exitCode: logs.exitCode,
+      ...(performance ? { performance } : {}),
     },
     status: logs.exitCode === 0 ? "passed" : "failed",
   };
@@ -947,8 +964,24 @@ function createBrowserArtifactPaths(rootDir: string, runId: string | undefined) 
   return {
     blobReportDir: path.join(artifactRoot, "blob-report"),
     htmlReportDir: path.join(artifactRoot, "playwright-report"),
+    performanceCollectorPath: path.join(artifactRoot, "performance-collector.cjs"),
+    performanceDir: path.join(artifactRoot, "performance"),
     testResultsDir: path.join(artifactRoot, "test-results"),
   };
+}
+
+async function writeBrowserPerformanceCollector(filePath: string) {
+  await mkdir(path.dirname(filePath), {
+    recursive: true,
+  });
+  await writeFile(filePath, BROWSER_PERFORMANCE_COLLECTOR_SCRIPT);
+}
+
+function mergeNodeOptions(...options: Array<string | undefined>) {
+  return options
+    .map((option) => option?.trim())
+    .filter((option): option is string => Boolean(option))
+    .join(" ");
 }
 
 async function walkArtifactDirectory(

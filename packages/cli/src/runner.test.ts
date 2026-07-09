@@ -67,6 +67,52 @@ async function createTempProject() {
   return directory;
 }
 
+function createStoredZip(entries: Record<string, string>) {
+  const localParts: Buffer[] = [];
+  const centralParts: Buffer[] = [];
+  let offset = 0;
+  let entryCount = 0;
+
+  for (const [entryName, content] of Object.entries(entries)) {
+    const name = Buffer.from(entryName);
+    const data = Buffer.from(content);
+    const localHeader = Buffer.alloc(30);
+
+    localHeader.writeUInt32LE(0x04034b50, 0);
+    localHeader.writeUInt16LE(20, 4);
+    localHeader.writeUInt16LE(0, 8);
+    localHeader.writeUInt32LE(data.length, 18);
+    localHeader.writeUInt32LE(data.length, 22);
+    localHeader.writeUInt16LE(name.length, 26);
+    localParts.push(localHeader, name, data);
+
+    const centralHeader = Buffer.alloc(46);
+
+    centralHeader.writeUInt32LE(0x02014b50, 0);
+    centralHeader.writeUInt16LE(20, 4);
+    centralHeader.writeUInt16LE(20, 6);
+    centralHeader.writeUInt32LE(data.length, 20);
+    centralHeader.writeUInt32LE(data.length, 24);
+    centralHeader.writeUInt16LE(name.length, 28);
+    centralHeader.writeUInt32LE(offset, 42);
+    centralParts.push(centralHeader, name);
+
+    offset += localHeader.length + name.length + data.length;
+    entryCount += 1;
+  }
+
+  const centralDirectory = Buffer.concat(centralParts);
+  const endOfCentralDirectory = Buffer.alloc(22);
+
+  endOfCentralDirectory.writeUInt32LE(0x06054b50, 0);
+  endOfCentralDirectory.writeUInt16LE(entryCount, 8);
+  endOfCentralDirectory.writeUInt16LE(entryCount, 10);
+  endOfCentralDirectory.writeUInt32LE(centralDirectory.length, 12);
+  endOfCentralDirectory.writeUInt32LE(offset, 16);
+
+  return Buffer.concat([...localParts, centralDirectory, endOfCentralDirectory]);
+}
+
 describe("runCheckById", () => {
   afterEach(async () => {
     vi.clearAllMocks();
@@ -160,7 +206,13 @@ describe("runCheckById", () => {
           await mkdir(path.dirname(isolatedTracePath), { recursive: true });
           await mkdir(path.dirname(sharedTracePath), { recursive: true });
           await writeFile(path.join(String(outputDir), ".last-run.json"), "{}");
-          await writeFile(isolatedTracePath, "trace payload");
+          await writeFile(
+            isolatedTracePath,
+            createStoredZip({
+              "trace.network": "",
+              "trace.trace": "",
+            }),
+          );
           await writeFile(actualScreenshotPath, "actual screenshot payload");
           await writeFile(expectedScreenshotPath, "expected screenshot payload");
           await writeFile(sharedTracePath, "shared trace payload");
@@ -210,6 +262,8 @@ describe("runCheckById", () => {
         isolatedOutputDir,
         "--reporter",
         "list",
+        "--trace",
+        "on",
       ],
       expect.objectContaining({
         cwd: rootDir,

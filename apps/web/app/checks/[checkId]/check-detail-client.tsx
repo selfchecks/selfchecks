@@ -430,9 +430,9 @@ export default function CheckDetailClient({
               )}
 
               {isRunDataLoading ? (
-                <PerformanceAnalyticsSkeleton />
+                <PerformanceAnalyticsSkeleton checkType={check.type} />
               ) : isRunDataError ? null : (
-                <PerformanceAnalytics runs={filteredRuns} />
+                <PerformanceAnalytics checkType={check.type} runs={filteredRuns} />
               )}
 
               <section className="grid gap-5 xl:grid-cols-2">
@@ -630,12 +630,17 @@ function RunDataError({ message, onRetry }: { message: string; onRetry: () => vo
   );
 }
 
-function PerformanceAnalyticsSkeleton() {
+function PerformanceAnalyticsSkeleton({ checkType }: { checkType: "api" | "browser" }) {
+  const titles =
+    checkType === "api"
+      ? ["Check duration"]
+      : ["Check duration", "Loading", "Errors", "Interactivity"];
+
   return (
     <section aria-busy="true" className="grid gap-4">
       <h2 className="text-xl font-semibold text-slate-100">Performance</h2>
-      <div className="grid gap-4 xl:grid-cols-2">
-        {["Check duration", "Loading", "Errors", "Interactivity"].map((title) => (
+      <div className={cn("grid gap-4", checkType === "browser" && "xl:grid-cols-2")}>
+        {titles.map((title) => (
           <section
             className="rounded-md border border-slate-800 bg-[#111821] p-5"
             key={title}
@@ -788,13 +793,20 @@ function ResultChart({ runs }: { runs: DashboardRunRow[] }) {
   );
 }
 
-function PerformanceAnalytics({ runs }: { runs: DashboardRunRow[] }) {
+function PerformanceAnalytics({
+  checkType,
+  runs,
+}: {
+  checkType: "api" | "browser";
+  runs: DashboardRunRow[];
+}) {
   const analytics = useMemo(() => buildPerformanceAnalytics(runs), [runs]);
+  const showBrowserMetrics = checkType === "browser";
 
   return (
     <section className="grid gap-4">
       <h2 className="text-xl font-semibold text-slate-100">Performance</h2>
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className={cn("grid gap-4", showBrowserMetrics && "xl:grid-cols-2")}>
         <AnalyticsPanel
           metrics={[
             { label: "P50", value: analytics.duration.p50 },
@@ -804,38 +816,42 @@ function PerformanceAnalytics({ runs }: { runs: DashboardRunRow[] }) {
           series={analytics.duration.series}
           title="Check duration"
         />
-        <AnalyticsPanel
-          metrics={[
-            { label: "TTFB", value: analytics.loading.ttfb },
-            { label: "FCP", value: analytics.loading.fcp },
-            { label: "LCP", value: analytics.loading.lcp },
-            { label: "Loaded", value: analytics.loading.loaded },
-            { label: "DCL", value: analytics.loading.dcl },
-          ]}
-          series={analytics.loading.series}
-          title="Loading"
-        />
-        <AnalyticsPanel
-          chartType="bar"
-          emptyLabel="No browser errors recorded for the selected runs."
-          metrics={[
-            { label: "Console", value: String(analytics.errors.consoleErrors) },
-            { label: "Network", value: String(analytics.errors.networkErrors) },
-            { label: "Script", value: String(analytics.errors.scriptErrors) },
-            {
-              label: "Document",
-              value: String(analytics.errors.documentErrors),
-            },
-          ]}
-          series={analytics.errors.series}
-          title="Errors"
-        />
-        <AnalyticsPanel
-          emptyLabel="No interactivity metrics recorded for the selected runs."
-          metrics={[{ label: "TBT", value: analytics.interactivity.tbt }]}
-          series={analytics.interactivity.series}
-          title="Interactivity"
-        />
+        {showBrowserMetrics ? (
+          <>
+            <AnalyticsPanel
+              metrics={[
+                { label: "TTFB", value: analytics.loading.ttfb },
+                { label: "FCP", value: analytics.loading.fcp },
+                { label: "LCP", value: analytics.loading.lcp },
+                { label: "Loaded", value: analytics.loading.loaded },
+                { label: "DCL", value: analytics.loading.dcl },
+              ]}
+              series={analytics.loading.series}
+              title="Loading"
+            />
+            <AnalyticsPanel
+              chartType="bar"
+              emptyLabel="No browser errors recorded for the selected runs."
+              metrics={[
+                { label: "Console", value: String(analytics.errors.consoleErrors) },
+                { label: "Network", value: String(analytics.errors.networkErrors) },
+                { label: "Script", value: String(analytics.errors.scriptErrors) },
+                {
+                  label: "Document",
+                  value: String(analytics.errors.documentErrors),
+                },
+              ]}
+              series={analytics.errors.series}
+              title="Errors"
+            />
+            <AnalyticsPanel
+              emptyLabel="No interactivity metrics recorded for the selected runs."
+              metrics={[{ label: "TBT", value: analytics.interactivity.tbt }]}
+              series={analytics.interactivity.series}
+              title="Interactivity"
+            />
+          </>
+        ) : null}
       </div>
     </section>
   );

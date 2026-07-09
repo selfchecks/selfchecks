@@ -229,6 +229,21 @@ function renderDetail({
   );
 }
 
+function createBrowserDetail(): CheckDetailData {
+  return {
+    ...detail,
+    check: {
+      ...detail.check,
+      settings: {
+        ...detail.check.settings,
+        entrypoint: "tests/bff-gtm.spec.ts",
+        request: undefined,
+      },
+      type: "browser",
+    },
+  };
+}
+
 describe("CheckDetailClient", () => {
   afterEach(() => {
     vi.clearAllMocks();
@@ -258,19 +273,15 @@ describe("CheckDetailClient", () => {
     expect(screen.queryByRole("columnheader", { name: "Error" })).toBeNull();
     expect(screen.getByText("Performance")).toBeTruthy();
     expect(screen.getByText("Check duration")).toBeTruthy();
-    expect(screen.getByText("Loading")).toBeTruthy();
-    expect(screen.getByText("Errors")).toBeTruthy();
-    expect(screen.getByText("Interactivity")).toBeTruthy();
     await waitFor(() => {
       expect(screen.getByText("Trace · 42 KB")).toBeTruthy();
     });
-    expect(screen.getAllByText("TTFB").length).toBeGreaterThan(1);
-    expect(screen.getByText("239 ms")).toBeTruthy();
-    expect(screen.getByText("Network")).toBeTruthy();
-    expect(screen.getByText("Network Errors")).toBeTruthy();
-    expect(screen.getByText("12")).toBeTruthy();
-    expect(screen.getAllByText("TBT").length).toBeGreaterThan(1);
-    expect(screen.getByText("1.87 s")).toBeTruthy();
+    expect(screen.queryByText("Loading")).toBeNull();
+    expect(screen.queryByText("Errors")).toBeNull();
+    expect(screen.queryByText("Interactivity")).toBeNull();
+    expect(screen.queryByText("TTFB")).toBeNull();
+    expect(screen.queryByText("Network Errors")).toBeNull();
+    expect(screen.queryByText("TBT")).toBeNull();
     expect(
       (
         screen.getByRole("link", {
@@ -288,6 +299,32 @@ describe("CheckDetailClient", () => {
       (screen.getByRole("link", { name: "Download trace.zip" }) as HTMLAnchorElement)
         .href,
     ).toContain("/api/runs/run_1/artifacts/artifact_1?download=1");
+  });
+
+  it("shows browser-only performance panels for browser checks", async () => {
+    const browserDetail = createBrowserDetail();
+
+    renderDetail({
+      fullDetail: browserDetail,
+      initialDetail: browserDetail,
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByText("1 attempt").length).toBeGreaterThan(0);
+    });
+
+    expect(screen.getByText("Performance")).toBeTruthy();
+    expect(screen.getByText("Check duration")).toBeTruthy();
+    expect(screen.getByText("Loading")).toBeTruthy();
+    expect(screen.getByText("Errors")).toBeTruthy();
+    expect(screen.getByText("Interactivity")).toBeTruthy();
+    expect(screen.getAllByText("TTFB").length).toBeGreaterThan(1);
+    expect(screen.getByText("239 ms")).toBeTruthy();
+    expect(screen.getByText("Network")).toBeTruthy();
+    expect(screen.getByText("Network Errors")).toBeTruthy();
+    expect(screen.getByText("12")).toBeTruthy();
+    expect(screen.getAllByText("TBT").length).toBeGreaterThan(1);
+    expect(screen.getByText("1.87 s")).toBeTruthy();
   });
 
   it("keeps dense run charts constrained to the card width", async () => {
