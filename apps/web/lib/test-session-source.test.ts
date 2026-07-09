@@ -1,0 +1,51 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  formatTestSessionSource,
+  getTestSessionSourceBranch,
+} from "./test-session-source";
+
+describe("test session source", () => {
+  it("formats a structured source into display fields", () => {
+    expect(
+      formatTestSessionSource(
+        "sendsay-ru/frontend/account | release/3.192.42 | eb3f7ed3 | pipeline https://gitlab.sndsy.ru/sendsay-ru/frontend/account/-/pipelines/6569 | job https://gitlab.sndsy.ru/sendsay-ru/frontend/account/-/jobs/123",
+      ),
+    ).toEqual([
+      {
+        label: "Repository",
+        value: "sendsay-ru/frontend/account",
+      },
+      {
+        label: "Version",
+        value: "release/3.192.42",
+      },
+      {
+        label: "Commit",
+        value: "eb3f7ed3",
+      },
+      {
+        href: "https://gitlab.sndsy.ru/sendsay-ru/frontend/account/-/pipelines/6569",
+        label: "Pipeline",
+        value: "https://gitlab.sndsy.ru/sendsay-ru/frontend/account/-/pipelines/6569",
+      },
+      {
+        href: "https://gitlab.sndsy.ru/sendsay-ru/frontend/account/-/jobs/123",
+        label: "Job",
+        value: "https://gitlab.sndsy.ru/sendsay-ru/frontend/account/-/jobs/123",
+      },
+    ]);
+  });
+
+  it("extracts branch from the structured source", () => {
+    expect(
+      getTestSessionSourceBranch(
+        "sendsay-ru/frontend/account | release/3.192.42 | eb3f7ed3 | pipeline https://gitlab.sndsy.ru/sendsay-ru/frontend/account/-/pipelines/6569",
+      ),
+    ).toBe("release/3.192.42");
+  });
+
+  it("does not infer branch from an unstructured source", () => {
+    expect(getTestSessionSourceBranch("manual source")).toBeUndefined();
+  });
+});

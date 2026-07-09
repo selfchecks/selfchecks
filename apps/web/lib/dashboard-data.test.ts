@@ -996,7 +996,7 @@ describe("dashboard data", () => {
         testSession: {
           id: "session_1",
           kind: "TEST",
-          source: "developers/frontend/account | v1.2.3 | abc123",
+          source: "developers/frontend/account | release/3.192.42 | abc123",
         },
         testSessionId: "session_1",
       },
@@ -1006,7 +1006,7 @@ describe("dashboard data", () => {
 
     expect(dashboard.queue).toEqual([
       expect.objectContaining({
-        branch: "developers/frontend/account | v1.2.3 | abc123",
+        branch: "release/3.192.42",
         checkHref: "/test-sessions/session_1/checks/signin",
         checkId: "signin",
         checkName: "Sign in",

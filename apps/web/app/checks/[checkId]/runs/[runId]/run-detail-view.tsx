@@ -255,7 +255,9 @@ export function RunDetailView({ accountLabel, detail }: RunDetailViewProps) {
                 checkType={check.type}
                 run={run}
               />
-              <PageNavigationsPanel entries={navigationEntries} />
+              {check.type === "api" ? (
+                <PageNavigationsPanel entries={navigationEntries} />
+              ) : null}
               {run.request?.assertions.length ? (
                 <AssertionsTable assertions={run.request.assertions} />
               ) : null}

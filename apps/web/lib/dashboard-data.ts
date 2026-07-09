@@ -22,6 +22,7 @@ import { getArtifactFileName } from "./artifact-names";
 import { prisma } from "./prisma";
 import { getRunResultTone } from "./run-result-tone";
 import { getRuntimeTimeZone } from "./runtime-config";
+import { getTestSessionSourceBranch } from "./test-session-source";
 
 const DEFAULT_QUEUED_RUN_TIMEOUT_MINUTES = 30;
 const FIREWATCH_LOOKBACK_DAYS = 7;
@@ -1785,7 +1786,11 @@ function mapActiveRunState(status: string): DashboardQueueRow["runState"] {
 function getQueueBranch(run: ActiveQueueRunWithCheck): string {
   const source = run.testSession?.source?.trim();
 
-  return source || "production";
+  if (!source) {
+    return "production";
+  }
+
+  return getTestSessionSourceBranch(source) ?? source;
 }
 
 function buildQueueCheckHref(run: ActiveQueueRunWithCheck, checkId: string): string {

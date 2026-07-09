@@ -267,6 +267,7 @@ describe("RunDetailView", () => {
 
     expect(screen.getByRole("heading", { name: "Header search input" })).toBeTruthy();
     expect(screen.getByText("Playwright test report")).toBeTruthy();
+    expect(screen.queryByText("Page navigations")).toBeNull();
     expect(screen.queryByText("Assertions")).toBeNull();
     expect(screen.queryByText("No assertions recorded for this run.")).toBeNull();
     expect(screen.queryByText("Request data")).toBeNull();

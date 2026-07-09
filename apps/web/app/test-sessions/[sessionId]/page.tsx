@@ -6,6 +6,7 @@ import { notFound } from "next/navigation";
 import { AppSidebar } from "@/components/app-sidebar";
 import { getTestSessionData, type TestSessionCheckRow } from "@/lib/dashboard-data";
 import { getDashboardSettingsData } from "@/lib/settings-data";
+import { formatTestSessionSource } from "@/lib/test-session-source";
 
 import { RunStateBadge, SummaryPills } from "../test-session-components";
 
@@ -27,7 +28,7 @@ export default async function TestSessionPage({ params }: TestSessionPageProps) 
 
   const settings = await getDashboardSettingsData(data.projectSlug);
   const { session } = data;
-  const sourceFields = formatSessionSource(session.source);
+  const sourceFields = formatTestSessionSource(session.source);
 
   return (
     <main className="min-h-screen bg-[#0d1117] text-slate-200">
@@ -130,101 +131,6 @@ export default async function TestSessionPage({ params }: TestSessionPageProps) 
       </div>
     </main>
   );
-}
-
-type SourceField = {
-  href?: string;
-  label: string;
-  value: string;
-};
-
-function formatSessionSource(source: string | undefined): SourceField[] {
-  const rawSource = source?.trim();
-
-  if (!rawSource) {
-    return [
-      {
-        label: "Source",
-        value: "-",
-      },
-    ];
-  }
-
-  const parts = rawSource
-    .split("|")
-    .map((part) => part.trim())
-    .filter(Boolean);
-
-  if (parts.length <= 1) {
-    return [
-      {
-        label: "Source",
-        value: rawSource,
-      },
-    ];
-  }
-
-  const [repository, version, commit, ...details] = parts;
-  const fields: SourceField[] = [];
-
-  pushSourceField(fields, "Repository", repository);
-  pushSourceField(fields, "Version", version);
-  pushSourceField(fields, "Commit", commit);
-
-  for (const detail of details) {
-    const field = parseSourceDetail(detail);
-
-    fields.push(field);
-  }
-
-  return fields.length > 0 ? fields : [{ label: "Source", value: rawSource }];
-}
-
-function pushSourceField(
-  fields: SourceField[],
-  label: SourceField["label"],
-  value: string | undefined,
-) {
-  if (!value) {
-    return;
-  }
-
-  fields.push({
-    label,
-    value,
-  });
-}
-
-function parseSourceDetail(detail: string): SourceField {
-  const match = detail.match(/^(pipeline|job)\s+(.+)$/i);
-
-  const [, kind, rawValue] = match ?? [];
-
-  if (!kind || !rawValue) {
-    return {
-      label: "Detail",
-      value: detail,
-    };
-  }
-
-  const label = kind.toLowerCase() === "pipeline" ? "Pipeline" : "Job";
-  const value = rawValue.trim();
-
-  return {
-    ...(isHttpUrl(value) ? { href: value } : {}),
-    label,
-    value,
-  };
-}
-
-function isHttpUrl(value: string) {
-  try {
-    const url = new URL(value);
-
-    return url.protocol === "http:" || url.protocol === "https:";
-  } catch {
-    return false;
-  }
 }
 
 function SessionChecksTable({ checks }: { checks: TestSessionCheckRow[] }) {

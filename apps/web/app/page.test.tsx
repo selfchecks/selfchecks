@@ -934,7 +934,7 @@ describe("DashboardPage", () => {
   it("shows active queue rows from the sidebar without dashboard filters", async () => {
     const user = userEvent.setup();
     const runningRow = createQueueRow({
-      branch: "developers/frontend/account | v1.2.3 | abc123",
+      branch: "release/3.192.42",
       checkHref: "/test-sessions/session_1/checks/checkout.running",
       checkName: "checkout.running",
       createdAt: "2026-07-05T09:39:00.000Z",
@@ -1000,9 +1000,7 @@ describe("DashboardPage", () => {
     expect(
       screen.getByRole("link", { name: "checkout.running" }).getAttribute("href"),
     ).toBe("/test-sessions/session_1/checks/checkout.running");
-    expect(
-      screen.getByText("developers/frontend/account | v1.2.3 | abc123"),
-    ).toBeTruthy();
+    expect(screen.getByText("release/3.192.42")).toBeTruthy();
     expect(screen.getByText("CLI")).toBeTruthy();
     expect(screen.getByText("Schedule")).toBeTruthy();
 

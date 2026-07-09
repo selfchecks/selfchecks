@@ -3009,7 +3009,7 @@ function SparkBars({ bars }: { bars: CheckRow["bars"] }) {
             ) : null}
             <span
               className={cn(
-                "pointer-events-none absolute bottom-full left-1/2 z-30 mb-3 hidden w-max min-w-64 -translate-x-1/2 rounded-md border border-slate-500/20 bg-slate-600 px-4 py-3 text-left shadow-2xl shadow-black/40",
+                "pointer-events-none absolute left-1/2 top-full z-30 mt-3 hidden w-max min-w-64 -translate-x-1/2 rounded-md border border-slate-500/20 bg-slate-600 px-4 py-3 text-left shadow-2xl shadow-black/40",
                 "group-hover:block group-focus-within:block",
               )}
               role="tooltip"
@@ -3050,7 +3050,7 @@ function SparkBars({ bars }: { bars: CheckRow["bars"] }) {
                   <span>{bar.occurredAt}</span>
                 </span>
               )}
-              <span className="absolute left-1/2 top-full h-3 w-3 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-slate-600" />
+              <span className="absolute bottom-full left-1/2 h-3 w-3 -translate-x-1/2 translate-y-1/2 rotate-45 bg-slate-600" />
             </span>
           </>
         );
