@@ -169,7 +169,9 @@ function TestSessionTableRow({ session }: { session: TestSessionRow }) {
           <span className="truncate font-medium">
             {session.name || session.createdAtLabel}
           </span>
-          <span className="mt-1 truncate text-xs text-slate-500">{session.id}</span>
+          <span className="mt-1 truncate text-xs text-slate-500">
+            {session.createdAtLabel}
+          </span>
         </Link>
       </td>
       <td className="px-4 py-3">

@@ -139,6 +139,8 @@ describe("TestSessionsPage", () => {
       name: /Nightly regression/,
     });
 
+    expect(within(sessionRow).getByText("Jul 05 14:20")).toBeTruthy();
+    expect(within(sessionRow).queryByText("session_1")).toBeNull();
     expect(within(sessionRow).getByRole("cell", { name: "3" })).toBeTruthy();
     expect(within(sessionRow).getByRole("cell", { name: "2" })).toBeTruthy();
     expect(within(sessionRow).getByRole("cell", { name: "1" })).toBeTruthy();
