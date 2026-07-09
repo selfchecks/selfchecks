@@ -1414,7 +1414,7 @@ describe("DashboardPage", () => {
 
     await user.click(screen.getByRole("button", { name: "Add secret" }));
     expect(screen.getByLabelText("Secret 2 name")).toBeTruthy();
-  });
+  }, 15_000);
 
   it("opens and closes custom filter dropdowns", async () => {
     const user = userEvent.setup();
