@@ -1,21 +1,32 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  artifactDeleteMany: vi.fn(),
+  artifactFindMany: vi.fn(),
   checkFindMany: vi.fn(),
   checkRunCreate: vi.fn(),
+  checkRunDeleteMany: vi.fn(),
+  checkRunFindMany: vi.fn(),
   checkRunUpdate: vi.fn(),
   checkRunUpdateMany: vi.fn(),
   getRunEnvironment: vi.fn(),
   queueAdd: vi.fn(),
+  readPerformanceRuntimeSettings: vi.fn(),
 }));
 
 vi.mock("@selfchecks/db", () => ({
   prisma: {
+    artifact: {
+      deleteMany: mocks.artifactDeleteMany,
+      findMany: mocks.artifactFindMany,
+    },
     check: {
       findMany: mocks.checkFindMany,
     },
     checkRun: {
       create: mocks.checkRunCreate,
+      deleteMany: mocks.checkRunDeleteMany,
+      findMany: mocks.checkRunFindMany,
       update: mocks.checkRunUpdate,
       updateMany: mocks.checkRunUpdateMany,
     },
@@ -24,6 +35,10 @@ vi.mock("@selfchecks/db", () => ({
 
 vi.mock("@selfchecks/cli/environment", () => ({
   getRunEnvironment: mocks.getRunEnvironment,
+}));
+
+vi.mock("./performance-settings.js", () => ({
+  readPerformanceRuntimeSettings: mocks.readPerformanceRuntimeSettings,
 }));
 
 import { scheduleDueChecks } from "./scheduler.js";
@@ -67,8 +82,15 @@ function createScheduledCheck(
 
 describe("scheduleDueChecks", () => {
   beforeEach(() => {
+    mocks.artifactFindMany.mockResolvedValue([]);
+    mocks.checkRunFindMany.mockResolvedValue([]);
     mocks.checkRunUpdateMany.mockResolvedValue({
       count: 0,
+    });
+    mocks.readPerformanceRuntimeSettings.mockResolvedValue({
+      artifactRetentionDays: 14,
+      historyRetentionDays: 180,
+      workerConcurrency: 2,
     });
   });
 
@@ -433,5 +455,104 @@ describe("scheduleDueChecks", () => {
         status: "RUNNING",
       },
     });
+  });
+
+  it("cleans expired artifact files and finished run history", async () => {
+    const logger = createLogger();
+    const deleteFile = vi.fn().mockResolvedValue(undefined);
+
+    mocks.checkFindMany.mockResolvedValue([]);
+    mocks.readPerformanceRuntimeSettings.mockResolvedValue({
+      artifactRetentionDays: 2,
+      historyRetentionDays: 30,
+      workerConcurrency: 4,
+    });
+    mocks.artifactFindMany.mockResolvedValue([
+      {
+        id: "artifact_1",
+        path: "/tmp/selfchecks/artifact-1.zip",
+      },
+    ]);
+    mocks.checkRunFindMany.mockResolvedValue([
+      {
+        artifacts: [
+          {
+            path: "/tmp/selfchecks/run-artifact.zip",
+          },
+        ],
+        id: "run_1",
+        logsPath: "/tmp/selfchecks/run.log",
+      },
+    ]);
+    mocks.artifactDeleteMany.mockResolvedValue({
+      count: 1,
+    });
+    mocks.checkRunDeleteMany.mockResolvedValue({
+      count: 1,
+    });
+
+    await scheduleDueChecks({
+      config: {
+        pollIntervalMs: 60_000,
+        queuedRunTimeoutMinutes: 30,
+        reporter: "list",
+        runningRunTimeoutMinutes: 120,
+      },
+      deleteFile,
+      logger,
+      now,
+      queue: {
+        add: mocks.queueAdd,
+      },
+    });
+
+    expect(mocks.artifactFindMany).toHaveBeenCalledWith({
+      select: {
+        id: true,
+        path: true,
+      },
+      where: {
+        createdAt: {
+          lt: new Date("2026-06-27T10:00:00.000Z"),
+        },
+      },
+    });
+    expect(mocks.artifactDeleteMany).toHaveBeenCalledWith({
+      where: {
+        id: {
+          in: ["artifact_1"],
+        },
+      },
+    });
+    expect(mocks.checkRunFindMany).toHaveBeenCalledWith({
+      select: {
+        artifacts: {
+          select: {
+            path: true,
+          },
+        },
+        id: true,
+        logsPath: true,
+      },
+      where: {
+        createdAt: {
+          lt: new Date("2026-05-30T10:00:00.000Z"),
+        },
+        status: {
+          notIn: ["QUEUED", "RUNNING"],
+        },
+      },
+    });
+    expect(mocks.checkRunDeleteMany).toHaveBeenCalledWith({
+      where: {
+        id: {
+          in: ["run_1"],
+        },
+      },
+    });
+    expect(deleteFile).toHaveBeenCalledWith("/tmp/selfchecks/artifact-1.zip");
+    expect(deleteFile).toHaveBeenCalledWith("/tmp/selfchecks/run.log");
+    expect(deleteFile).toHaveBeenCalledWith("/tmp/selfchecks/run-artifact.zip");
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 });

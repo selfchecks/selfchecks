@@ -1,5 +1,5 @@
 import { type JobsOptions } from "bullmq";
-import { normalizeCheckQueueName } from "@selfchecks/core";
+import { normalizeCheckQueueName, performanceSettingsLimits } from "@selfchecks/core";
 
 export type WorkerRuntimeConfig = {
   checksRoot?: string;
@@ -46,6 +46,17 @@ function parsePositiveInteger(value: string | undefined, fallback: number): numb
   return parsedValue;
 }
 
+function parseIntegerInRange(
+  value: string | undefined,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
+  const parsedValue = parsePositiveInteger(value, fallback);
+
+  return parsedValue >= min && parsedValue <= max ? parsedValue : fallback;
+}
+
 function parseEnabled(value: string | undefined, fallback: boolean): boolean {
   if (!value) {
     return fallback;
@@ -59,7 +70,12 @@ export function getWorkerRuntimeConfig(
 ): WorkerRuntimeConfig {
   return {
     checksRoot: env.SELFCHECKS_CHECKS_ROOT?.trim() || undefined,
-    concurrency: parsePositiveInteger(env.SELFCHECKS_WORKER_CONCURRENCY, 2),
+    concurrency: parseIntegerInRange(
+      env.SELFCHECKS_WORKER_CONCURRENCY,
+      performanceSettingsLimits.workerConcurrency.default,
+      performanceSettingsLimits.workerConcurrency.min,
+      performanceSettingsLimits.workerConcurrency.max,
+    ),
     connection: {
       host: env.REDIS_HOST || "localhost",
       port: parsePositiveInteger(env.REDIS_PORT, 6379),

@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   getWorkerRuntimeConfig: vi.fn(),
   handleCheckJob: vi.fn(),
   queueClose: vi.fn(),
+  readPerformanceRuntimeSettings: vi.fn(),
   schedulerClose: vi.fn(),
   schedulerStart: vi.fn(),
   workerClose: vi.fn(),
@@ -24,6 +25,10 @@ vi.mock("./config.js", () => ({
 
 vi.mock("./jobs.js", () => ({
   handleCheckJob: mocks.handleCheckJob,
+}));
+
+vi.mock("./performance-settings.js", () => ({
+  readPerformanceRuntimeSettings: mocks.readPerformanceRuntimeSettings,
 }));
 
 vi.mock("./scheduler.js", () => ({
@@ -61,6 +66,7 @@ describe("worker entrypoint", () => {
     }));
     mocks.Worker.mockImplementation(() => ({
       close: mocks.workerClose,
+      concurrency: 2,
       on: mocks.workerOn,
     }));
     mocks.CheckScheduler.mockImplementation(() => ({
@@ -68,6 +74,11 @@ describe("worker entrypoint", () => {
       start: mocks.schedulerStart,
     }));
     mocks.queueClose.mockResolvedValue(undefined);
+    mocks.readPerformanceRuntimeSettings.mockResolvedValue({
+      artifactRetentionDays: 14,
+      historyRetentionDays: 180,
+      workerConcurrency: 2,
+    });
     mocks.workerClose.mockResolvedValue(undefined);
     consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -102,6 +113,14 @@ describe("worker entrypoint", () => {
         },
       },
     );
+    expect(mocks.readPerformanceRuntimeSettings).toHaveBeenCalledWith({
+      fallback: {
+        artifactRetentionDays: 14,
+        historyRetentionDays: 180,
+        workerConcurrency: 2,
+      },
+      logger: console,
+    });
     expect(mocks.CheckScheduler).toHaveBeenCalledWith({
       config: {
         checksRoot: "/checks",

@@ -1,10 +1,21 @@
 import { Queue, Worker } from "bullmq";
 
+import { defaultPerformanceSettings } from "@selfchecks/core";
+
 import { getWorkerRuntimeConfig } from "./config.js";
 import { type CheckJob, handleCheckJob } from "./jobs.js";
+import { readPerformanceRuntimeSettings } from "./performance-settings.js";
 import { CheckScheduler } from "./scheduler.js";
 
 const config = getWorkerRuntimeConfig();
+const fallbackPerformanceSettings = {
+  ...defaultPerformanceSettings,
+  workerConcurrency: config.concurrency,
+};
+const performanceSettings = await readPerformanceRuntimeSettings({
+  fallback: fallbackPerformanceSettings,
+  logger: console,
+});
 
 export const checkQueue = new Queue<CheckJob>(config.queueName, {
   connection: config.connection,
@@ -12,7 +23,7 @@ export const checkQueue = new Queue<CheckJob>(config.queueName, {
 });
 
 const worker = new Worker<CheckJob>(config.queueName, handleCheckJob, {
-  concurrency: config.concurrency,
+  concurrency: performanceSettings.workerConcurrency,
   connection: config.connection,
 });
 const scheduler = config.scheduler.enabled
@@ -28,6 +39,7 @@ const scheduler = config.scheduler.enabled
       queue: checkQueue,
     })
   : undefined;
+let performanceSyncTimer: NodeJS.Timeout | undefined;
 
 worker.on("completed", (job) => {
   console.log(`Completed queued check job ${job.id}`);
@@ -39,9 +51,46 @@ worker.on("failed", (job, error) => {
 
 async function shutdown(signal: NodeJS.Signals): Promise<void> {
   console.log(`Received ${signal}; closing worker and queue.`);
+  stopPerformanceSettingsSync();
   scheduler?.close();
   await worker.close();
   await checkQueue.close();
+}
+
+async function syncPerformanceSettings(): Promise<void> {
+  const nextSettings = await readPerformanceRuntimeSettings({
+    fallback: fallbackPerformanceSettings,
+    logger: console,
+  });
+
+  if (worker.concurrency === nextSettings.workerConcurrency) {
+    return;
+  }
+
+  worker.concurrency = nextSettings.workerConcurrency;
+  console.log(
+    `selfchecks worker concurrency updated to ${nextSettings.workerConcurrency}`,
+  );
+}
+
+function startPerformanceSettingsSync(): void {
+  if (performanceSyncTimer) {
+    return;
+  }
+
+  performanceSyncTimer = setInterval(() => {
+    void syncPerformanceSettings();
+  }, config.scheduler.pollIntervalMs);
+  performanceSyncTimer.unref?.();
+}
+
+function stopPerformanceSettingsSync(): void {
+  if (!performanceSyncTimer) {
+    return;
+  }
+
+  clearInterval(performanceSyncTimer);
+  performanceSyncTimer = undefined;
 }
 
 process.once("SIGINT", (signal) => {
@@ -53,6 +102,7 @@ process.once("SIGTERM", (signal) => {
 });
 
 console.log(`selfchecks worker listening on queue ${config.queueName}`);
+startPerformanceSettingsSync();
 
 if (scheduler) {
   scheduler.start();

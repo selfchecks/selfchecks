@@ -6,6 +6,8 @@ import {
   deploySummarySchema,
   frequencySchema,
   getCheckIdentity,
+  normalizePerformanceSettingValue,
+  normalizePerformanceSettings,
   normalizeCheckQueueName,
   normalizeTags,
   retryStrategySchema,
@@ -220,5 +222,21 @@ describe("normalizeCheckQueueName", () => {
     expect(() => normalizeCheckQueueName("selfchecks:checks")).toThrow(
       'SELFCHECKS_QUEUE_NAME cannot contain ":"',
     );
+  });
+});
+
+describe("normalizePerformanceSettings", () => {
+  it("fills performance defaults", () => {
+    expect(normalizePerformanceSettings(undefined)).toEqual({
+      artifactRetentionDays: 14,
+      historyRetentionDays: 180,
+      workerConcurrency: 2,
+    });
+  });
+
+  it("clamps performance values to supported limits", () => {
+    expect(normalizePerformanceSettingValue("workerConcurrency", 100)).toBe(24);
+    expect(normalizePerformanceSettingValue("artifactRetentionDays", 1)).toBe(2);
+    expect(normalizePerformanceSettingValue("historyRetentionDays", 999)).toBe(365);
   });
 });

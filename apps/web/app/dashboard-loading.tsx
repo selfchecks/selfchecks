@@ -314,58 +314,93 @@ function ChecksTableSkeleton() {
 
 function SettingsSkeleton() {
   return (
-    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.45fr)]">
-      <div className="space-y-5">
-        <SettingsCardSkeleton
-          fields={4}
-          title="Basic"
-          widths={["w-48", "w-72", "w-64", "w-56"]}
-        />
-        <SettingsCardSkeleton
-          fields={2}
-          title="AI Assistant"
-          widths={["w-72", "w-56"]}
-        />
-        <SettingsCardSkeleton
-          fields={5}
-          title="Runtime environment"
-          widths={["w-52", "w-72", "w-60", "w-64", "w-48"]}
-        />
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <SkeletonLine className="h-3 w-20" />
+          <SkeletonLine className="mt-2 h-8 w-56" />
+        </div>
+        <SkeletonLine className="h-10 w-32 border border-slate-700 bg-[#111821]" />
       </div>
-      <div className="space-y-5">
-        <SettingsCardSkeleton
-          fields={3}
-          title="Security"
-          widths={["w-56", "w-56", "w-40"]}
-        />
-        <SettingsCardSkeleton fields={2} title="Secrets" widths={["w-52", "w-64"]} />
-      </div>
+
+      <SettingsCardSkeleton
+        fields={2}
+        title="Basic settings"
+        widths={["w-20", "w-24"]}
+      />
+      <SettingsCardSkeleton
+        fields={2}
+        gridClassName="lg:grid-cols-2"
+        title="Security"
+        widths={["w-28", "w-32"]}
+      />
+      <SettingsCardSkeleton
+        fields={3}
+        title="Performance"
+        variant="slider"
+        widths={["w-40", "w-44", "w-40"]}
+      />
+      <SettingsCardSkeleton
+        fields={4}
+        title="AI / LLM"
+        widths={["w-32", "w-28", "w-24", "w-40"]}
+      />
+      <SettingsCardSkeleton
+        fields={4}
+        gridClassName="xl:grid-cols-2"
+        title="Environment & secrets"
+        widths={["w-20", "w-20", "w-16", "w-16"]}
+      />
     </div>
   );
 }
 
 function SettingsCardSkeleton({
   fields,
+  gridClassName,
   title,
+  variant = "input",
   widths,
 }: {
   fields: number;
+  gridClassName?: string;
   title: string;
+  variant?: "input" | "slider";
   widths: string[];
 }) {
   return (
-    <section className="rounded-md border border-slate-800 bg-[#11161d] p-5">
-      <div className="flex items-center justify-between gap-3 border-b border-slate-800 pb-4">
-        <h2 className="text-lg font-semibold text-slate-100">{title}</h2>
-        <SkeletonLine className="h-9 w-20" />
+    <section className="rounded-md border border-slate-800 bg-[#11161d]">
+      <div className="flex items-center gap-3 border-b border-slate-800 px-5 py-4">
+        <SkeletonLine className="h-9 w-9" />
+        <div>
+          <h2 className="text-base font-semibold text-slate-100">{title}</h2>
+          <SkeletonLine className="mt-2 h-3 w-48 max-w-full" />
+        </div>
       </div>
-      <div className="mt-5 grid gap-4">
+      <div className={cn("grid gap-4 p-5", gridClassName)}>
         {Array.from({ length: fields }, (_, index) => (
-          <div className="grid gap-2" key={index}>
+          <div
+            className={cn("grid gap-2", variant === "slider" && "lg:w-1/2")}
+            key={index}
+          >
             <SkeletonLine className={cn("h-4", widths[index] ?? "w-48")} />
-            <SkeletonLine className="h-10 w-full border border-slate-700 bg-[#0f151d]" />
+            {variant === "slider" ? (
+              <>
+                <SkeletonLine className="h-2 w-full bg-slate-800" />
+                <div className="flex justify-between">
+                  <SkeletonLine className="h-3 w-6" />
+                  <SkeletonLine className="h-3 w-16" />
+                  <SkeletonLine className="h-3 w-6" />
+                </div>
+              </>
+            ) : (
+              <SkeletonLine className="h-10 w-full border border-slate-700 bg-[#0f151d]" />
+            )}
           </div>
         ))}
+      </div>
+      <div className="flex justify-end border-t border-slate-800 px-5 py-4">
+        <SkeletonLine className="h-10 w-40" />
       </div>
     </section>
   );

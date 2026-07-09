@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   aiSettingsFindUnique: vi.fn(),
   aiSettingsUpsert: vi.fn(),
+  performanceSettingsFindUnique: vi.fn(),
+  performanceSettingsUpsert: vi.fn(),
   projectUpsert: vi.fn(),
   runtimeEnvironmentFindUnique: vi.fn(),
   runtimeEnvironmentUpsert: vi.fn(),
@@ -18,6 +20,13 @@ const mocks = vi.hoisted(() => ({
         responseLanguage: string;
       }
     | undefined,
+  storedPerformanceSettings: undefined as
+    | {
+        artifactRetentionDays: number;
+        historyRetentionDays: number;
+        workerConcurrency: number;
+      }
+    | undefined,
   storedRuntimeVariables: {} as Record<string, string>,
   storedSecrets: [] as Array<{
     name: string;
@@ -31,6 +40,10 @@ vi.mock("./prisma", () => ({
     aiSettings: {
       findUnique: mocks.aiSettingsFindUnique,
       upsert: mocks.aiSettingsUpsert,
+    },
+    performanceSettings: {
+      findUnique: mocks.performanceSettingsFindUnique,
+      upsert: mocks.performanceSettingsUpsert,
     },
     project: {
       upsert: mocks.projectUpsert,
@@ -52,6 +65,7 @@ import { encryptSecretValue } from "./secret-store";
 import {
   AI_CUSTOM_ENDPOINT_VALUE,
   updateAiSettings,
+  updatePerformanceSettings,
   updateRuntimeEnvironmentSettings,
 } from "./settings-data";
 
@@ -59,6 +73,7 @@ describe("settings data", () => {
   beforeEach(() => {
     vi.stubEnv("SELFCHECKS_SECRET_KEY", "settings-test-secret");
     mocks.storedAiSettings = undefined;
+    mocks.storedPerformanceSettings = undefined;
     mocks.storedRuntimeVariables = {};
     mocks.storedSecrets = [];
     mocks.projectUpsert.mockResolvedValue({
@@ -77,6 +92,19 @@ describe("settings data", () => {
       }
 
       return Promise.resolve(mocks.storedAiSettings ?? null);
+    });
+    mocks.performanceSettingsFindUnique.mockImplementation(() =>
+      Promise.resolve(mocks.storedPerformanceSettings ?? null),
+    );
+    mocks.performanceSettingsUpsert.mockImplementation((args) => {
+      mocks.storedPerformanceSettings = {
+        artifactRetentionDays: args.create.artifactRetentionDays,
+        historyRetentionDays: args.create.historyRetentionDays,
+        workerConcurrency: args.create.workerConcurrency,
+        ...args.update,
+      };
+
+      return Promise.resolve(mocks.storedPerformanceSettings);
     });
     mocks.runtimeEnvironmentFindUnique.mockImplementation(() =>
       Promise.resolve({
@@ -237,6 +265,50 @@ describe("settings data", () => {
     ).rejects.toThrow("AI API endpoint must be a valid URL.");
 
     expect(mocks.aiSettingsUpsert).not.toHaveBeenCalled();
+  });
+
+  it("saves performance settings", async () => {
+    const settings = await updatePerformanceSettings({
+      artifactRetentionDays: 21,
+      historyRetentionDays: 240,
+      projectSlug: "default",
+      workerConcurrency: 8,
+    });
+
+    expect(mocks.performanceSettingsUpsert).toHaveBeenCalledWith({
+      create: {
+        artifactRetentionDays: 21,
+        historyRetentionDays: 240,
+        projectId: "project_1",
+        workerConcurrency: 8,
+      },
+      update: {
+        artifactRetentionDays: 21,
+        historyRetentionDays: 240,
+        workerConcurrency: 8,
+      },
+      where: {
+        projectId: "project_1",
+      },
+    });
+    expect(settings).toEqual({
+      artifactRetentionDays: 21,
+      historyRetentionDays: 240,
+      workerConcurrency: 8,
+    });
+  });
+
+  it("rejects performance settings outside supported limits", async () => {
+    await expect(
+      updatePerformanceSettings({
+        artifactRetentionDays: 1,
+        historyRetentionDays: 180,
+        projectSlug: "default",
+        workerConcurrency: 2,
+      }),
+    ).rejects.toThrow("Test artifact retention must be between 2 and 60.");
+
+    expect(mocks.performanceSettingsUpsert).not.toHaveBeenCalled();
   });
 
   it("returns masked runtime secret values after saving secrets", async () => {

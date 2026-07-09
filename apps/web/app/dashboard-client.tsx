@@ -20,6 +20,7 @@ import {
   CircleX,
   Flame,
   Folder,
+  Gauge,
   KeyRound,
   LockKeyhole,
   MoreVertical,
@@ -41,6 +42,10 @@ import { useRouter } from "next/navigation";
 
 import { AppSidebar } from "@/components/app-sidebar";
 import { ServiceMark } from "@/components/service-mark";
+import {
+  normalizePerformanceSettingValue,
+  performanceSettingsLimits,
+} from "@selfchecks/core";
 import { cn } from "@/lib/utils";
 import type {
   DashboardCheckRow,
@@ -55,6 +60,7 @@ import type {
 import { getRunResultToneClassName } from "@/lib/run-result-tone";
 import type {
   DashboardSettingsData,
+  PerformanceSettingsData,
   RuntimeEnvironmentSettingsData,
 } from "@/lib/settings-data";
 
@@ -108,6 +114,38 @@ const preferredTimeZoneOptions = [
   "America/New_York",
   "America/Los_Angeles",
 ];
+
+const performanceSettingFields = [
+  {
+    description: "Worker slots used for simultaneous test launches.",
+    key: "workerConcurrency",
+    label: "Concurrent test runs",
+    suffix: "runs",
+    ...performanceSettingsLimits.workerConcurrency,
+  },
+  {
+    description: "Recorded traces, screenshots, videos, reports and logs.",
+    key: "artifactRetentionDays",
+    label: "Test artifact retention",
+    suffix: "days",
+    ...performanceSettingsLimits.artifactRetentionDays,
+  },
+  {
+    description: "Stored run history shown across dashboard, journal and details.",
+    key: "historyRetentionDays",
+    label: "Test history retention",
+    suffix: "days",
+    ...performanceSettingsLimits.historyRetentionDays,
+  },
+] satisfies Array<{
+  default: number;
+  description: string;
+  key: keyof PerformanceSettingsData;
+  label: string;
+  max: number;
+  min: number;
+  suffix: string;
+}>;
 
 const dateRangeLabels: Record<DateRange, string> = {
   "24h": "Last 24 hours",
@@ -1468,12 +1506,18 @@ function SettingsScreen({
     model: settings.ai.model,
     responseLanguage: settings.ai.responseLanguage,
   }));
+  const [performanceDraft, setPerformanceDraft] = useState(() => ({
+    artifactRetentionDays: settings.performance.artifactRetentionDays,
+    historyRetentionDays: settings.performance.historyRetentionDays,
+    workerConcurrency: settings.performance.workerConcurrency,
+  }));
   const [notice, setNotice] = useState("");
   const [secretRows, setSecretRows] = useState<RuntimeSecretDraft[]>(() =>
     settings.environment.secrets.map(createSecretDraft),
   );
   const [savingAi, setSavingAi] = useState(false);
   const [savingBasic, setSavingBasic] = useState(false);
+  const [savingPerformance, setSavingPerformance] = useState(false);
   const [savingSecurity, setSavingSecurity] = useState(false);
   const [savingRuntime, setSavingRuntime] = useState(false);
   const [variableRows, setVariableRows] = useState<RuntimeVariableDraft[]>(() =>
@@ -1504,6 +1548,14 @@ function SettingsScreen({
       responseLanguage: settings.ai.responseLanguage,
     });
   }, [settings.ai]);
+
+  useEffect(() => {
+    setPerformanceDraft({
+      artifactRetentionDays: settings.performance.artifactRetentionDays,
+      historyRetentionDays: settings.performance.historyRetentionDays,
+      workerConcurrency: settings.performance.workerConcurrency,
+    });
+  }, [settings.performance]);
 
   useEffect(() => {
     setSecretRows(settings.environment.secrets.map(createSecretDraft));
@@ -1631,6 +1683,36 @@ function SettingsScreen({
       setNotice(getErrorMessage(error));
     } finally {
       setSavingAi(false);
+    }
+  }
+
+  async function savePerformance(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSavingPerformance(true);
+    setNotice("");
+
+    try {
+      const payload = await postSettingsJson<{
+        error?: string;
+        settings?: DashboardSettingsData["performance"];
+      }>("/api/settings/performance", {
+        ...performanceDraft,
+        projectSlug: settings.projectSlug,
+      });
+
+      if (!payload.settings) {
+        throw new Error("Performance settings were not returned.");
+      }
+
+      onSettingsChange({
+        ...settings,
+        performance: payload.settings,
+      });
+      setNotice("Performance settings saved.");
+    } catch (error) {
+      setNotice(getErrorMessage(error));
+    } finally {
+      setSavingPerformance(false);
     }
   }
 
@@ -1837,6 +1919,93 @@ function SettingsScreen({
           >
             <Save className="h-4 w-4" />
             {savingSecurity ? "Saving..." : "Save security"}
+          </button>
+        </div>
+      </form>
+
+      <form
+        className="rounded-md border border-slate-800 bg-[#11161d]"
+        onSubmit={(event) => void savePerformance(event)}
+      >
+        <div className="flex items-center gap-3 border-b border-slate-800 px-5 py-4">
+          <span className="flex h-9 w-9 items-center justify-center rounded-md bg-violet-500/15 text-violet-300">
+            <Gauge className="h-5 w-5" />
+          </span>
+          <div>
+            <h3 className="text-base font-semibold text-slate-100">Performance</h3>
+            <div className="text-xs text-slate-500">
+              Worker concurrency and retention windows
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-5 p-5">
+          {performanceSettingFields.map((field) => {
+            const fieldId = `settings-performance-${field.key}`;
+            const value = performanceDraft[field.key];
+
+            return (
+              <div className="grid gap-3 lg:w-1/2" key={field.key}>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <label
+                      className="text-sm font-medium text-slate-200"
+                      htmlFor={fieldId}
+                    >
+                      {field.label}
+                    </label>
+                    <div className="mt-1 text-xs text-slate-500">
+                      {field.description}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <output
+                      className="flex h-10 w-20 items-center justify-end rounded-md border border-slate-700 bg-[#0f151d] px-3 text-sm font-semibold tabular-nums text-slate-100"
+                      htmlFor={fieldId}
+                    >
+                      {value}
+                    </output>
+                    <span className="w-10 text-sm text-slate-500">{field.suffix}</span>
+                  </div>
+                </div>
+
+                <input
+                  aria-label={field.label}
+                  className="h-2 w-full cursor-pointer accent-blue-500"
+                  id={fieldId}
+                  max={field.max}
+                  min={field.min}
+                  onChange={(event) =>
+                    setPerformanceDraft((current) => ({
+                      ...current,
+                      [field.key]: normalizePerformanceSettingValue(
+                        field.key,
+                        event.target.value,
+                      ),
+                    }))
+                  }
+                  type="range"
+                  value={value}
+                />
+
+                <div className="flex justify-between text-xs text-slate-600">
+                  <span>{field.min}</span>
+                  <span>Default {field.default}</span>
+                  <span>{field.max}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="flex justify-end border-t border-slate-800 px-5 py-4">
+          <button
+            className="inline-flex h-10 items-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={savingPerformance}
+            type="submit"
+          >
+            <Save className="h-4 w-4" />
+            {savingPerformance ? "Saving..." : "Save performance"}
           </button>
         </div>
       </form>

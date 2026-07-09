@@ -1,4 +1,12 @@
 import {
+  defaultPerformanceSettings,
+  normalizePerformanceSettings,
+  performanceSettingsLimits,
+  type PerformanceSettingsData as CorePerformanceSettingsData,
+  type PerformanceSettingsData,
+} from "@selfchecks/core";
+
+import {
   generateConfiguredCaddyfile,
   reloadCaddy,
   validateDomain,
@@ -142,10 +150,13 @@ export type RuntimeEnvironmentSettingsData = {
   variables: RuntimeVariableData[];
 };
 
+export type { PerformanceSettingsData };
+
 export type DashboardSettingsData = {
   ai: AiSettingsData;
   basic: BasicSettingsData;
   environment: RuntimeEnvironmentSettingsData;
+  performance: PerformanceSettingsData;
   projectSlug: string;
 };
 
@@ -174,6 +185,13 @@ export type RuntimeSettingsInput = {
   variables?: unknown;
 };
 
+export type PerformanceSettingsInput = {
+  artifactRetentionDays?: unknown;
+  historyRetentionDays?: unknown;
+  projectSlug?: unknown;
+  workerConcurrency?: unknown;
+};
+
 type RuntimeSecretInput = {
   currentName?: string;
   name: string;
@@ -197,6 +215,9 @@ export async function getDashboardSettingsData(
       environment: project
         ? await readRuntimeEnvironmentSettings(project.id)
         : createEmptyRuntimeEnvironmentSettings(),
+      performance: project
+        ? await readPerformanceSettings(project.id)
+        : createDefaultPerformanceSettings(),
       projectSlug: project?.slug ?? projectSlug,
     };
   } catch (error) {
@@ -206,6 +227,7 @@ export async function getDashboardSettingsData(
       ai: createDefaultAiSettings(),
       basic: mapBasicSettings(runtimeConfig),
       environment: createEmptyRuntimeEnvironmentSettings(),
+      performance: createDefaultPerformanceSettings(),
       projectSlug,
     };
   }
@@ -430,6 +452,56 @@ export async function updateRuntimeEnvironmentSettings(input: RuntimeSettingsInp
   return readRuntimeEnvironmentSettings(project.id, environmentName);
 }
 
+export async function updatePerformanceSettings(input: PerformanceSettingsInput) {
+  const projectSlug = readOptionalString(input.projectSlug) || "default";
+  const performanceSettings = {
+    artifactRetentionDays: readRequiredIntegerInRange(
+      input.artifactRetentionDays,
+      "Test artifact retention",
+      performanceSettingsLimits.artifactRetentionDays.min,
+      performanceSettingsLimits.artifactRetentionDays.max,
+    ),
+    historyRetentionDays: readRequiredIntegerInRange(
+      input.historyRetentionDays,
+      "Test history retention",
+      performanceSettingsLimits.historyRetentionDays.min,
+      performanceSettingsLimits.historyRetentionDays.max,
+    ),
+    workerConcurrency: readRequiredIntegerInRange(
+      input.workerConcurrency,
+      "Concurrent test runs",
+      performanceSettingsLimits.workerConcurrency.min,
+      performanceSettingsLimits.workerConcurrency.max,
+    ),
+  } satisfies CorePerformanceSettingsData;
+
+  const project = await prisma.project.upsert({
+    create: {
+      name: projectSlug,
+      slug: projectSlug,
+    },
+    update: {
+      name: projectSlug,
+    },
+    where: {
+      slug: projectSlug,
+    },
+  });
+
+  await prisma.performanceSettings.upsert({
+    create: {
+      ...performanceSettings,
+      projectId: project.id,
+    },
+    update: performanceSettings,
+    where: {
+      projectId: project.id,
+    },
+  });
+
+  return readPerformanceSettings(project.id);
+}
+
 function mapBasicSettings(config: SelfchecksRuntimeConfig): BasicSettingsData {
   return {
     domain: config.server.domain,
@@ -486,6 +558,29 @@ async function readAiSettings(projectId: string): Promise<AiSettingsData> {
     hasApiKey: Boolean(settings.apiKeyCiphertext),
     model: settings.model,
     responseLanguage: settings.responseLanguage,
+  };
+}
+
+async function readPerformanceSettings(
+  projectId: string,
+): Promise<PerformanceSettingsData> {
+  const settings = await prisma.performanceSettings.findUnique({
+    select: {
+      artifactRetentionDays: true,
+      historyRetentionDays: true,
+      workerConcurrency: true,
+    },
+    where: {
+      projectId,
+    },
+  });
+
+  return normalizePerformanceSettings(settings);
+}
+
+function createDefaultPerformanceSettings(): PerformanceSettingsData {
+  return {
+    ...defaultPerformanceSettings,
   };
 }
 
@@ -736,6 +831,30 @@ function readRequiredString(value: unknown, label: string) {
   }
 
   return stringValue;
+}
+
+function readRequiredIntegerInRange(
+  value: unknown,
+  label: string,
+  min: number,
+  max: number,
+) {
+  const parsedValue =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && /^\d+$/.test(value.trim())
+        ? Number.parseInt(value, 10)
+        : Number.NaN;
+
+  if (!Number.isSafeInteger(parsedValue)) {
+    throw new Error(`${label} must be a number.`);
+  }
+
+  if (parsedValue < min || parsedValue > max) {
+    throw new Error(`${label} must be between ${min} and ${max}.`);
+  }
+
+  return parsedValue;
 }
 
 function readOptionalString(value: unknown) {

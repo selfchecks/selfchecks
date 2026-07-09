@@ -1,3 +1,5 @@
+import { unlink } from "node:fs/promises";
+
 import { type Queue } from "bullmq";
 
 import { getRunEnvironment } from "@selfchecks/cli/environment";
@@ -5,6 +7,7 @@ import { type CheckType } from "@selfchecks/core";
 import { prisma, type CheckRunStatus as PrismaCheckRunStatus } from "@selfchecks/db";
 
 import { type CheckJob } from "./jobs.js";
+import { readPerformanceRuntimeSettings } from "./performance-settings.js";
 
 type LatestRun = {
   createdAt: Date;
@@ -40,6 +43,7 @@ export type CheckSchedulerOptions = {
 };
 
 export type ScheduleDueChecksOptions = CheckSchedulerOptions & {
+  deleteFile?: (filePath: string) => Promise<void>;
   now?: Date;
 };
 
@@ -137,16 +141,29 @@ export class CheckScheduler {
 
 export async function scheduleDueChecks({
   config,
+  deleteFile = unlink,
   logger = console,
   now = new Date(),
   queue,
 }: ScheduleDueChecksOptions): Promise<ScheduleDueChecksSummary> {
+  const performanceSettings = await readPerformanceRuntimeSettings({
+    logger,
+  });
   const cancelledRuns = await cancelStaleActiveRuns({
     logger,
     now,
     queuedRunTimeoutMinutes: config.queuedRunTimeoutMinutes,
     runningRunTimeoutMinutes: config.runningRunTimeoutMinutes,
   });
+
+  await cleanupExpiredRunData({
+    artifactRetentionDays: performanceSettings.artifactRetentionDays,
+    deleteFile,
+    historyRetentionDays: performanceSettings.historyRetentionDays,
+    logger,
+    now,
+  });
+
   const checks = await prisma.check.findMany({
     include: {
       deployment: {
@@ -266,6 +283,131 @@ export async function scheduleDueChecks({
   }
 
   return summary;
+}
+
+async function cleanupExpiredRunData({
+  artifactRetentionDays,
+  deleteFile,
+  historyRetentionDays,
+  logger,
+  now,
+}: {
+  artifactRetentionDays: number;
+  deleteFile: (filePath: string) => Promise<void>;
+  historyRetentionDays: number;
+  logger: Pick<Console, "warn">;
+  now: Date;
+}): Promise<void> {
+  const artifactCutoff = new Date(
+    now.getTime() - artifactRetentionDays * 24 * 60 * 60_000,
+  );
+  const historyCutoff = new Date(
+    now.getTime() - historyRetentionDays * 24 * 60 * 60_000,
+  );
+
+  try {
+    const artifacts = await prisma.artifact.findMany({
+      select: {
+        id: true,
+        path: true,
+      },
+      where: {
+        createdAt: {
+          lt: artifactCutoff,
+        },
+      },
+    });
+
+    await deleteRecordedFiles(
+      artifacts.map((artifact) => artifact.path),
+      deleteFile,
+      logger,
+    );
+
+    if (artifacts.length > 0) {
+      await prisma.artifact.deleteMany({
+        where: {
+          id: {
+            in: artifacts.map((artifact) => artifact.id),
+          },
+        },
+      });
+    }
+  } catch (error) {
+    logger.warn("Unable to clean expired test artifacts.", error);
+  }
+
+  try {
+    const runs = await prisma.checkRun.findMany({
+      select: {
+        artifacts: {
+          select: {
+            path: true,
+          },
+        },
+        id: true,
+        logsPath: true,
+      },
+      where: {
+        createdAt: {
+          lt: historyCutoff,
+        },
+        status: {
+          notIn: ["QUEUED", "RUNNING"],
+        },
+      },
+    });
+
+    await deleteRecordedFiles(
+      runs.flatMap((run) => [
+        run.logsPath,
+        ...run.artifacts.map((artifact) => artifact.path),
+      ]),
+      deleteFile,
+      logger,
+    );
+
+    if (runs.length > 0) {
+      await prisma.checkRun.deleteMany({
+        where: {
+          id: {
+            in: runs.map((run) => run.id),
+          },
+        },
+      });
+    }
+  } catch (error) {
+    logger.warn("Unable to clean expired test history.", error);
+  }
+}
+
+async function deleteRecordedFiles(
+  paths: Array<string | null | undefined>,
+  deleteFile: (filePath: string) => Promise<void>,
+  logger: Pick<Console, "warn">,
+): Promise<void> {
+  for (const filePath of new Set(paths.filter(isNonEmptyString))) {
+    try {
+      await deleteFile(filePath);
+    } catch (error) {
+      if (!isFileNotFoundError(error)) {
+        logger.warn(`Unable to delete expired test artifact file ${filePath}.`, error);
+      }
+    }
+  }
+}
+
+function isNonEmptyString(value: string | null | undefined): value is string {
+  return Boolean(value?.trim());
+}
+
+function isFileNotFoundError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "ENOENT"
+  );
 }
 
 function getCheckDueState(

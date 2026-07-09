@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -142,6 +142,11 @@ const fixtureSettings: DashboardSettingsData = {
         value: "https://app.example.com",
       },
     ],
+  },
+  performance: {
+    artifactRetentionDays: 14,
+    historyRetentionDays: 180,
+    workerConcurrency: 2,
   },
   projectSlug: "default",
 };
@@ -1173,6 +1178,32 @@ describe("DashboardPage", () => {
         );
       }
 
+      if (input === "/api/settings/performance") {
+        const body = JSON.parse(String(init?.body ?? "{}")) as {
+          artifactRetentionDays: number;
+          historyRetentionDays: number;
+          workerConcurrency: number;
+        };
+
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              settings: {
+                artifactRetentionDays: body.artifactRetentionDays,
+                historyRetentionDays: body.historyRetentionDays,
+                workerConcurrency: body.workerConcurrency,
+              },
+            }),
+            {
+              headers: {
+                "content-type": "application/json",
+              },
+              status: 200,
+            },
+          ),
+        );
+      }
+
       if (input === "/api/settings/runtime") {
         return Promise.resolve(
           new Response(
@@ -1218,6 +1249,16 @@ describe("DashboardPage", () => {
     expect(screen.queryByLabelText("Login")).toBeNull();
     expect(screen.queryByLabelText("Notification email")).toBeNull();
     expect(screen.getByRole("heading", { name: "Security" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Performance" })).toBeTruthy();
+    expect(
+      (screen.getByLabelText("Concurrent test runs") as HTMLInputElement).value,
+    ).toBe("2");
+    expect(
+      (screen.getByLabelText("Test artifact retention") as HTMLInputElement).value,
+    ).toBe("14");
+    expect(
+      (screen.getByLabelText("Test history retention") as HTMLInputElement).value,
+    ).toBe("180");
     expect(screen.getByRole("heading", { name: "AI / LLM" })).toBeTruthy();
     expect((screen.getByLabelText("AI_API_ENDPOINT") as HTMLSelectElement).value).toBe(
       "https://openrouter.ai/api/v1",
@@ -1282,6 +1323,42 @@ describe("DashboardPage", () => {
       timeZone: "Europe/Moscow",
     });
     expect(screen.getByText("Security settings saved.")).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("Concurrent test runs"), {
+      target: {
+        value: "6",
+      },
+    });
+    fireEvent.change(screen.getByLabelText("Test artifact retention"), {
+      target: {
+        value: "21",
+      },
+    });
+    fireEvent.change(screen.getByLabelText("Test history retention"), {
+      target: {
+        value: "240",
+      },
+    });
+    await user.click(screen.getByRole("button", { name: "Save performance" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/settings/performance",
+        expect.objectContaining({
+          method: "POST",
+        }),
+      );
+    });
+    const performanceRequest = fetchMock.mock.calls.find(
+      ([input]) => input === "/api/settings/performance",
+    )?.[1] as RequestInit;
+    expect(JSON.parse(String(performanceRequest.body))).toEqual({
+      artifactRetentionDays: 21,
+      historyRetentionDays: 240,
+      projectSlug: "default",
+      workerConcurrency: 6,
+    });
+    expect(screen.getByText("Performance settings saved.")).toBeTruthy();
 
     await user.selectOptions(
       screen.getByLabelText("AI_API_ENDPOINT"),

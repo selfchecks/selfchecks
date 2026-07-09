@@ -3,17 +3,20 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   updateAiSettings: vi.fn(),
   updateBasicSettings: vi.fn(),
+  updatePerformanceSettings: vi.fn(),
   updateRuntimeEnvironmentSettings: vi.fn(),
 }));
 
 vi.mock("@/lib/settings-data", () => ({
   updateAiSettings: mocks.updateAiSettings,
   updateBasicSettings: mocks.updateBasicSettings,
+  updatePerformanceSettings: mocks.updatePerformanceSettings,
   updateRuntimeEnvironmentSettings: mocks.updateRuntimeEnvironmentSettings,
 }));
 
 import { POST as postAiSettings } from "./ai/route";
 import { POST as postBasicSettings } from "./basic/route";
+import { POST as postPerformanceSettings } from "./performance/route";
 import { POST as postRuntimeSettings } from "./runtime/route";
 
 function createJsonRequest(body: unknown) {
@@ -120,6 +123,29 @@ describe("settings routes", () => {
       environment,
     });
     expect(mocks.updateRuntimeEnvironmentSettings).toHaveBeenCalledWith(input);
+  });
+
+  it("saves performance settings", async () => {
+    const settings = {
+      artifactRetentionDays: 14,
+      historyRetentionDays: 180,
+      workerConcurrency: 4,
+    };
+    const input = {
+      artifactRetentionDays: 14,
+      historyRetentionDays: 180,
+      workerConcurrency: 4,
+    };
+    mocks.updatePerformanceSettings.mockResolvedValue(settings);
+
+    const response = await postPerformanceSettings(createJsonRequest(input));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    await expect(response.json()).resolves.toEqual({
+      settings,
+    });
+    expect(mocks.updatePerformanceSettings).toHaveBeenCalledWith(input);
   });
 
   it("returns validation errors from runtime environment saves", async () => {
