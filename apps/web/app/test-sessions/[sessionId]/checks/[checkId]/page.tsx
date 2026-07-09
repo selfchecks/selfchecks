@@ -160,7 +160,9 @@ function SessionCheckRunsTable({ data }: { data: TestSessionCheckDetailData }) {
                 <td className="px-4 py-3 text-slate-300">
                   #{run.attempt} of {run.maxAttempts}
                 </td>
-                <td className="px-4 py-3 text-slate-300">{run.duration}</td>
+                <td className="whitespace-nowrap px-4 py-3 text-slate-300">
+                  {run.duration}
+                </td>
                 <td className="max-w-[24rem] px-4 py-3 text-slate-500">
                   <span className="line-clamp-2">
                     {run.errorMessage ?? runStateLabels[run.runState]}

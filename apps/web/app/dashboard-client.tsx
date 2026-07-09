@@ -2560,10 +2560,10 @@ function ChecksTable({
   return (
     <section className="overflow-hidden rounded-md border border-slate-800 bg-[#11161d]">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1120px] table-fixed text-left text-sm">
+        <table className="w-full min-w-[1280px] table-fixed text-left text-sm">
           <thead className="border-b border-slate-700 bg-[#121820] text-xs font-semibold uppercase text-slate-400">
             <tr>
-              <th className="w-[46%] px-5 py-3">
+              <th className="w-[42%] px-5 py-3">
                 <span className="inline-flex items-center gap-2">
                   Name
                   <ArrowDownUp className="h-3.5 w-3.5 text-slate-600" />
@@ -2583,10 +2583,10 @@ function ChecksTable({
               <th className="w-[6%] px-4 py-3">
                 <span className="border-b border-dotted border-slate-500">AVA</span>
               </th>
-              <th className="w-[6%] px-4 py-3">
+              <th className="w-[8%] px-4 py-3">
                 <span className="border-b border-dotted border-slate-500">AVG</span>
               </th>
-              <th className="w-[6%] px-4 py-3">
+              <th className="w-[8%] px-4 py-3">
                 <span className="border-b border-dotted border-slate-500">P95</span>
               </th>
               <th className="w-[6%] px-4 py-3">
@@ -2804,9 +2804,15 @@ function CheckTableRow({
           <SparkBars bars={check.bars} />
         </td>
         <td className="px-4 py-3 text-slate-300">{check.ava}</td>
-        <td className="px-4 py-3 text-slate-300">{check.avg}</td>
-        <td className="px-4 py-3 text-slate-300">{check.p95}</td>
-        <td className="px-4 py-3 text-slate-300">{check.delta}</td>
+        <td className="whitespace-nowrap px-4 py-3 text-slate-300">
+          {check.avg}
+        </td>
+        <td className="whitespace-nowrap px-4 py-3 text-slate-300">
+          {check.p95}
+        </td>
+        <td className="whitespace-nowrap px-4 py-3 text-slate-300">
+          {check.delta}
+        </td>
         <td
           className="relative px-4 py-3"
           data-action-menu-root

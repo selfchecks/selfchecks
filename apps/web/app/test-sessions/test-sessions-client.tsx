@@ -190,7 +190,9 @@ function TestSessionTableRow({ session }: { session: TestSessionRow }) {
       <td className="px-4 py-3">
         <span className="font-semibold text-amber-300">{session.summary.queued}</span>
       </td>
-      <td className="px-4 py-3 text-slate-300">{session.duration}</td>
+      <td className="whitespace-nowrap px-4 py-3 text-slate-300">
+        {session.duration}
+      </td>
       <td className="px-4 py-3">
         {session.targetUrl ? (
           <a
