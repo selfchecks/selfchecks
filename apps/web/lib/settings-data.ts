@@ -4,7 +4,7 @@ import {
   performanceSettingsLimits,
   type PerformanceSettingsData as CorePerformanceSettingsData,
   type PerformanceSettingsData,
-} from "@selfchecks/core";
+} from "@selfchecks/core/performance-settings";
 
 import {
   generateConfiguredCaddyfile,

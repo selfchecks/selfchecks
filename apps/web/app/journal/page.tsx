@@ -181,9 +181,7 @@ function JournalRunRowView({ run }: { run: JournalRunRow }) {
           </div>
         ) : null}
       </td>
-      <td className="whitespace-nowrap px-4 py-3 text-slate-300">
-        {run.duration}
-      </td>
+      <td className="whitespace-nowrap px-4 py-3 text-slate-300">{run.duration}</td>
       <td className="px-4 py-3">
         <Link
           aria-label={`Open run ${run.id}`}

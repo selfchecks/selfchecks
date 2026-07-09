@@ -284,9 +284,7 @@ function SessionCheckTableRow({ check }: { check: TestSessionCheckRow }) {
         </span>
       </td>
       <td className="px-4 py-3 text-slate-300">{check.runCount}</td>
-      <td className="whitespace-nowrap px-4 py-3 text-slate-300">
-        {check.duration}
-      </td>
+      <td className="whitespace-nowrap px-4 py-3 text-slate-300">{check.duration}</td>
       <td className="px-4 py-3">
         <div className="flex items-center gap-2">
           <Link

@@ -45,7 +45,7 @@ import { ServiceMark } from "@/components/service-mark";
 import {
   normalizePerformanceSettingValue,
   performanceSettingsLimits,
-} from "@selfchecks/core";
+} from "@selfchecks/core/performance-settings";
 import { cn } from "@/lib/utils";
 import type {
   DashboardCheckRow,
@@ -2804,15 +2804,9 @@ function CheckTableRow({
           <SparkBars bars={check.bars} />
         </td>
         <td className="px-4 py-3 text-slate-300">{check.ava}</td>
-        <td className="whitespace-nowrap px-4 py-3 text-slate-300">
-          {check.avg}
-        </td>
-        <td className="whitespace-nowrap px-4 py-3 text-slate-300">
-          {check.p95}
-        </td>
-        <td className="whitespace-nowrap px-4 py-3 text-slate-300">
-          {check.delta}
-        </td>
+        <td className="whitespace-nowrap px-4 py-3 text-slate-300">{check.avg}</td>
+        <td className="whitespace-nowrap px-4 py-3 text-slate-300">{check.p95}</td>
+        <td className="whitespace-nowrap px-4 py-3 text-slate-300">{check.delta}</td>
         <td
           className="relative px-4 py-3"
           data-action-menu-root

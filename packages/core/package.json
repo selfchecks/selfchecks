@@ -9,6 +9,10 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./performance-settings": {
+      "import": "./dist/performance-settings.js",
+      "types": "./dist/performance-settings.d.ts"
     }
   },
   "scripts": {
