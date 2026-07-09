@@ -492,7 +492,12 @@ export default function CheckDetailClient({
                             <div className="truncate text-base font-medium text-slate-200">
                               {run.runner}
                             </div>
-                            <div className="mt-1 text-slate-400">{run.duration}</div>
+                            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-slate-400">
+                              <span>{run.duration}</span>
+                              <span className="text-xs font-medium text-slate-500">
+                                {formatAttemptCount(run.attempt)}
+                              </span>
+                            </div>
                           </div>
                         </div>
                         <div className="shrink-0 text-right text-slate-500">
@@ -551,6 +556,10 @@ function Metric({ label, value }: { label: string; value: string }) {
       <div className="mt-1 truncate text-2xl font-semibold text-slate-100">{value}</div>
     </div>
   );
+}
+
+function formatAttemptCount(attempt: number): string {
+  return `${attempt} ${attempt === 1 ? "attempt" : "attempts"}`;
 }
 
 function SkeletonLine({

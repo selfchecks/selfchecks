@@ -250,6 +250,10 @@ describe("CheckDetailClient", () => {
       screen.getAllByText("GET https://bff.sndsy.ru/gtm.js?id=GTM-MP43XM").length,
     ).toBeGreaterThan(1);
     expect(screen.getByText("Run results")).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getAllByText("1 attempt").length).toBeGreaterThan(0);
+      expect(screen.getByText("2 attempts")).toBeTruthy();
+    });
     expect(screen.getByText("Run history")).toBeTruthy();
     expect(screen.queryByRole("columnheader", { name: "Error" })).toBeNull();
     expect(screen.getByText("Performance")).toBeTruthy();
