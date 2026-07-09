@@ -172,6 +172,7 @@ function createCheck(overrides: Partial<DashboardCheckRow>): DashboardCheckRow {
     bars: [
       {
         duration: "100 ms",
+        href: `/checks/check-${name}/runs/run-${name}-previous`,
         occurredAt: "Jun 22 22:20",
         runner: "Local runner",
         runState,
@@ -180,6 +181,7 @@ function createCheck(overrides: Partial<DashboardCheckRow>): DashboardCheckRow {
       },
       {
         duration: "120 ms",
+        href: `/checks/check-${name}/runs/run-${name}`,
         occurredAt: "Jun 22 22:25",
         runner: "Local runner",
         runState,
@@ -771,6 +773,100 @@ describe("DashboardPage", () => {
     expect(cancelledBar.querySelector("[aria-hidden='true']")?.className).toContain(
       "bg-slate-500",
     );
+  });
+
+  it("renders grouped retry result bars with all attempts and a retry marker", () => {
+    render(
+      <DashboardClient
+        initialGroups={[
+          {
+            checks: "1 checks",
+            children: [
+              createCheck({
+                bars: [
+                  {
+                    attempts: [
+                      {
+                        duration: "1.41 min",
+                        label: "Attempt #1",
+                        occurredAt: "Jul 08 17:20",
+                        runner: "Local runner",
+                        runState: "failed",
+                        status: "failing",
+                        tone: "bad",
+                      },
+                      {
+                        duration: "28.64 s",
+                        label: "Attempt #2",
+                        occurredAt: "Jul 08 17:22",
+                        runner: "Local runner",
+                        runState: "passed",
+                        status: "passing",
+                        tone: "good",
+                      },
+                    ],
+                    duration: "28.64 s",
+                    hasRetries: true,
+                    href: "/checks/check-bff-health/runs/run_2",
+                    occurredAt: "Jul 08 17:22",
+                    runner: "Local runner",
+                    runState: "passed",
+                    status: "passing",
+                    tone: "good",
+                    value: 28,
+                  },
+                ],
+                name: "bff-health",
+                status: "passing",
+              }),
+            ],
+            expanded: true,
+            name: "API / Bff",
+            status: "passing",
+            updated: "3 minutes ago",
+          },
+        ]}
+        initialSettings={fixtureSettings}
+        initialSummary={{
+          degraded: 0,
+          failing: 0,
+          passing: 1,
+          queued: 0,
+          running: 0,
+        }}
+      />,
+    );
+
+    const retryBar = screen.getByLabelText(
+      "Passing Local runner 28.64 s Jul 08 17:22 2 attempts",
+    );
+
+    expect(retryBar.querySelector(".bg-orange-400")).toBeTruthy();
+    expect(screen.getByText("Attempt #1")).toBeTruthy();
+    expect(screen.getByText("Attempt #2 (final)")).toBeTruthy();
+    expect(screen.getByText("1.41 min")).toBeTruthy();
+    expect(screen.getByText("28.64 s")).toBeTruthy();
+  });
+
+  it("opens the run detail when a result bar is clicked", async () => {
+    const user = userEvent.setup();
+
+    renderDashboard();
+
+    const resultBar = screen.getAllByLabelText(
+      "Passing Local runner 120 ms Jun 22 22:25",
+    )[0]!;
+    const resultLink = resultBar.closest("a");
+
+    expect(resultLink?.getAttribute("href")).toBe(
+      "/checks/check-issue.get/runs/run-issue.get",
+    );
+
+    resultLink?.addEventListener("click", (event) => event.preventDefault());
+
+    await user.click(resultBar);
+
+    expect(mocks.routerPush).not.toHaveBeenCalledWith("/checks/check-issue.get");
   });
 
   it("filters checks from the search field", async () => {

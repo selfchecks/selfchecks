@@ -26,6 +26,8 @@ import { getRuntimeTimeZone } from "./runtime-config";
 const DEFAULT_QUEUED_RUN_TIMEOUT_MINUTES = 30;
 const FIREWATCH_LOOKBACK_DAYS = 7;
 const MAX_LOG_PREVIEW_CHARS = 12_000;
+const DASHBOARD_RESULT_BAR_COUNT = 24;
+const MAX_RETRY_ATTEMPTS_PER_RUN = 11;
 const MAX_RESULT_BAR_HEIGHT = 44;
 const MIN_RESULT_BAR_HEIGHT = 8;
 
@@ -1657,7 +1659,7 @@ async function fetchChecks(projectId: string) {
           createdAt: "desc",
         },
         where: buildDashboardVisibleRunWhere(),
-        take: 24,
+        take: DASHBOARD_RESULT_BAR_COUNT * MAX_RETRY_ATTEMPTS_PER_RUN,
       },
     },
     orderBy: [
@@ -1859,7 +1861,7 @@ function mapCheck(check: CheckWithRuns, timeZone: string): DashboardCheckRow {
   return {
     avg: formatDuration(average(durations)),
     ava: formatAvailability(check.runs),
-    bars: buildBars(check.runs, timeZone),
+    bars: buildBars(check.runs, check.id, timeZone),
     delta: latestRun ? "24 h" : "-",
     hasTrace: Boolean(
       check.runs.some(
@@ -2674,6 +2676,7 @@ function mapRunState(status: string | undefined): DashboardRunState {
 
 function buildBars(
   runs: CheckWithRuns["runs"],
+  checkId: string,
   timeZone: string,
 ): DashboardCheckRow["bars"] {
   if (runs.length === 0) {
@@ -2688,22 +2691,109 @@ function buildBars(
     }));
   }
 
+  const groupedRuns = groupRetryAttempts(runs).slice(0, DASHBOARD_RESULT_BAR_COUNT);
   const maxDurationMs = Math.max(
     0,
-    ...runs
-      .map((run) => run.durationMs)
+    ...groupedRuns
+      .map((attempts) => getLatestAttempt(attempts)?.durationMs)
       .filter((duration): duration is number => typeof duration === "number"),
   );
 
-  return [...runs].reverse().map((run) => ({
+  return [...groupedRuns]
+    .reverse()
+    .map((attempts) => mapResultBar(attempts, checkId, maxDurationMs, timeZone));
+}
+
+function groupRetryAttempts(runs: CheckWithRuns["runs"]): CheckWithRuns["runs"][] {
+  const groups = new Map<string, CheckWithRuns["runs"]>();
+
+  for (const run of runs) {
+    const retryGroupId = run.retryGroupId?.trim();
+    const groupId = retryGroupId || run.id;
+    groups.set(groupId, [...(groups.get(groupId) ?? []), run]);
+  }
+
+  return [...groups.values()]
+    .map((attempts) => [...attempts].sort(compareAttemptsAscending))
+    .sort((left, right) => {
+      const leftLatest = getLatestAttempt(left);
+      const rightLatest = getLatestAttempt(right);
+
+      return (
+        (rightLatest?.createdAt.getTime() ?? 0) - (leftLatest?.createdAt.getTime() ?? 0)
+      );
+    });
+}
+
+function mapResultBar(
+  attempts: CheckWithRuns["runs"],
+  checkId: string,
+  maxDurationMs: number,
+  timeZone: string,
+): DashboardCheckRow["bars"][number] {
+  const latestAttempt = getLatestAttempt(attempts) ?? attempts[0];
+  const hasRetries = attempts.length > 1;
+  const hasPassedAttempt = attempts.some((attempt) => attempt.status === "PASSED");
+  const runState = hasPassedAttempt ? "passed" : mapRunState(latestAttempt?.status);
+  const status = hasPassedAttempt ? "passing" : mapRunStatus(latestAttempt?.status);
+  const tone =
+    hasRetries && !hasPassedAttempt && status === "failing"
+      ? "bad"
+      : getRunResultTone({ runState, status });
+  const durationMs = latestAttempt?.durationMs;
+
+  return {
+    ...(hasRetries
+      ? {
+          attempts: attempts.map((attempt) => mapResultBarAttempt(attempt, timeZone)),
+          hasRetries,
+        }
+      : {}),
+    duration: formatDuration(durationMs ?? undefined),
+    ...(latestAttempt ? { href: buildRunHref(checkId, latestAttempt.id) } : {}),
+    occurredAt: latestAttempt
+      ? formatBarTimestamp(latestAttempt, timeZone)
+      : "No recorded run",
+    runner: "Local runner",
+    runState,
+    status,
+    tone,
+    value: getRelativeBarHeight(durationMs, maxDurationMs),
+  };
+}
+
+function mapResultBarAttempt(
+  run: MappableRun,
+  timeZone: string,
+): NonNullable<DashboardCheckRow["bars"][number]["attempts"]>[number] {
+  return {
     duration: formatDuration(run.durationMs ?? undefined),
+    label: `Attempt #${getRunAttempt(run)}`,
     occurredAt: formatBarTimestamp(run, timeZone),
     runner: "Local runner",
     runState: mapRunState(run.status),
     status: mapRunStatus(run.status),
     tone: mapRunTone(run.status),
-    value: getRelativeBarHeight(run.durationMs, maxDurationMs),
-  }));
+  };
+}
+
+function getLatestAttempt(
+  attempts: CheckWithRuns["runs"],
+): CheckWithRuns["runs"][number] | undefined {
+  return attempts[attempts.length - 1];
+}
+
+function compareAttemptsAscending(
+  left: CheckWithRuns["runs"][number],
+  right: CheckWithRuns["runs"][number],
+): number {
+  const attemptRank = getRunAttempt(left) - getRunAttempt(right);
+
+  if (attemptRank !== 0) {
+    return attemptRank;
+  }
+
+  return left.createdAt.getTime() - right.createdAt.getTime();
 }
 
 function getRelativeBarHeight(

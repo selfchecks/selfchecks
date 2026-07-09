@@ -16,7 +16,18 @@ export type DashboardResultTone =
   | "warn";
 
 export type DashboardResultBar = {
+  attempts?: Array<{
+    duration: string;
+    label: string;
+    occurredAt: string;
+    runner: string;
+    runState: DashboardRunState;
+    status: DashboardStatus;
+    tone?: DashboardResultTone;
+  }>;
   duration: string;
+  hasRetries?: boolean;
+  href?: string;
   occurredAt: string;
   runner: string;
   runState: DashboardRunState;

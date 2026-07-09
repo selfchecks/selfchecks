@@ -2803,14 +2803,27 @@ function SparkBars({ bars }: { bars: CheckRow["bars"] }) {
     <div className="flex h-12 items-end gap-1 overflow-visible py-1">
       {bars.map((bar, index) => {
         const tooltipContent = runStateTooltipContent[bar.runState];
-
-        return (
-          <span
-            aria-label={`${tooltipContent.title} ${bar.runner} ${bar.duration} ${bar.occurredAt}`}
-            className="group relative flex h-11 w-2 items-end justify-center outline-none hover:z-20 focus-visible:ring-2 focus-visible:ring-blue-400/60 focus-within:z-20"
-            key={`${bar.occurredAt}-${bar.value}-${index}`}
-            tabIndex={0}
-          >
+        const attempts =
+          bar.attempts && bar.attempts.length > 0
+            ? bar.attempts
+            : [
+                {
+                  duration: bar.duration,
+                  label: "Attempt #1",
+                  occurredAt: bar.occurredAt,
+                  runner: bar.runner,
+                  runState: bar.runState,
+                  status: bar.status,
+                  tone: bar.tone,
+                },
+              ];
+        const attemptCountLabel =
+          attempts.length > 1 ? ` ${attempts.length} attempts` : "";
+        const ariaLabel = `${tooltipContent.title} ${bar.runner} ${bar.duration} ${bar.occurredAt}${attemptCountLabel}`;
+        const className =
+          "group relative flex h-11 w-2 items-end justify-center outline-none hover:z-20 focus-visible:ring-2 focus-visible:ring-blue-400/60 focus-within:z-20";
+        const content = (
+          <>
             <span
               aria-hidden="true"
               className={cn(
@@ -2819,6 +2832,12 @@ function SparkBars({ bars }: { bars: CheckRow["bars"] }) {
               )}
               style={{ height: `${bar.value}px` }}
             />
+            {bar.hasRetries ? (
+              <span
+                aria-hidden="true"
+                className="absolute bottom-0 h-1.5 w-1.5 translate-y-2 rounded-full bg-orange-400 shadow-sm shadow-orange-950/40"
+              />
+            ) : null}
             <span
               className={cn(
                 "pointer-events-none absolute bottom-full left-1/2 z-30 mb-3 hidden w-max min-w-64 -translate-x-1/2 rounded-md border border-slate-500/20 bg-slate-600 px-4 py-3 text-left shadow-2xl shadow-black/40",
@@ -2830,13 +2849,64 @@ function SparkBars({ bars }: { bars: CheckRow["bars"] }) {
                 <ResultTooltipStatus runState={bar.runState} status={bar.status} />
                 {tooltipContent.title}
               </span>
-              <span className="mt-2 flex items-center gap-6 text-sm text-slate-100">
-                <span>{bar.runner}</span>
-                <span>{bar.duration}</span>
-                <span>{bar.occurredAt}</span>
-              </span>
+              {attempts.length > 1 ? (
+                <span className="mt-3 grid gap-3">
+                  {attempts.map((attempt, attemptIndex) => (
+                    <span
+                      className="block"
+                      key={`${attempt.label}-${attempt.occurredAt}-${attemptIndex}`}
+                    >
+                      <span className="block text-xs font-semibold uppercase text-slate-300">
+                        {attempt.label}
+                        {attemptIndex === attempts.length - 1 ? " (final)" : ""}
+                      </span>
+                      <span className="mt-1 flex items-center gap-2 text-sm font-semibold text-slate-50">
+                        <ResultTooltipStatus
+                          runState={attempt.runState}
+                          status={attempt.status}
+                        />
+                        <span>{attempt.runner}</span>
+                      </span>
+                      <span className="mt-1 flex items-center gap-4 text-xs text-slate-200">
+                        <span>{attempt.duration}</span>
+                        <span>{attempt.occurredAt}</span>
+                      </span>
+                    </span>
+                  ))}
+                </span>
+              ) : (
+                <span className="mt-2 flex items-center gap-6 text-sm text-slate-100">
+                  <span>{bar.runner}</span>
+                  <span>{bar.duration}</span>
+                  <span>{bar.occurredAt}</span>
+                </span>
+              )}
               <span className="absolute left-1/2 top-full h-3 w-3 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-slate-600" />
             </span>
+          </>
+        );
+
+        return bar.href ? (
+          <Link
+            aria-label={ariaLabel}
+            className={className}
+            href={bar.href}
+            key={`${bar.occurredAt}-${bar.value}-${index}`}
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => event.stopPropagation()}
+          >
+            {content}
+          </Link>
+        ) : (
+          <span
+            aria-label={ariaLabel}
+            className={className}
+            key={`${bar.occurredAt}-${bar.value}-${index}`}
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => event.stopPropagation()}
+            tabIndex={0}
+          >
+            {content}
           </span>
         );
       })}

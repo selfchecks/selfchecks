@@ -687,6 +687,132 @@ describe("dashboard data", () => {
     ]);
   });
 
+  it("groups retry attempts into one dashboard result bar per logical run", async () => {
+    mocks.checkRunUpdateMany.mockResolvedValue({ count: 0 });
+    mocks.projectFindUnique.mockResolvedValue({
+      id: "project_1",
+      slug: "default",
+    });
+    mocks.checkFindMany.mockResolvedValue([
+      {
+        enabled: true,
+        entrypoint: null,
+        frequencyMinutes: 180,
+        group: {
+          name: "API / Bff",
+        },
+        id: "check_1",
+        key: "bff-gtm-js",
+        name: "bff-gtm-js",
+        request: {
+          assertions: [],
+          headers: {},
+          method: "GET",
+          url: "https://example.test/gtm.js",
+        },
+        runs: [
+          {
+            artifacts: [],
+            attempt: 2,
+            createdAt: new Date("2026-07-05T09:42:00.000Z"),
+            durationMs: 20,
+            id: "run_success_attempt_2",
+            logsPath: null,
+            maxAttempts: 2,
+            result: null,
+            retryGroupId: "run_success",
+            status: "PASSED",
+          },
+          {
+            artifacts: [],
+            attempt: 1,
+            createdAt: new Date("2026-07-05T09:40:00.000Z"),
+            durationMs: 400,
+            id: "run_success_attempt_1",
+            logsPath: null,
+            maxAttempts: 2,
+            result: null,
+            retryGroupId: "run_success",
+            status: "FAILED",
+          },
+          {
+            artifacts: [],
+            attempt: 2,
+            createdAt: new Date("2026-07-05T09:35:00.000Z"),
+            durationMs: 300,
+            id: "run_failed_attempt_2",
+            logsPath: null,
+            maxAttempts: 2,
+            result: null,
+            retryGroupId: "run_failed",
+            status: "FAILED",
+          },
+          {
+            artifacts: [],
+            attempt: 1,
+            createdAt: new Date("2026-07-05T09:33:00.000Z"),
+            durationMs: 100,
+            id: "run_failed_attempt_1",
+            logsPath: null,
+            maxAttempts: 2,
+            result: null,
+            retryGroupId: "run_failed",
+            status: "FAILED",
+          },
+        ],
+        tags: ["api", "bff"],
+        type: "API",
+      },
+    ]);
+
+    const dashboard = await getDashboardData("default");
+    const bars = dashboard.groups[0]?.children?.[0]?.bars;
+
+    expect(bars).toHaveLength(2);
+    expect(bars?.[0]).toMatchObject({
+      duration: "300 ms",
+      hasRetries: true,
+      href: "/checks/check_1/runs/run_failed_attempt_2",
+      runState: "failed",
+      status: "failing",
+      tone: "bad",
+      value: 44,
+    });
+    expect(bars?.[0]?.attempts).toEqual([
+      expect.objectContaining({
+        duration: "100 ms",
+        label: "Attempt #1",
+        status: "failing",
+      }),
+      expect.objectContaining({
+        duration: "300 ms",
+        label: "Attempt #2",
+        status: "failing",
+      }),
+    ]);
+    expect(bars?.[1]).toMatchObject({
+      duration: "20 ms",
+      hasRetries: true,
+      href: "/checks/check_1/runs/run_success_attempt_2",
+      runState: "passed",
+      status: "passing",
+      tone: "good",
+      value: 8,
+    });
+    expect(bars?.[1]?.attempts).toEqual([
+      expect.objectContaining({
+        duration: "400 ms",
+        label: "Attempt #1",
+        status: "failing",
+      }),
+      expect.objectContaining({
+        duration: "20 ms",
+        label: "Attempt #2",
+        status: "passing",
+      }),
+    ]);
+  });
+
   it("marks a check as passing when the latest run passed after failed history", async () => {
     mocks.checkRunUpdateMany.mockResolvedValue({ count: 0 });
     mocks.projectFindUnique.mockResolvedValue({
@@ -968,11 +1094,13 @@ describe("dashboard data", () => {
     const query = mocks.checkFindMany.mock.calls[0]?.[0] as {
       include?: {
         runs?: {
+          take?: number;
           where?: unknown;
         };
       };
     };
 
+    expect(query.include?.runs?.take).toBe(264);
     expect(query.include?.runs?.where).toEqual({
       OR: [
         {
