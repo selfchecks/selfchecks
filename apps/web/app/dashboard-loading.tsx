@@ -324,13 +324,14 @@ function SettingsSkeleton() {
       </div>
 
       <SettingsCardSkeleton
+        fieldClassName="lg:w-1/2"
         fields={2}
         title="Basic settings"
         widths={["w-20", "w-24"]}
       />
       <SettingsCardSkeleton
+        fieldClassName="lg:w-1/2"
         fields={2}
-        gridClassName="lg:grid-cols-2"
         title="Security"
         widths={["w-28", "w-32"]}
       />
@@ -347,7 +348,6 @@ function SettingsSkeleton() {
       />
       <SettingsCardSkeleton
         fields={4}
-        gridClassName="xl:grid-cols-2"
         title="Environment & secrets"
         widths={["w-20", "w-20", "w-16", "w-16"]}
       />
@@ -356,12 +356,14 @@ function SettingsSkeleton() {
 }
 
 function SettingsCardSkeleton({
+  fieldClassName,
   fields,
   gridClassName,
   title,
   variant = "input",
   widths,
 }: {
+  fieldClassName?: string;
   fields: number;
   gridClassName?: string;
   title: string;
@@ -380,7 +382,11 @@ function SettingsCardSkeleton({
       <div className={cn("grid gap-4 p-5", gridClassName)}>
         {Array.from({ length: fields }, (_, index) => (
           <div
-            className={cn("grid gap-2", variant === "slider" && "lg:w-1/2")}
+            className={cn(
+              "grid gap-2",
+              variant === "slider" && "lg:w-1/2",
+              fieldClassName,
+            )}
             key={index}
           >
             <SkeletonLine className={cn("h-4", widths[index] ?? "w-48")} />

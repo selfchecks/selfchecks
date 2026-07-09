@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -1111,6 +1111,13 @@ describe("DashboardPage", () => {
 
   it("opens settings from the account menu and saves settings forms", async () => {
     const user = userEvent.setup();
+    const getSectionSaveButton = (heading: string) => {
+      const form = screen.getByRole("heading", { name: heading }).closest("form");
+
+      expect(form).toBeTruthy();
+
+      return within(form as HTMLElement).getByRole("button", { name: "Save" });
+    };
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       if (input === "/api/settings/basic") {
         const body = JSON.parse(String(init?.body ?? "{}")) as {
@@ -1284,7 +1291,7 @@ describe("DashboardPage", () => {
 
     await user.clear(screen.getByLabelText("Domain"));
     await user.type(screen.getByLabelText("Domain"), "checks2.example.com");
-    await user.click(screen.getByRole("button", { name: "Save basic settings" }));
+    await user.click(getSectionSaveButton("Basic settings"));
 
     await waitFor(() => {
       expect(
@@ -1304,7 +1311,7 @@ describe("DashboardPage", () => {
 
     await user.type(screen.getByLabelText("New password"), "supersecret");
     await user.type(screen.getByLabelText("Confirm password"), "supersecret");
-    await user.click(screen.getByRole("button", { name: "Save security" }));
+    await user.click(getSectionSaveButton("Security"));
 
     await waitFor(() => {
       expect(
@@ -1339,7 +1346,7 @@ describe("DashboardPage", () => {
         value: "240",
       },
     });
-    await user.click(screen.getByRole("button", { name: "Save performance" }));
+    await user.click(getSectionSaveButton("Performance"));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
@@ -1369,7 +1376,7 @@ describe("DashboardPage", () => {
     await user.clear(screen.getByLabelText("AI_MODEL"));
     await user.type(screen.getByLabelText("AI_MODEL"), "gemini-2.5-pro");
     await user.selectOptions(screen.getByLabelText("AI_RESPONSE_LANGUAGE"), "English");
-    await user.click(screen.getByRole("button", { name: "Save AI settings" }));
+    await user.click(getSectionSaveButton("AI / LLM"));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
@@ -1397,7 +1404,7 @@ describe("DashboardPage", () => {
       screen.getByLabelText("Variable 1 value"),
       "https://checks2.example.com",
     );
-    await user.click(screen.getByRole("button", { name: "Save environment" }));
+    await user.click(getSectionSaveButton("Environment & secrets"));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(

@@ -1792,7 +1792,7 @@ function SettingsScreen({
 
         <div className="grid gap-4 p-5">
           <label
-            className="grid gap-2 text-sm font-medium text-slate-200"
+            className="grid gap-2 text-sm font-medium text-slate-200 lg:w-1/2"
             htmlFor="settings-domain"
           >
             Domain
@@ -1811,7 +1811,7 @@ function SettingsScreen({
             />
           </label>
           <label
-            className="grid gap-2 text-sm font-medium text-slate-200"
+            className="grid gap-2 text-sm font-medium text-slate-200 lg:w-1/2"
             htmlFor="settings-time-zone"
           >
             Timezone
@@ -1846,7 +1846,7 @@ function SettingsScreen({
             type="submit"
           >
             <Save className="h-4 w-4" />
-            {savingBasic ? "Saving..." : "Save basic settings"}
+            Save
           </button>
         </div>
       </form>
@@ -1865,9 +1865,9 @@ function SettingsScreen({
           </div>
         </div>
 
-        <div className="grid gap-4 p-5 lg:grid-cols-2">
+        <div className="grid gap-4 p-5">
           <label
-            className="grid gap-2 text-sm font-medium text-slate-200"
+            className="grid gap-2 text-sm font-medium text-slate-200 lg:w-1/2"
             htmlFor="settings-password"
           >
             New password
@@ -1889,7 +1889,7 @@ function SettingsScreen({
           </label>
 
           <label
-            className="grid gap-2 text-sm font-medium text-slate-200"
+            className="grid gap-2 text-sm font-medium text-slate-200 lg:w-1/2"
             htmlFor="settings-password-confirm"
           >
             Confirm password
@@ -1918,7 +1918,7 @@ function SettingsScreen({
             type="submit"
           >
             <Save className="h-4 w-4" />
-            {savingSecurity ? "Saving..." : "Save security"}
+            Save
           </button>
         </div>
       </form>
@@ -1971,7 +1971,7 @@ function SettingsScreen({
 
                 <input
                   aria-label={field.label}
-                  className="h-2 w-full cursor-pointer accent-blue-500"
+                  className="settings-range w-full cursor-pointer"
                   id={fieldId}
                   max={field.max}
                   min={field.min}
@@ -2005,7 +2005,7 @@ function SettingsScreen({
             type="submit"
           >
             <Save className="h-4 w-4" />
-            {savingPerformance ? "Saving..." : "Save performance"}
+            Save
           </button>
         </div>
       </form>
@@ -2062,7 +2062,7 @@ function SettingsScreen({
 
           {aiDraft.apiEndpointOption === AI_CUSTOM_ENDPOINT_VALUE ? (
             <label
-              className="grid gap-2 text-sm font-medium text-slate-200"
+              className="grid gap-2 text-sm font-medium text-slate-200 lg:w-1/2"
               htmlFor="settings-ai-custom-endpoint"
             >
               Custom endpoint
@@ -2163,7 +2163,7 @@ function SettingsScreen({
             type="submit"
           >
             <Save className="h-4 w-4" />
-            {savingAi ? "Saving..." : "Save AI settings"}
+            Save
           </button>
         </div>
       </form>
@@ -2186,7 +2186,7 @@ function SettingsScreen({
           </div>
         </div>
 
-        <div className="grid gap-6 p-5 xl:grid-cols-2">
+        <div className="grid gap-6 p-5">
           <section className="min-w-0">
             <div className="mb-3 flex min-w-0 items-center gap-2 text-sm font-semibold text-slate-100">
               <UserRound className="h-4 w-4 shrink-0 text-slate-500" />
@@ -2338,7 +2338,7 @@ function SettingsScreen({
             type="submit"
           >
             <Save className="h-4 w-4" />
-            {savingRuntime ? "Saving..." : "Save environment"}
+            Save
           </button>
         </div>
       </form>
