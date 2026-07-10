@@ -1,10 +1,21 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  createApiKey: vi.fn(),
+  revokeApiKey: vi.fn(),
   updateAiSettings: vi.fn(),
   updateBasicSettings: vi.fn(),
   updatePerformanceSettings: vi.fn(),
   updateRuntimeEnvironmentSettings: vi.fn(),
+}));
+
+vi.mock("@/lib/api-keys", () => ({
+  createApiKey: mocks.createApiKey,
+  revokeApiKey: mocks.revokeApiKey,
+}));
+
+vi.mock("@/lib/runtime-config", () => ({
+  getRuntimeTimeZone: () => "Europe/Moscow",
 }));
 
 vi.mock("@/lib/settings-data", () => ({
@@ -15,6 +26,8 @@ vi.mock("@/lib/settings-data", () => ({
 }));
 
 import { POST as postAiSettings } from "./ai/route";
+import { DELETE as deleteApiKey } from "./api-keys/[keyId]/route";
+import { POST as postApiKey } from "./api-keys/route";
 import { POST as postBasicSettings } from "./basic/route";
 import { POST as postPerformanceSettings } from "./performance/route";
 import { POST as postRuntimeSettings } from "./runtime/route";
@@ -85,6 +98,43 @@ describe("settings routes", () => {
       settings,
     });
     expect(mocks.updateAiSettings).toHaveBeenCalledWith(input);
+  });
+
+  it("generates an API key with a no-store response", async () => {
+    const created = {
+      apiKey: "sck_generated",
+      key: {
+        id: "key_1",
+        name: "GitLab CI",
+        preview: "sck_gener...ated",
+      },
+    };
+    mocks.createApiKey.mockResolvedValue(created);
+
+    const response = await postApiKey(createJsonRequest({ name: "GitLab CI" }));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    await expect(response.json()).resolves.toEqual(created);
+    expect(mocks.createApiKey).toHaveBeenCalledWith(
+      { name: "GitLab CI" },
+      "Europe/Moscow",
+    );
+  });
+
+  it("revokes an API key", async () => {
+    mocks.revokeApiKey.mockResolvedValue(undefined);
+
+    const response = await deleteApiKey(createJsonRequest({}), {
+      params: Promise.resolve({ keyId: "key_1" }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      id: "key_1",
+      revoked: true,
+    });
+    expect(mocks.revokeApiKey).toHaveBeenCalledWith("key_1");
   });
 
   it("falls back to a generic AI settings error for non-Error rejections", async () => {

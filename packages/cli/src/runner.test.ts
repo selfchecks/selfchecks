@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   projectFindUnique: vi.fn(),
   spawn: vi.fn(),
   testSessionCreate: vi.fn(),
+  testSessionFindUnique: vi.fn(),
   testSessionUpdate: vi.fn(),
 }));
 
@@ -47,6 +48,7 @@ vi.mock("@selfchecks/db", () => ({
     },
     testSession: {
       create: mocks.testSessionCreate,
+      findUnique: mocks.testSessionFindUnique,
       update: mocks.testSessionUpdate,
     },
   },
@@ -695,6 +697,86 @@ describe("runChecks", () => {
           runSource: "CLI",
           testSessionId: "session_1",
         }),
+      }),
+    );
+  });
+
+  it("continues a queued remote test session without creating duplicate records", async () => {
+    mocks.testSessionFindUnique.mockResolvedValue({
+      id: "session_queued",
+      kind: "TEST",
+      status: "QUEUED",
+    });
+    mocks.testSessionUpdate.mockImplementation(async (args) => ({
+      id: args.where.id,
+      kind: "TEST",
+      ...args.data,
+    }));
+    mocks.checkRunFindFirst.mockResolvedValue({
+      id: "run_queued",
+      status: "QUEUED",
+    });
+    mocks.checkRunUpdate.mockImplementation(async (args) => ({
+      id: args.where.id,
+      ...args.data,
+    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response("{}", { status: 200 })),
+    );
+
+    await expect(
+      runChecks({
+        checkKeys: ["api-health"],
+        checks: [
+          {
+            enabled: true,
+            key: "api-health",
+            name: "API health",
+            request: {
+              assertions: [],
+              headers: {},
+              method: "GET",
+              url: "https://example.test/health",
+            },
+            tags: [],
+            type: "api",
+          },
+        ],
+        env: [],
+        existingRunIds: {
+          "api-health": "run_queued",
+        },
+        existingTestSessionId: "session_queued",
+        projectSlug: "default",
+        record: true,
+        reporter: "list",
+        rootDir: "/runtime/test-sessions/session_queued",
+        runMode: "test",
+        tagSets: [],
+      }),
+    ).resolves.toMatchObject({
+      passed: 1,
+      sessionId: "session_queued",
+      total: 1,
+    });
+
+    expect(mocks.testSessionCreate).not.toHaveBeenCalled();
+    expect(mocks.checkRunCreate).not.toHaveBeenCalled();
+    expect(mocks.checkRunFindFirst).toHaveBeenCalledWith({
+      where: {
+        id: "run_queued",
+      },
+    });
+    expect(mocks.checkRunUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "RUNNING",
+          testSessionId: "session_queued",
+        }),
+        where: {
+          id: "run_queued",
+        },
       }),
     );
   });

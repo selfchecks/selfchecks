@@ -117,6 +117,15 @@ const fixtureSettings: DashboardSettingsData = {
     model: "openai/gpt-5-mini",
     responseLanguage: "Russian",
   },
+  apiKeys: [
+    {
+      createdAt: "2026-07-10T08:00:00.000Z",
+      createdAtLabel: "10 Jul 2026, 11:00",
+      id: "key_existing",
+      name: "Existing CI",
+      preview: "sck_example...cdef",
+    },
+  ],
   basic: {
     domain: "checks.example.com",
     login: "nikolaev@iprojects.ru",
@@ -1146,6 +1155,47 @@ describe("DashboardPage", () => {
         );
       }
 
+      if (input === "/api/settings/api-keys") {
+        const body = JSON.parse(String(init?.body ?? "{}")) as {
+          name: string;
+        };
+
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              apiKey: "sck_generated_secret",
+              key: {
+                createdAt: "2026-07-10T09:00:00.000Z",
+                createdAtLabel: "10 Jul 2026, 12:00",
+                id: "key_generated",
+                name: body.name,
+                preview: "sck_generate...cret",
+              },
+            }),
+            {
+              headers: {
+                "content-type": "application/json",
+              },
+              status: 200,
+            },
+          ),
+        );
+      }
+
+      if (
+        input === "/api/settings/api-keys/key_generated" &&
+        init?.method === "DELETE"
+      ) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ id: "key_generated", revoked: true }), {
+            headers: {
+              "content-type": "application/json",
+            },
+            status: 200,
+          }),
+        );
+      }
+
       if (input === "/api/settings/ai") {
         const body = JSON.parse(String(init?.body ?? "{}")) as {
           apiEndpointOption: string;
@@ -1254,6 +1304,9 @@ describe("DashboardPage", () => {
     expect(screen.queryByLabelText("Login")).toBeNull();
     expect(screen.queryByLabelText("Notification email")).toBeNull();
     expect(screen.getByRole("heading", { name: "Security" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "API keys" })).toBeTruthy();
+    expect(screen.getByText("Existing CI")).toBeTruthy();
+    expect(screen.getByText("sck_example...cdef")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Performance" })).toBeTruthy();
     expect(
       (screen.getByLabelText("Concurrent test runs") as HTMLInputElement).value,
@@ -1328,6 +1381,39 @@ describe("DashboardPage", () => {
       timeZone: "Europe/Moscow",
     });
     expect(screen.getByText("Security settings saved.")).toBeTruthy();
+
+    await user.clear(screen.getByLabelText("Key name"));
+    await user.type(screen.getByLabelText("Key name"), "Deploy pipeline");
+    await user.click(screen.getByRole("button", { name: "Generate" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/settings/api-keys",
+        expect.objectContaining({
+          method: "POST",
+        }),
+      );
+    });
+    expect((screen.getByLabelText("Generated API key") as HTMLInputElement).value).toBe(
+      "sck_generated_secret",
+    );
+    expect(screen.getByText("Deploy pipeline")).toBeTruthy();
+
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    await user.click(
+      screen.getByRole("button", { name: "Revoke API key Deploy pipeline" }),
+    );
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/settings/api-keys/key_generated",
+        expect.objectContaining({
+          method: "DELETE",
+        }),
+      );
+    });
+    expect(screen.queryByText("Deploy pipeline")).toBeNull();
+    expect(screen.getByText("API key revoked.")).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("Concurrent test runs"), {
       target: {

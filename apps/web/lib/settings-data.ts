@@ -13,6 +13,7 @@ import {
   validateEmail,
   writeCaddyfile,
 } from "./caddy";
+import { listApiKeys, type ApiKeyData } from "./api-keys";
 import { prisma } from "./prisma";
 import {
   hashAdminPassword,
@@ -154,6 +155,7 @@ export type { PerformanceSettingsData };
 
 export type DashboardSettingsData = {
   ai: AiSettingsData;
+  apiKeys: ApiKeyData[];
   basic: BasicSettingsData;
   environment: RuntimeEnvironmentSettingsData;
   performance: PerformanceSettingsData;
@@ -211,6 +213,7 @@ export async function getDashboardSettingsData(
 
     return {
       ai: project ? await readAiSettings(project.id) : createDefaultAiSettings(),
+      apiKeys: await listApiKeys(runtimeConfig.preferences.timeZone),
       basic: mapBasicSettings(runtimeConfig),
       environment: project
         ? await readRuntimeEnvironmentSettings(project.id)
@@ -225,6 +228,7 @@ export async function getDashboardSettingsData(
 
     return {
       ai: createDefaultAiSettings(),
+      apiKeys: [],
       basic: mapBasicSettings(runtimeConfig),
       environment: createEmptyRuntimeEnvironmentSettings(),
       performance: createDefaultPerformanceSettings(),

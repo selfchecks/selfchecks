@@ -19,6 +19,7 @@ import {
   ChevronRight,
   CircleAlert,
   CircleX,
+  Copy,
   Flame,
   Folder,
   Gauge,
@@ -1515,15 +1516,21 @@ function SettingsScreen({
     historyRetentionDays: settings.performance.historyRetentionDays,
     workerConcurrency: settings.performance.workerConcurrency,
   }));
+  const [apiKeyName, setApiKeyName] = useState("GitLab CI");
+  const [generatedApiKey, setGeneratedApiKey] = useState<
+    { id: string; value: string } | undefined
+  >();
   const [notice, setNotice] = useState("");
   const [secretRows, setSecretRows] = useState<RuntimeSecretDraft[]>(() =>
     settings.environment.secrets.map(createSecretDraft),
   );
   const [savingAi, setSavingAi] = useState(false);
+  const [savingApiKey, setSavingApiKey] = useState(false);
   const [savingBasic, setSavingBasic] = useState(false);
   const [savingPerformance, setSavingPerformance] = useState(false);
   const [savingSecurity, setSavingSecurity] = useState(false);
   const [savingRuntime, setSavingRuntime] = useState(false);
+  const [revokingApiKeyId, setRevokingApiKeyId] = useState<string>();
   const [variableRows, setVariableRows] = useState<RuntimeVariableDraft[]>(() =>
     settings.environment.variables.map(createVariableDraft),
   );
@@ -1647,6 +1654,88 @@ function SettingsScreen({
       setNotice(getErrorMessage(error));
     } finally {
       setSavingSecurity(false);
+    }
+  }
+
+  async function generateApiKey(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSavingApiKey(true);
+    setNotice("");
+
+    try {
+      const payload = await postSettingsJson<{
+        apiKey?: string;
+        error?: string;
+        key?: DashboardSettingsData["apiKeys"][number];
+      }>("/api/settings/api-keys", {
+        name: apiKeyName,
+      });
+
+      if (!payload.apiKey || !payload.key) {
+        throw new Error("Generated API key was not returned.");
+      }
+
+      onSettingsChange({
+        ...settings,
+        apiKeys: [
+          payload.key,
+          ...settings.apiKeys.filter((key) => key.id !== payload.key?.id),
+        ],
+      });
+      setGeneratedApiKey({
+        id: payload.key.id,
+        value: payload.apiKey,
+      });
+      setApiKeyName("");
+      setNotice("API key generated.");
+    } catch (error) {
+      setNotice(getErrorMessage(error));
+    } finally {
+      setSavingApiKey(false);
+    }
+  }
+
+  async function copyGeneratedApiKey() {
+    if (!generatedApiKey) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(generatedApiKey.value);
+      setNotice("API key copied.");
+    } catch {
+      setNotice("Unable to copy API key.");
+    }
+  }
+
+  async function revokeSettingsApiKey(id: string, name: string) {
+    if (!window.confirm(`Revoke API key ${name}?`)) {
+      return;
+    }
+
+    setRevokingApiKeyId(id);
+    setNotice("");
+
+    try {
+      const response = await fetch(`/api/settings/api-keys/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      const payload = (await response.json()) as { error?: string };
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Unable to revoke API key.");
+      }
+
+      onSettingsChange({
+        ...settings,
+        apiKeys: settings.apiKeys.filter((key) => key.id !== id),
+      });
+      setGeneratedApiKey((current) => (current?.id === id ? undefined : current));
+      setNotice("API key revoked.");
+    } catch (error) {
+      setNotice(getErrorMessage(error));
+    } finally {
+      setRevokingApiKeyId(undefined);
     }
   }
 
@@ -1854,6 +1943,116 @@ function SettingsScreen({
           </button>
         </div>
       </form>
+
+      <section className="overflow-hidden rounded-md border border-slate-800 bg-[#11161d]">
+        <div className="flex items-center gap-3 border-b border-slate-800 px-5 py-4">
+          <span className="flex h-9 w-9 items-center justify-center rounded-md bg-emerald-500/15 text-emerald-300">
+            <KeyRound className="h-5 w-5" />
+          </span>
+          <div>
+            <h3 className="text-base font-semibold text-slate-100">API keys</h3>
+            <div className="text-xs text-slate-500">CLI access</div>
+          </div>
+        </div>
+
+        <form
+          className="grid gap-4 border-b border-slate-800 p-5"
+          onSubmit={(event) => void generateApiKey(event)}
+        >
+          <div className="grid gap-2 sm:grid-cols-[minmax(0,28rem)_auto] sm:items-end">
+            <label
+              className="grid gap-2 text-sm font-medium text-slate-200"
+              htmlFor="settings-api-key-name"
+            >
+              Key name
+              <input
+                className="h-10 rounded-md border border-slate-700 bg-[#0f151d] px-3 text-sm text-slate-100 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                id="settings-api-key-name"
+                maxLength={80}
+                onChange={(event) => setApiKeyName(event.target.value)}
+                placeholder="GitLab CI"
+                required
+                type="text"
+                value={apiKeyName}
+              />
+            </label>
+            <button
+              className="inline-flex h-10 w-fit items-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={savingApiKey}
+              type="submit"
+            >
+              <Plus className="h-4 w-4" />
+              Generate
+            </button>
+          </div>
+
+          {generatedApiKey ? (
+            <div className="grid gap-2 rounded-md border border-emerald-900/80 bg-emerald-950/30 p-3">
+              <div className="text-sm font-semibold text-emerald-300">New API key</div>
+              <div className="flex min-w-0 gap-2">
+                <input
+                  aria-label="Generated API key"
+                  className="h-10 min-w-0 flex-1 rounded-md border border-emerald-900 bg-[#0f151d] px-3 font-mono text-sm text-slate-100 outline-none"
+                  readOnly
+                  value={generatedApiKey.value}
+                />
+                <button
+                  aria-label="Copy generated API key"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-emerald-800 text-emerald-300 hover:bg-emerald-950"
+                  onClick={() => void copyGeneratedApiKey()}
+                  title="Copy API key"
+                  type="button"
+                >
+                  <Copy className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="text-xs text-emerald-200/70">
+                This value is shown once.
+              </div>
+            </div>
+          ) : null}
+        </form>
+
+        <div className="divide-y divide-slate-800">
+          {settings.apiKeys.length > 0 ? (
+            settings.apiKeys.map((key) => (
+              <div
+                className="grid gap-3 px-5 py-4 sm:grid-cols-[minmax(0,1fr)_minmax(10rem,auto)_2.5rem] sm:items-center"
+                key={key.id}
+              >
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold text-slate-100">
+                    {key.name}
+                  </div>
+                  <div className="mt-1 font-mono text-xs text-slate-500">
+                    {key.preview}
+                  </div>
+                </div>
+                <div className="text-xs text-slate-500">
+                  <div>Created {key.createdAtLabel}</div>
+                  <div className="mt-1">
+                    {key.lastUsedAtLabel
+                      ? `Last used ${key.lastUsedAtLabel}`
+                      : "Never used"}
+                  </div>
+                </div>
+                <button
+                  aria-label={`Revoke API key ${key.name}`}
+                  className="flex h-10 w-10 items-center justify-center rounded-md border border-slate-700 text-slate-400 hover:border-red-900 hover:bg-red-950/40 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={revokingApiKeyId === key.id}
+                  onClick={() => void revokeSettingsApiKey(key.id, key.name)}
+                  title="Revoke API key"
+                  type="button"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            ))
+          ) : (
+            <div className="px-5 py-6 text-sm text-slate-500">No active API keys.</div>
+          )}
+        </div>
+      </section>
 
       <form
         className="rounded-md border border-slate-800 bg-[#11161d]"

@@ -6,7 +6,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   type CliCommandOutput,
   createSelfchecksProgram,
+  parseCheckType,
   parseEnv,
+  parseEnvJson,
   parseRetries,
 } from "./program.js";
 
@@ -112,6 +114,35 @@ describe("parseRetries", () => {
     );
     expect(() => parseRetries("1abc")).toThrow(
       "Expected retries to be a non-negative integer",
+    );
+  });
+});
+
+describe("parseCheckType", () => {
+  it("normalizes supported check types", () => {
+    expect(parseCheckType(" Browser ")).toBe("browser");
+    expect(parseCheckType("API")).toBe("api");
+  });
+
+  it("rejects unsupported check types", () => {
+    expect(() => parseCheckType("heartbeat")).toThrow(
+      "Expected check type to be api or browser",
+    );
+  });
+});
+
+describe("parseEnvJson", () => {
+  it("reads CI runtime values without command-line arguments", () => {
+    expect(
+      parseEnvJson(
+        JSON.stringify([{ name: "ENVIRONMENT_URL", value: "https://example.test" }]),
+      ),
+    ).toEqual([{ name: "ENVIRONMENT_URL", value: "https://example.test" }]);
+  });
+
+  it("rejects malformed CI runtime values", () => {
+    expect(() => parseEnvJson("{}")).toThrow(
+      "SELFCHECKS_ENV_JSON must contain an array",
     );
   });
 });
@@ -348,6 +379,7 @@ describe("createSelfchecksProgram", () => {
       {
         command: "test",
         checkKeys: [],
+        checkTypes: [],
         env: [
           {
             name: "ENVIRONMENT_URL",
@@ -417,6 +449,58 @@ describe("createSelfchecksProgram", () => {
         ],
         record: true,
         runMode: "test",
+      }),
+    );
+  });
+
+  it("uploads test sessions when remote API credentials are configured", async () => {
+    const rootDir = await createTempChecklyProject();
+    const runChecksLocally = vi.fn();
+    const runChecksRemotely = vi.fn(async () => ({
+      durationMs: 10,
+      failed: 0,
+      passed: 1,
+      results: [],
+      sessionId: "session_1",
+      skipped: 0,
+      total: 1,
+    }));
+    const program = createSelfchecksProgram({
+      runChecksLocally,
+      runChecksRemotely,
+      write: () => undefined,
+    });
+
+    program.exitOverride();
+    program.configureOutput({
+      writeErr: () => undefined,
+      writeOut: () => undefined,
+    });
+
+    await program.parseAsync([
+      "node",
+      "selfchecks",
+      "test",
+      "--api-url",
+      "https://checks.example.test",
+      "--api-token",
+      "api-token",
+      "--type",
+      "browser",
+      "--root",
+      rootDir,
+      "--test-session-name",
+      "Release 1.2.3",
+    ]);
+
+    expect(runChecksLocally).not.toHaveBeenCalled();
+    expect(runChecksRemotely).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiToken: "api-token",
+        apiUrl: "https://checks.example.test",
+        checkTypes: ["browser"],
+        rootDir,
+        testSessionName: "Release 1.2.3",
       }),
     );
   });

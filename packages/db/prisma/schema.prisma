@@ -68,6 +68,20 @@ model Project {
   webhookEndpoints    WebhookEndpoint[]
 }
 
+model ApiKey {
+  id         String    @id @default(cuid())
+  name       String
+  tokenHash  String    @unique
+  prefix     String
+  lastFour   String
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([revokedAt, createdAt])
+}
+
 model Deployment {
   id         String   @id @default(cuid())
   projectId  String

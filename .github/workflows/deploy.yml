@@ -136,6 +136,7 @@ jobs:
       NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
       NEXTAUTH_URL: ${{ vars.NEXTAUTH_URL }}
       SELFCHECKS_SETUP_TOKEN: ${{ secrets.SELFCHECKS_SETUP_TOKEN }}
+      SELFCHECKS_API_TOKEN: ${{ secrets.SELFCHECKS_API_TOKEN }}
       SELFCHECKS_ADMIN_LOGIN: ${{ secrets.SELFCHECKS_ADMIN_LOGIN }}
       SELFCHECKS_ADMIN_PASSWORD: ${{ secrets.SELFCHECKS_ADMIN_PASSWORD }}
       SELFCHECKS_CHECKS_ROOT: ${{ vars.SELFCHECKS_CHECKS_ROOT }}
@@ -259,6 +260,17 @@ jobs:
             SELFCHECKS_SETUP_TOKEN="$(openssl rand -hex 32)"
           fi
 
+          if [ -z "${SELFCHECKS_API_TOKEN:-}" ]; then
+            SELFCHECKS_API_TOKEN="$(
+              ssh -p "${DEPLOY_PORT:-22}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
+                "if [ -f '${DEPLOY_PATH}/.env' ]; then sed -n 's/^SELFCHECKS_API_TOKEN=//p' '${DEPLOY_PATH}/.env' | head -n 1; fi"
+            )"
+          fi
+
+          if [ -z "${SELFCHECKS_API_TOKEN:-}" ]; then
+            SELFCHECKS_API_TOKEN="$(openssl rand -hex 32)"
+          fi
+
           cat > .env.production <<EOF
           SELFCHECKS_IMAGE_TAG=${SELFCHECKS_IMAGE_TAG}
 
@@ -281,6 +293,7 @@ jobs:
           NEXTAUTH_URL=${NEXTAUTH_URL}
 
           SELFCHECKS_SETUP_TOKEN=${SELFCHECKS_SETUP_TOKEN}
+          SELFCHECKS_API_TOKEN=${SELFCHECKS_API_TOKEN}
           SELFCHECKS_ADMIN_LOGIN=${SELFCHECKS_ADMIN_LOGIN}
           SELFCHECKS_ADMIN_PASSWORD=${SELFCHECKS_ADMIN_PASSWORD}
           SELFCHECKS_CONFIG_PATH=/app/runtime/selfchecks.config.json
@@ -290,6 +303,7 @@ jobs:
           SELFCHECKS_CADDY_UPSTREAM=web:3000
 
           SELFCHECKS_ARTIFACTS_DIR=/app/runtime/artifacts
+          SELFCHECKS_TEST_SESSIONS_DIR=/app/runtime/test-sessions
           SELFCHECKS_WEBHOOK_TIMEOUT_MS=${SELFCHECKS_WEBHOOK_TIMEOUT_MS}
           EOF
 

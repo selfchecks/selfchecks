@@ -1,23 +1,43 @@
+import { EventEmitter } from "node:events";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  checkRunUpdateMany: vi.fn(),
   checkRunUpdate: vi.fn(),
   runCheckById: vi.fn(),
+  runChecks: vi.fn(),
+  spawn: vi.fn(),
+  testSessionUpdate: vi.fn(),
+  transaction: vi.fn(),
+}));
+
+vi.mock("node:child_process", () => ({
+  default: {
+    spawn: mocks.spawn,
+  },
+  spawn: mocks.spawn,
 }));
 
 vi.mock("@selfchecks/cli/runner", () => ({
   runCheckById: mocks.runCheckById,
+  runChecks: mocks.runChecks,
 }));
 
 vi.mock("@selfchecks/db", () => ({
   prisma: {
+    $transaction: mocks.transaction,
     checkRun: {
       update: mocks.checkRunUpdate,
+      updateMany: mocks.checkRunUpdateMany,
+    },
+    testSession: {
+      update: mocks.testSessionUpdate,
     },
   },
 }));
 
-import { handleCheckJob } from "./jobs.js";
+import { handleCheckJob, handleTestSessionJob } from "./jobs.js";
 
 describe("handleCheckJob", () => {
   afterEach(() => {
@@ -97,5 +117,81 @@ describe("handleCheckJob", () => {
         id: "run_1",
       },
     });
+  });
+
+  it("installs and runs an uploaded test session workspace", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    mocks.spawn.mockImplementation(() => {
+      const child = new EventEmitter();
+      setImmediate(() => child.emit("close", 0));
+      return child;
+    });
+    mocks.runChecks.mockResolvedValue({
+      durationMs: 42,
+      failed: 0,
+      passed: 1,
+      results: [],
+      sessionId: "session_1",
+      skipped: 0,
+      total: 1,
+    });
+
+    await expect(
+      handleTestSessionJob({
+        data: {
+          checkKeys: ["homepage"],
+          checks: [
+            {
+              enabled: true,
+              entrypoint: "homepage.spec.ts",
+              key: "homepage",
+              name: "Homepage",
+              tags: [],
+              type: "browser",
+            },
+          ],
+          env: [],
+          existingRunIds: {
+            homepage: "run_1",
+          },
+          kind: "test-session",
+          projectSlug: "account",
+          reporter: "github",
+          rootDir: "/runtime/test-sessions/session_1",
+          sessionId: "session_1",
+          tagSets: [],
+        },
+      }),
+    ).resolves.toMatchObject({
+      passed: 1,
+      sessionId: "session_1",
+    });
+
+    expect(mocks.spawn).toHaveBeenNthCalledWith(
+      1,
+      "npm",
+      ["install", "--omit=dev", "--no-audit", "--no-fund"],
+      expect.objectContaining({
+        cwd: "/runtime/test-sessions/session_1",
+      }),
+    );
+    expect(mocks.spawn).toHaveBeenNthCalledWith(
+      2,
+      "npx",
+      ["playwright", "install", "chromium"],
+      expect.objectContaining({
+        cwd: "/runtime/test-sessions/session_1",
+      }),
+    );
+    expect(mocks.runChecks).toHaveBeenCalledWith(
+      expect.objectContaining({
+        existingRunIds: {
+          homepage: "run_1",
+        },
+        existingTestSessionId: "session_1",
+        record: true,
+        runMode: "test",
+      }),
+    );
   });
 });

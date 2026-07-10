@@ -9,6 +9,7 @@ COPY . .
 
 RUN yarn install --immutable
 RUN yarn build
+RUN ln -s /app/packages/cli/dist/index.js /usr/local/bin/selfchecks
 
 ENV NODE_ENV=production
 

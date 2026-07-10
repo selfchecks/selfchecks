@@ -47,8 +47,11 @@ export type CheckRunSource = "CLI" | "MANUAL" | "SCHEDULE";
 
 export type RunChecksOptions = {
   checkKeys?: string[];
+  checkTypes?: CheckDefinition["type"][];
   checks?: CheckDefinition[];
   env: EnvVar[];
+  existingRunIds?: Record<string, string>;
+  existingTestSessionId?: string;
   projectSlug: string;
   record: boolean;
   reporter: string;
@@ -132,11 +135,13 @@ const ANSI_ESCAPE_PATTERN = new RegExp(
 export async function runChecks(options: RunChecksOptions): Promise<RunChecksSummary> {
   const startedAt = Date.now();
   const checks = await findRunnableChecks(options);
-  const session = options.record ? await createRunSession(options) : undefined;
+  const session = options.record ? await resolveRunSession(options) : undefined;
   const results: RunCheckResult[] = [];
 
   for (const check of checks) {
-    results.push(await runCheck(check, options, session));
+    results.push(
+      await runCheck(check, options, session, options.existingRunIds?.[check.key]),
+    );
   }
 
   if (session) {
@@ -216,6 +221,10 @@ async function findRunnableChecks(options: RunChecksOptions): Promise<RunnableCh
       .filter(
         (check) => !options.checkKeys?.length || options.checkKeys.includes(check.key),
       )
+      .filter(
+        (check) =>
+          !options.checkTypes?.length || options.checkTypes.includes(check.type),
+      )
       .filter((check) => doesCheckMatchTags(check, options.tagSets))
       .map((check) => ({
         entrypoint: check.entrypoint ?? null,
@@ -272,7 +281,15 @@ async function findRunnableChecks(options: RunChecksOptions): Promise<RunnableCh
     },
   });
 
-  return checks.filter((check) => doesCheckMatchTags(check, options.tagSets));
+  return checks
+    .filter(
+      (check) =>
+        !options.checkTypes?.length ||
+        options.checkTypes.includes(
+          check.type.toLowerCase() as CheckDefinition["type"],
+        ),
+    )
+    .filter((check) => doesCheckMatchTags(check, options.tagSets));
 }
 
 function doesCheckMatchTags(check: { tags: string[] }, tagSets: string[][]): boolean {
@@ -285,7 +302,28 @@ function doesCheckMatchTags(check: { tags: string[] }, tagSets: string[][]): boo
   return tagSets.some((tagSet) => tagSet.every((tag) => checkTags.includes(tag)));
 }
 
-async function createRunSession(options: RunChecksOptions): Promise<TestSession> {
+async function resolveRunSession(options: RunChecksOptions): Promise<TestSession> {
+  if (options.existingTestSessionId) {
+    const session = await prisma.testSession.findUnique({
+      where: {
+        id: options.existingTestSessionId,
+      },
+    });
+
+    if (!session || session.kind !== "TEST") {
+      throw new Error(`Test session ${options.existingTestSessionId} was not found.`);
+    }
+
+    return prisma.testSession.update({
+      data: {
+        status: "RUNNING",
+      },
+      where: {
+        id: session.id,
+      },
+    });
+  }
+
   const isTestSession = options.runMode === "test";
 
   return prisma.testSession.create({

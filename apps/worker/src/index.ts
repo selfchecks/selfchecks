@@ -3,7 +3,7 @@ import { Queue, Worker } from "bullmq";
 import { defaultPerformanceSettings } from "@selfchecks/core";
 
 import { getWorkerRuntimeConfig } from "./config.js";
-import { type CheckJob, handleCheckJob } from "./jobs.js";
+import { type CheckJob, handleSelfchecksJob } from "./jobs.js";
 import { readPerformanceRuntimeSettings } from "./performance-settings.js";
 import { CheckScheduler } from "./scheduler.js";
 
@@ -22,7 +22,7 @@ export const checkQueue = new Queue<CheckJob>(config.queueName, {
   defaultJobOptions: config.defaultJobOptions,
 });
 
-const worker = new Worker<CheckJob>(config.queueName, handleCheckJob, {
+const worker = new Worker<CheckJob>(config.queueName, handleSelfchecksJob, {
   concurrency: performanceSettings.workerConcurrency,
   connection: config.connection,
 });

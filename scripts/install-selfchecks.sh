@@ -176,6 +176,7 @@ seed_runtime_files() {
   mkdir -p \
     "${install_dir}/runtime" \
     "${install_dir}/runtime/artifacts" \
+    "${install_dir}/runtime/test-sessions" \
     "${install_dir}/runtime/caddy-data" \
     "${install_dir}/runtime/caddy-config" \
     "${install_dir}/runtime/logs"
@@ -199,7 +200,8 @@ write_env_file() {
     return
   fi
 
-  local nextauth_secret setup_token postgres_password
+  local api_token nextauth_secret setup_token postgres_password
+  api_token="$(generate_secret)"
   nextauth_secret="$(generate_secret)"
   setup_token="$(generate_secret)"
   postgres_password="$(generate_secret)"
@@ -207,6 +209,7 @@ write_env_file() {
   cat > "${install_dir}/.env" <<EOF
 NEXTAUTH_SECRET=${nextauth_secret}
 SELFCHECKS_SETUP_TOKEN=${setup_token}
+SELFCHECKS_API_TOKEN=${api_token}
 
 POSTGRES_DB=selfchecks
 POSTGRES_USER=selfchecks
@@ -229,6 +232,7 @@ SELFCHECKS_CADDY_CONFIG_PATH=/app/runtime/Caddyfile
 SELFCHECKS_CADDY_ADMIN_URL=http://caddy:2019
 SELFCHECKS_CADDY_UPSTREAM=web:3000
 SELFCHECKS_ARTIFACTS_DIR=/app/runtime/artifacts
+SELFCHECKS_TEST_SESSIONS_DIR=/app/runtime/test-sessions
 SELFCHECKS_WEBHOOK_TIMEOUT_MS=5000
 EOF
 

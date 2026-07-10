@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
   Queue: vi.fn(),
   Worker: vi.fn(),
   getWorkerRuntimeConfig: vi.fn(),
-  handleCheckJob: vi.fn(),
+  handleSelfchecksJob: vi.fn(),
   queueClose: vi.fn(),
   readPerformanceRuntimeSettings: vi.fn(),
   schedulerClose: vi.fn(),
@@ -24,7 +24,7 @@ vi.mock("./config.js", () => ({
 }));
 
 vi.mock("./jobs.js", () => ({
-  handleCheckJob: mocks.handleCheckJob,
+  handleSelfchecksJob: mocks.handleSelfchecksJob,
 }));
 
 vi.mock("./performance-settings.js", () => ({
@@ -104,7 +104,7 @@ describe("worker entrypoint", () => {
     });
     expect(mocks.Worker).toHaveBeenCalledWith(
       "selfchecks-checks",
-      mocks.handleCheckJob,
+      mocks.handleSelfchecksJob,
       {
         concurrency: 2,
         connection: {
