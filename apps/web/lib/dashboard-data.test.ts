@@ -1638,4 +1638,57 @@ describe("dashboard data", () => {
       ],
     });
   });
+
+  it("derives a terminal test session status when all runs have finished", async () => {
+    mocks.projectFindUnique.mockResolvedValue({
+      id: "project_1",
+      slug: "default",
+    });
+    mocks.testSessionCount.mockResolvedValue(1);
+    mocks.testSessionFindMany.mockResolvedValue([
+      {
+        createdAt: new Date("2026-07-05T11:20:00.000Z"),
+        id: "session_1",
+        name: "Release v1.2.3",
+        source: "/repo/config/checkly",
+        status: "RUNNING",
+        targetUrl: "https://example.test",
+        runs: [
+          {
+            artifacts: [],
+            check: null,
+            checkId: null,
+            checkSnapshotEntrypoint: "signin.spec.ts",
+            checkSnapshotGroupName: "Browser",
+            checkSnapshotKey: "signin",
+            checkSnapshotName: "Signin",
+            checkSnapshotProjectSlug: "default",
+            checkSnapshotRequest: null,
+            checkSnapshotTags: ["app"],
+            checkSnapshotType: "BROWSER",
+            createdAt: new Date("2026-07-05T11:20:00.000Z"),
+            durationMs: null,
+            id: "run_1",
+            logsPath: null,
+            result: null,
+            status: "CANCELLED",
+          },
+        ],
+      },
+    ]);
+
+    const data = await getTestSessionsData("default");
+
+    expect(data.sessions[0]).toMatchObject({
+      runState: "cancelled",
+      status: "failing",
+      summary: {
+        failed: 1,
+        passed: 0,
+        queued: 0,
+        running: 0,
+        total: 1,
+      },
+    });
+  });
 });

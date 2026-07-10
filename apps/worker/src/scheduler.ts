@@ -60,6 +60,7 @@ export type ScheduleDueChecksSummary = {
 };
 
 const activeRunStatuses = new Set<PrismaCheckRunStatus>(["QUEUED", "RUNNING"]);
+const activeSessionStatuses: PrismaCheckRunStatus[] = ["QUEUED", "RUNNING"];
 
 export class CheckScheduler {
   private running = false;
@@ -488,6 +489,12 @@ async function cancelStaleActiveRuns({
       }),
     ]);
 
+    try {
+      await finalizeCancelledTestSessions();
+    } catch (error) {
+      logger.warn("Unable to finalize cancelled test sessions.", error);
+    }
+
     return {
       queued: queued.count,
       running: running.count,
@@ -500,6 +507,30 @@ async function cancelStaleActiveRuns({
       running: 0,
     };
   }
+}
+
+async function finalizeCancelledTestSessions(): Promise<void> {
+  await prisma.testSession.updateMany({
+    data: {
+      status: "CANCELLED",
+    },
+    where: {
+      kind: "TEST",
+      runs: {
+        none: {
+          status: {
+            in: activeSessionStatuses,
+          },
+        },
+        some: {
+          status: "CANCELLED",
+        },
+      },
+      status: {
+        in: activeSessionStatuses,
+      },
+    },
+  });
 }
 
 function formatScheduleSummary(summary: ScheduleDueChecksSummary): string {

@@ -116,6 +116,7 @@ function createStoredZip(entries: Record<string, string>) {
 describe("runCheckById", () => {
   afterEach(async () => {
     vi.clearAllMocks();
+    vi.useRealTimers();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
     await Promise.all(
@@ -306,6 +307,106 @@ describe("runCheckById", () => {
     );
   });
 
+  it("marks browser checks as timed out and terminates Playwright", async () => {
+    const rootDir = await createTempProject();
+    const runId = "run_1";
+    let child:
+      | (EventEmitter & {
+          kill: (signal: NodeJS.Signals) => boolean;
+          stderr: EventEmitter;
+          stdout: EventEmitter;
+        })
+      | undefined;
+    const kill = vi.fn((signal: NodeJS.Signals) => {
+      child?.emit("close", null, signal);
+      return true;
+    });
+    let resolveSpawned: () => void = () => {};
+    const spawned = new Promise<void>((resolve) => {
+      resolveSpawned = resolve;
+    });
+
+    await writeFile(
+      path.join(rootDir, "playwright.config.ts"),
+      "export default { globalTimeout: 1000 };\n",
+    );
+
+    mocks.checkFindFirst.mockResolvedValue({
+      entrypoint: "src/__checks__/UI/App/core/rest.dashboard.onboarding-widget.spec.ts",
+      id: "check_1",
+      key: "onboarding",
+      name: "Onboarding",
+      request: null,
+      retryStrategy: null,
+      runs: [],
+      type: "BROWSER",
+    });
+    mocks.checkRunFindFirst.mockResolvedValue({
+      checkId: "check_1",
+      id: runId,
+    });
+    mocks.checkRunUpdate.mockImplementation(async (args) => ({
+      checkId: "check_1",
+      id: args.where.id,
+      ...args.data,
+    }));
+    mocks.artifactDeleteMany.mockResolvedValue({ count: 0 });
+    mocks.artifactCreateMany.mockResolvedValue({ count: 1 });
+    mocks.spawn.mockImplementation(() => {
+      child = new EventEmitter() as EventEmitter & {
+        kill: (signal: NodeJS.Signals) => boolean;
+        stderr: EventEmitter;
+        stdout: EventEmitter;
+      };
+      child.stderr = new EventEmitter();
+      child.stdout = new EventEmitter();
+      child.kill = kill;
+      resolveSpawned();
+
+      return child;
+    });
+
+    vi.useFakeTimers();
+    const runPromise = runCheckById({
+      checkId: "check_1",
+      env: [{ name: "ENVIRONMENT_URL", value: "https://example.test" }],
+      projectSlug: "default",
+      record: true,
+      reporter: "list",
+      rootDir,
+      runId,
+    });
+
+    await spawned;
+    await vi.advanceTimersByTimeAsync(1000);
+
+    await expect(runPromise).resolves.toMatchObject({
+      checkKey: "onboarding",
+      errorMessage: "Browser check timed out after 1 s (playwright.globalTimeout).",
+      runId,
+      status: "timed_out",
+    });
+    expect(kill).toHaveBeenCalledWith("SIGTERM");
+    expect(mocks.checkRunUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          errorMessage: "Browser check timed out after 1 s (playwright.globalTimeout).",
+          result: expect.objectContaining({
+            exitCode: 124,
+            signal: "SIGTERM",
+            timedOut: true,
+            timeoutMs: 1000,
+            timeoutSource: "playwright.globalTimeout",
+          }),
+          status: "TIMED_OUT",
+        }),
+        where: {
+          id: runId,
+        },
+      }),
+    );
+  });
+
   it("records failed retry attempts as separate runs before returning a passing retry", async () => {
     const runId = "run_1";
 
@@ -431,6 +532,7 @@ describe("runCheckById", () => {
 describe("runChecks", () => {
   afterEach(async () => {
     vi.clearAllMocks();
+    vi.useRealTimers();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
     await Promise.all(

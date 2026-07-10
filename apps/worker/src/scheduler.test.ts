@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   getRunEnvironment: vi.fn(),
   queueAdd: vi.fn(),
   readPerformanceRuntimeSettings: vi.fn(),
+  testSessionUpdateMany: vi.fn(),
 }));
 
 vi.mock("@selfchecks/db", () => ({
@@ -29,6 +30,9 @@ vi.mock("@selfchecks/db", () => ({
       findMany: mocks.checkRunFindMany,
       update: mocks.checkRunUpdate,
       updateMany: mocks.checkRunUpdateMany,
+    },
+    testSession: {
+      updateMany: mocks.testSessionUpdateMany,
     },
   },
 }));
@@ -85,6 +89,9 @@ describe("scheduleDueChecks", () => {
     mocks.artifactFindMany.mockResolvedValue([]);
     mocks.checkRunFindMany.mockResolvedValue([]);
     mocks.checkRunUpdateMany.mockResolvedValue({
+      count: 0,
+    });
+    mocks.testSessionUpdateMany.mockResolvedValue({
       count: 0,
     });
     mocks.readPerformanceRuntimeSettings.mockResolvedValue({
@@ -453,6 +460,27 @@ describe("scheduleDueChecks", () => {
           },
         ],
         status: "RUNNING",
+      },
+    });
+    expect(mocks.testSessionUpdateMany).toHaveBeenCalledWith({
+      data: {
+        status: "CANCELLED",
+      },
+      where: {
+        kind: "TEST",
+        runs: {
+          none: {
+            status: {
+              in: ["QUEUED", "RUNNING"],
+            },
+          },
+          some: {
+            status: "CANCELLED",
+          },
+        },
+        status: {
+          in: ["QUEUED", "RUNNING"],
+        },
       },
     });
   });

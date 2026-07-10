@@ -1,6 +1,12 @@
 import { z } from "zod";
 
 export {
+  defaultBrowserRunTimeoutMs,
+  resolveBrowserRunTimeoutConfig,
+  type BrowserRunTimeoutConfig,
+} from "./browser-run-config.js";
+
+export {
   defaultPerformanceSettings,
   normalizePerformanceSettingValue,
   normalizePerformanceSettings,

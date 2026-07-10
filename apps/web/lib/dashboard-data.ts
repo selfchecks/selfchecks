@@ -31,6 +31,7 @@ const DASHBOARD_RESULT_BAR_COUNT = 24;
 const MAX_RETRY_ATTEMPTS_PER_RUN = 11;
 const MAX_RESULT_BAR_HEIGHT = 44;
 const MIN_RESULT_BAR_HEIGHT = 8;
+const activeSessionStatuses = ["QUEUED", "RUNNING"];
 
 type DashboardData = {
   firewatch: DashboardFirewatch;
@@ -1409,6 +1410,7 @@ function mapTestSession(
   const runs = session.runs;
   const latestRuns = getLatestRunsByCheck(runs);
   const summary = summarizeTestSessionRuns(latestRuns);
+  const status = resolveTestSessionStatus(session.status, latestRuns);
 
   return {
     createdAt: session.createdAt.toISOString(),
@@ -1417,13 +1419,28 @@ function mapTestSession(
     href: `/test-sessions/${encodeURIComponent(session.id)}`,
     id: session.id,
     name: session.name ?? undefined,
-    runState: mapRunState(session.status),
+    runState: mapRunState(status),
     source: session.source ?? undefined,
-    status: mapRunStatus(session.status),
+    status: mapRunStatus(status),
     summary,
     targetUrl: session.targetUrl ?? undefined,
-    tone: mapRunTone(session.status),
+    tone: mapRunTone(status),
   };
+}
+
+function resolveTestSessionStatus(
+  status: string,
+  runs: TestSessionRunWithCheck[],
+): string {
+  if (
+    !activeSessionStatuses.includes(status) ||
+    runs.length === 0 ||
+    runs.some((run) => activeSessionStatuses.includes(run.status))
+  ) {
+    return status;
+  }
+
+  return runs.some((run) => run.status === "CANCELLED") ? "CANCELLED" : status;
 }
 
 function mapTestSessionChecks(

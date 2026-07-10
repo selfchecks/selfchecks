@@ -9,7 +9,7 @@ import type {
   CheckRunStatus,
   RetryStrategy,
 } from "@selfchecks/core";
-import { normalizeTags } from "@selfchecks/core";
+import { normalizeTags, resolveBrowserRunTimeoutConfig } from "@selfchecks/core";
 import { prisma, Prisma, type CheckRun, type TestSession } from "@selfchecks/db";
 
 import { analyzeFailedCheck } from "./ai-analysis.js";
@@ -121,6 +121,8 @@ const DEFAULT_ARTIFACTS_DIR = ".selfchecks/artifacts";
 const DEFAULT_RETRY_BACKOFF_SECONDS = 60;
 const DEFAULT_RETRY_MAX_DURATION_SECONDS = 600;
 const DEFAULT_RETRY_MAX_RETRIES = 2;
+const BROWSER_RUN_TIMEOUT_EXIT_CODE = 124;
+const BROWSER_RUN_TIMEOUT_KILL_GRACE_MS = 5_000;
 const MAX_RETRIES = 10;
 const ANSI_ESCAPE_PATTERN = new RegExp(
   `${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`,
@@ -721,6 +723,7 @@ async function runBrowserCheck(
 
   const artifactStartedAt = Date.now();
   const artifactPaths = createBrowserArtifactPaths(options.rootDir, run?.id);
+  const runTimeout = await resolveBrowserRunTimeoutConfig(options.rootDir);
   await writeBrowserPerformanceCollector(artifactPaths.performanceCollectorPath);
   const logs = await runProcess({
     args: [
@@ -748,6 +751,10 @@ async function runBrowserCheck(
       ),
     },
     rootDir: options.rootDir,
+    timeout: {
+      ms: runTimeout.timeoutMs,
+      source: runTimeout.source,
+    },
   });
   const logsPath = run
     ? await writeRunLog(options.rootDir, run.id, logs.output)
@@ -762,18 +769,31 @@ async function runBrowserCheck(
   const performance =
     (await collectBrowserPerformanceFromDirectory(artifactPaths.performanceDir)) ??
     (await collectBrowserPerformanceFromArtifacts(artifacts));
+  const timeoutErrorMessage = logs.timedOut
+    ? `Browser check timed out after ${formatDurationMs(logs.timeoutMs)} (${logs.timeoutSource}).`
+    : undefined;
 
   return {
     artifacts,
-    errorMessage: logs.exitCode === 0 ? undefined : logs.output.slice(-4000),
+    errorMessage:
+      logs.exitCode === 0
+        ? undefined
+        : (timeoutErrorMessage ?? logs.output.slice(-4000)),
     logsPath,
     resultJson: {
       artifactOutputDir: artifactPaths.testResultsDir,
       command: `npx playwright test ${check.entrypoint}`,
       exitCode: logs.exitCode,
+      ...(typeof runTimeout.configuredTestTimeoutMs === "number"
+        ? { configuredTestTimeoutMs: runTimeout.configuredTestTimeoutMs }
+        : {}),
       ...(performance ? { performance } : {}),
+      ...(logs.signal ? { signal: logs.signal } : {}),
+      timedOut: logs.timedOut,
+      timeoutMs: logs.timeoutMs,
+      timeoutSource: logs.timeoutSource,
     },
-    status: logs.exitCode === 0 ? "passed" : "failed",
+    status: logs.exitCode === 0 ? "passed" : logs.timedOut ? "timed_out" : "failed",
   };
 }
 
@@ -829,16 +849,29 @@ async function runProcess({
   env,
   processEnv,
   rootDir,
+  timeout,
 }: {
   args: string[];
   command: string;
   env: EnvVar[];
   processEnv?: Record<string, string>;
   rootDir: string;
-}): Promise<{ exitCode: number; output: string }> {
+  timeout?: {
+    ms: number;
+    source: string;
+  };
+}): Promise<{
+  exitCode: number;
+  output: string;
+  signal?: NodeJS.Signals | null;
+  timedOut: boolean;
+  timeoutMs?: number;
+  timeoutSource?: string;
+}> {
   return new Promise((resolve) => {
     const child = spawn(command, args, {
       cwd: rootDir,
+      detached: process.platform !== "win32",
       env: {
         ...process.env,
         ...Object.fromEntries(env.map((item) => [item.name, item.value])),
@@ -847,16 +880,88 @@ async function runProcess({
       shell: false,
     });
     const chunks: Buffer[] = [];
+    let killTimer: NodeJS.Timeout | undefined;
+    let resolved = false;
+    let timedOut = false;
+    let timeoutTimer: NodeJS.Timeout | undefined;
+
+    function cleanupTimers() {
+      if (timeoutTimer) {
+        clearTimeout(timeoutTimer);
+      }
+
+      if (killTimer) {
+        clearTimeout(killTimer);
+      }
+    }
+
+    function resolveOnce(result: { exitCode: number; signal?: NodeJS.Signals | null }) {
+      if (resolved) {
+        return;
+      }
+
+      resolved = true;
+      cleanupTimers();
+      resolve({
+        exitCode: result.exitCode,
+        output: Buffer.concat(chunks).toString("utf8"),
+        signal: result.signal,
+        timedOut,
+        timeoutMs: timeout?.ms,
+        timeoutSource: timeout?.source,
+      });
+    }
+
+    if (timeout && timeout.ms > 0) {
+      timeoutTimer = setTimeout(() => {
+        timedOut = true;
+        chunks.push(
+          Buffer.from(
+            `\nSelfchecks browser run timed out after ${formatDurationMs(
+              timeout.ms,
+            )} (${timeout.source}).\n`,
+          ),
+        );
+        signalChildProcess(child, "SIGTERM");
+        killTimer = setTimeout(() => {
+          signalChildProcess(child, "SIGKILL");
+        }, BROWSER_RUN_TIMEOUT_KILL_GRACE_MS);
+        killTimer.unref?.();
+      }, timeout.ms);
+      timeoutTimer.unref?.();
+    }
 
     child.stdout.on("data", (chunk: Buffer) => chunks.push(chunk));
     child.stderr.on("data", (chunk: Buffer) => chunks.push(chunk));
-    child.on("close", (exitCode) => {
-      resolve({
-        exitCode: exitCode ?? 1,
-        output: Buffer.concat(chunks).toString("utf8"),
+    child.on("error", (error) => {
+      chunks.push(Buffer.from(`\n${error.message}\n`));
+      resolveOnce({
+        exitCode: 1,
+      });
+    });
+    child.on("close", (exitCode, signal) => {
+      resolveOnce({
+        exitCode: exitCode ?? (timedOut ? BROWSER_RUN_TIMEOUT_EXIT_CODE : 1),
+        signal,
       });
     });
   });
+}
+
+function signalChildProcess(
+  child: ReturnType<typeof spawn>,
+  signal: NodeJS.Signals,
+): void {
+  if (process.platform !== "win32" && typeof child.pid === "number") {
+    try {
+      process.kill(-child.pid, signal);
+      return;
+    } catch {
+      // Fall back to the direct child when process group signalling is unavailable.
+    }
+  }
+
+  child.kill(signal);
 }
 
 async function writeRunLog(
@@ -982,6 +1087,20 @@ function mergeNodeOptions(...options: Array<string | undefined>) {
     .map((option) => option?.trim())
     .filter((option): option is string => Boolean(option))
     .join(" ");
+}
+
+function formatDurationMs(value: number | undefined): string {
+  const durationMs = value ?? 0;
+
+  if (durationMs > 0 && durationMs % 60_000 === 0) {
+    return `${durationMs / 60_000} min`;
+  }
+
+  if (durationMs > 0 && durationMs % 1000 === 0) {
+    return `${durationMs / 1000} s`;
+  }
+
+  return `${durationMs} ms`;
 }
 
 async function walkArtifactDirectory(
@@ -1231,10 +1350,20 @@ function interpolateEnv(value: string, env: Record<string, string>): string {
   });
 }
 
-function summarizeStatus(results: RunCheckResult[]): "PASSED" | "FAILED" {
-  return results.every((result) => result.status === "passed") ? "PASSED" : "FAILED";
+function summarizeStatus(results: RunCheckResult[]): "PASSED" | "FAILED" | "TIMED_OUT" {
+  if (results.every((result) => result.status === "passed")) {
+    return "PASSED";
+  }
+
+  return results.some((result) => result.status === "timed_out")
+    ? "TIMED_OUT"
+    : "FAILED";
 }
 
-function toPrismaRunStatus(status: CheckRunStatus): "PASSED" | "FAILED" {
-  return status === "passed" ? "PASSED" : "FAILED";
+function toPrismaRunStatus(status: CheckRunStatus): "PASSED" | "FAILED" | "TIMED_OUT" {
+  if (status === "passed") {
+    return "PASSED";
+  }
+
+  return status === "timed_out" ? "TIMED_OUT" : "FAILED";
 }
