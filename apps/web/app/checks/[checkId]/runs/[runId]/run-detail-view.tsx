@@ -17,6 +17,7 @@ import {
   Video,
   type LucideIcon,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 
 import type { RunDetailData } from "@/lib/dashboard-data";
@@ -32,6 +33,7 @@ import {
   ScreenshotComparisonPanel,
   type ScreenshotComparison,
 } from "./screenshot-comparison-slider";
+import { ArtifactTextPreview } from "./artifact-text-preview";
 
 type RunDetailViewProps = {
   accountLabel: string;
@@ -743,57 +745,225 @@ function ArtifactList({ artifacts }: { artifacts: DashboardRunArtifact[] }) {
     );
   }
 
-  return (
-    <div className="grid gap-2">
-      {artifacts.map((artifact) => {
-        const Icon = getArtifactIcon(artifact.type);
-        const label = getArtifactTypeLabel(artifact.type);
+  const groups = groupArtifacts(artifacts);
 
-        return (
-          <div
-            className="flex max-w-full items-center gap-3 rounded-md border border-slate-700 bg-[#0f151d] px-3 py-2 text-sm text-slate-300"
-            key={artifact.id}
-          >
-            <Icon className="h-4 w-4 shrink-0 text-slate-500" />
-            <div className="min-w-0 flex-1">
-              <div
-                className="truncate font-medium text-slate-200"
-                title={artifact.name}
-              >
-                {artifact.name}
-              </div>
-              <div className="mt-0.5 text-xs text-slate-500">
-                {label}
-                {artifact.size !== "-" ? ` · ${artifact.size}` : ""}
-              </div>
-            </div>
-            <a
-              aria-label={`View ${artifact.name}`}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-800 hover:text-slate-100"
-              href={artifact.viewUrl}
-              rel={artifact.type === "trace" ? undefined : "noreferrer"}
-              target={artifact.type === "trace" ? undefined : "_blank"}
-              title="View"
-            >
-              {artifact.type === "video" ? (
-                <Play className="h-4 w-4" />
-              ) : (
-                <ExternalLink className="h-4 w-4" />
-              )}
-            </a>
-            <a
-              aria-label={`Download ${artifact.name}`}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-800 hover:text-slate-100"
-              download
-              href={artifact.downloadUrl}
-              title="Download"
-            >
-              <Download className="h-4 w-4" />
-            </a>
+  return (
+    <div className="grid gap-5">
+      {groups.traces.length > 0 ? (
+        <ArtifactGroup title="Traces">
+          <div className="grid gap-2">
+            {groups.traces.map((artifact) => (
+              <ArtifactRow artifact={artifact} key={artifact.id}>
+                <a
+                  aria-label={`Open trace ${artifact.name}`}
+                  className="inline-flex h-8 shrink-0 items-center justify-center rounded-md bg-blue-600 px-3 text-xs font-semibold text-white hover:bg-blue-500"
+                  href={artifact.viewUrl}
+                >
+                  Open trace
+                </a>
+                <ArtifactDownloadLink artifact={artifact} />
+              </ArtifactRow>
+            ))}
           </div>
-        );
-      })}
+        </ArtifactGroup>
+      ) : null}
+
+      {groups.screenshots.length > 0 ? (
+        <ArtifactGroup title="Screenshots">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {groups.screenshots.map((artifact) => (
+              <div
+                className="min-w-0 overflow-hidden rounded-md border border-slate-700 bg-[#0f151d] text-sm text-slate-300"
+                key={artifact.id}
+              >
+                <a
+                  aria-label={`Open screenshot ${artifact.name} in new tab`}
+                  className="relative block aspect-video overflow-hidden bg-[#0b0f14]"
+                  href={artifact.viewUrl}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  <Image
+                    alt={artifact.name}
+                    className="object-cover transition-transform hover:scale-[1.02]"
+                    fill
+                    sizes="(min-width: 1280px) 25vw, (min-width: 640px) 40vw, 90vw"
+                    src={artifact.viewUrl}
+                    unoptimized
+                  />
+                </a>
+                <div className="flex items-center gap-3 px-3 py-2">
+                  <ArtifactMetadata artifact={artifact} />
+                  <ArtifactDownloadLink artifact={artifact} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </ArtifactGroup>
+      ) : null}
+
+      {groups.logs.length > 0 ? (
+        <ArtifactGroup title="Logs">
+          <div className="grid gap-3">
+            {groups.logs.map((artifact) => (
+              <div
+                className="grid min-w-0 gap-3 rounded-md border border-slate-700 bg-[#0f151d] p-3 text-sm text-slate-300"
+                key={artifact.id}
+              >
+                <div className="flex items-center gap-3">
+                  <FileText className="h-4 w-4 shrink-0 text-slate-500" />
+                  <ArtifactMetadata artifact={artifact} />
+                </div>
+                <ArtifactTextPreview name={artifact.name} viewUrl={artifact.viewUrl} />
+                <div className="flex justify-end gap-1">
+                  <ArtifactViewLink artifact={artifact} />
+                  <ArtifactDownloadLink artifact={artifact} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </ArtifactGroup>
+      ) : null}
+
+      {groups.other.length > 0 ? (
+        <ArtifactGroup title="Other">
+          <div className="grid gap-2">
+            {groups.other.map((artifact) => (
+              <ArtifactRow artifact={artifact} key={artifact.id}>
+                <ArtifactViewLink artifact={artifact} />
+                <ArtifactDownloadLink artifact={artifact} />
+              </ArtifactRow>
+            ))}
+          </div>
+        </ArtifactGroup>
+      ) : null}
     </div>
+  );
+}
+
+function ArtifactGroup({
+  children,
+  title,
+}: {
+  children: React.ReactNode;
+  title: string;
+}) {
+  return (
+    <section className="grid gap-2">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        {title}
+      </h3>
+      {children}
+    </section>
+  );
+}
+
+function ArtifactRow({
+  artifact,
+  children,
+}: {
+  artifact: DashboardRunArtifact;
+  children: React.ReactNode;
+}) {
+  const Icon = getArtifactIcon(artifact.type);
+
+  return (
+    <div className="flex max-w-full items-center gap-3 rounded-md border border-slate-700 bg-[#0f151d] px-3 py-2 text-sm text-slate-300">
+      <Icon className="h-4 w-4 shrink-0 text-slate-500" />
+      <ArtifactMetadata artifact={artifact} />
+      {children}
+    </div>
+  );
+}
+
+function ArtifactMetadata({ artifact }: { artifact: DashboardRunArtifact }) {
+  const label = getArtifactTypeLabel(artifact.type);
+
+  return (
+    <div className="min-w-0 flex-1">
+      <div className="truncate font-medium text-slate-200" title={artifact.name}>
+        {artifact.name}
+      </div>
+      <div className="mt-0.5 text-xs text-slate-500">
+        {label}
+        {artifact.size !== "-" ? ` · ${artifact.size}` : ""}
+      </div>
+    </div>
+  );
+}
+
+function ArtifactViewLink({ artifact }: { artifact: DashboardRunArtifact }) {
+  return (
+    <a
+      aria-label={`View ${artifact.name}`}
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-800 hover:text-slate-100"
+      href={artifact.viewUrl}
+      rel="noreferrer"
+      target="_blank"
+      title="View"
+    >
+      {artifact.type === "video" ? (
+        <Play className="h-4 w-4" />
+      ) : (
+        <ExternalLink className="h-4 w-4" />
+      )}
+    </a>
+  );
+}
+
+function ArtifactDownloadLink({ artifact }: { artifact: DashboardRunArtifact }) {
+  return (
+    <a
+      aria-label={`Download ${artifact.name}`}
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-800 hover:text-slate-100"
+      download
+      href={artifact.downloadUrl}
+      title="Download"
+    >
+      <Download className="h-4 w-4" />
+    </a>
+  );
+}
+
+function groupArtifacts(artifacts: DashboardRunArtifact[]) {
+  const groups = {
+    logs: [] as DashboardRunArtifact[],
+    other: [] as DashboardRunArtifact[],
+    screenshots: [] as DashboardRunArtifact[],
+    traces: [] as DashboardRunArtifact[],
+  };
+
+  for (const artifact of artifacts) {
+    if (artifact.type === "trace") {
+      groups.traces.push(artifact);
+    } else if (artifact.type === "screenshot") {
+      groups.screenshots.push(artifact);
+    } else if (isTextArtifact(artifact)) {
+      groups.logs.push(artifact);
+    } else {
+      groups.other.push(artifact);
+    }
+  }
+
+  return groups;
+}
+
+function isTextArtifact(artifact: DashboardRunArtifact) {
+  if (["json", "log", "request_response"].includes(artifact.type)) {
+    return true;
+  }
+
+  const mimeType = artifact.mimeType?.toLowerCase() ?? "";
+
+  if (
+    mimeType.startsWith("text/") ||
+    ["json", "javascript", "xml", "yaml"].some((type) => mimeType.includes(type))
+  ) {
+    return true;
+  }
+
+  return /\.(?:css|csv|html?|jsx?|log|md|mjs|text|tsv|tsx?|txt|xml|ya?ml)$/i.test(
+    artifact.name,
   );
 }
 

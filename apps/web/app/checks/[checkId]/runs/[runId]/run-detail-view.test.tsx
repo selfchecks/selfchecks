@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { RunDetailData } from "@/lib/dashboard-data";
 
@@ -190,6 +190,10 @@ const browserDetail: RunDetailData = {
 };
 
 describe("RunDetailView", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("renders a dedicated run detail page with request, response and artifacts", async () => {
     const user = userEvent.setup();
 
@@ -243,11 +247,15 @@ describe("RunDetailView", () => {
     expect(screen.getAllByText("video.webm").length).toBe(1);
     expect(screen.getAllByText("Video · 1.2 MB").length).toBe(1);
     expect(
-      (screen.getByRole("link", { name: "View trace.zip" }) as HTMLAnchorElement).href,
+      (screen.getByRole("link", { name: "Open trace trace.zip" }) as HTMLAnchorElement)
+        .href,
     ).toContain("/runs/run_1/artifacts/artifact_1/trace");
     expect(
-      (screen.getByRole("link", { name: "View screenshot.png" }) as HTMLAnchorElement)
-        .href,
+      (
+        screen.getByRole("link", {
+          name: "Open screenshot screenshot.png in new tab",
+        }) as HTMLAnchorElement
+      ).href,
     ).toContain("/api/runs/run_1/artifacts/artifact_2");
     expect(
       (screen.getByRole("link", { name: "View video.webm" }) as HTMLAnchorElement).href,
@@ -258,6 +266,60 @@ describe("RunDetailView", () => {
     ).toContain("/api/runs/run_1/artifacts/artifact_1?download=1");
     expect(screen.getByText("Job log")).toBeTruthy();
     expect(screen.getAllByText(/200 OK/).length).toBeGreaterThan(1);
+  });
+
+  it("groups artifacts and previews text files", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response("line 1\nline 2", { status: 200 })),
+    );
+
+    render(
+      <RunDetailView
+        accountLabel="nikolaev@iprojects.ru"
+        detail={{
+          ...detail,
+          run: {
+            ...detail.run,
+            artifacts: [
+              ...detail.run.artifacts,
+              {
+                downloadUrl: "/api/runs/run_1/artifacts/artifact_4?download=1",
+                id: "artifact_4",
+                mimeType: "text/plain",
+                name: "output.txt",
+                size: "1 KB",
+                type: "log",
+                viewUrl: "/api/runs/run_1/artifacts/artifact_4",
+              },
+            ],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "Traces" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Screenshots" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Logs" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Other" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Open trace trace.zip" }).textContent).toBe(
+      "Open trace",
+    );
+
+    const screenshotLink = screen.getByRole("link", {
+      name: "Open screenshot screenshot.png in new tab",
+    });
+    expect(screenshotLink.getAttribute("target")).toBe("_blank");
+    expect(screen.getByRole("img", { name: "screenshot.png" })).toBeTruthy();
+
+    const preview = screen.getByRole("textbox", { name: "Contents of output.txt" });
+    expect(preview.getAttribute("rows")).toBe("5");
+    await waitFor(() =>
+      expect((preview as HTMLTextAreaElement).value).toBe("line 1\nline 2"),
+    );
+    expect(screen.getByRole("link", { name: "View output.txt" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Download output.txt" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "View video.webm" })).toBeTruthy();
   });
 
   it("hides empty API-only blocks for browser runs", () => {
