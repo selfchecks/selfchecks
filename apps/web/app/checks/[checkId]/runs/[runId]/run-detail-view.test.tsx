@@ -342,7 +342,7 @@ describe("RunDetailView", () => {
     ).toBe("page");
   });
 
-  it("keeps result data for browser runs without AI analysis", () => {
+  it("hides result data for browser runs without AI analysis", () => {
     render(
       <RunDetailView
         accountLabel="nikolaev@iprojects.ru"
@@ -357,10 +357,9 @@ describe("RunDetailView", () => {
     );
 
     expect(screen.queryByText("AI analysis")).toBeNull();
-    expect(screen.getByText("Result data")).toBeTruthy();
-    expect(
-      screen.getAllByText("npx playwright test tests/header-search.spec.ts").length,
-    ).toBeGreaterThan(1);
+    expect(screen.queryByText("Result data")).toBeNull();
+    expect(screen.queryByText("Raw result")).toBeNull();
+    expect(screen.getByText("Playwright test report")).toBeTruthy();
   });
 
   it("renders an overlay comparison slider for visual screenshot mismatches", () => {

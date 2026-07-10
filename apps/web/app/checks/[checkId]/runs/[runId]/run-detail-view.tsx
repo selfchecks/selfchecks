@@ -68,7 +68,8 @@ export function RunDetailView({ accountLabel, detail }: RunDetailViewProps) {
   const navigationEntries = buildPageNavigations(run);
   const failedAttemptCount = run.failedAttempts;
   const totalAttemptCount = Math.max(run.maxAttempts, run.attempts.length);
-  const showResultData = Boolean(run.response) || !run.aiAnalysis;
+  const showResultData =
+    check.type === "api" && (Boolean(run.response) || !run.aiAnalysis);
   const showDataPanels = Boolean(run.request) || showResultData;
   const target = run.request
     ? `${run.request.method} ${run.request.url}`
