@@ -24,6 +24,9 @@ export async function readPerformanceRuntimeSettings({
             select: {
               artifactRetentionDays: true,
               historyRetentionDays: true,
+              queuedRunTimeoutMinutes: true,
+              runningRunTimeoutMinutes: true,
+              testSessionTimeoutMinutes: true,
               workerConcurrency: true,
             },
           },
@@ -41,6 +44,9 @@ export async function readPerformanceRuntimeSettings({
             select: {
               artifactRetentionDays: true,
               historyRetentionDays: true,
+              queuedRunTimeoutMinutes: true,
+              runningRunTimeoutMinutes: true,
+              testSessionTimeoutMinutes: true,
               workerConcurrency: true,
             },
           },

@@ -1,14 +1,21 @@
 import { EventEmitter } from "node:events";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   checkRunUpdateMany: vi.fn(),
   checkRunUpdate: vi.fn(),
+  readPerformanceRuntimeSettings: vi.fn(),
   runCheckById: vi.fn(),
   runChecks: vi.fn(),
   spawn: vi.fn(),
   testSessionUpdate: vi.fn(),
+  TestSessionTimeoutError: class TestSessionTimeoutError extends Error {
+    constructor(timeoutMs: number) {
+      super(`Test session timed out after ${timeoutMs} ms.`);
+      this.name = "TestSessionTimeoutError";
+    }
+  },
   transaction: vi.fn(),
 }));
 
@@ -22,6 +29,11 @@ vi.mock("node:child_process", () => ({
 vi.mock("@selfchecks/cli/runner", () => ({
   runCheckById: mocks.runCheckById,
   runChecks: mocks.runChecks,
+  TestSessionTimeoutError: mocks.TestSessionTimeoutError,
+}));
+
+vi.mock("./performance-settings.js", () => ({
+  readPerformanceRuntimeSettings: mocks.readPerformanceRuntimeSettings,
 }));
 
 vi.mock("@selfchecks/db", () => ({
@@ -40,6 +52,17 @@ vi.mock("@selfchecks/db", () => ({
 import { handleCheckJob, handleTestSessionJob } from "./jobs.js";
 
 describe("handleCheckJob", () => {
+  beforeEach(() => {
+    mocks.readPerformanceRuntimeSettings.mockResolvedValue({
+      artifactRetentionDays: 14,
+      historyRetentionDays: 180,
+      queuedRunTimeoutMinutes: 30,
+      runningRunTimeoutMinutes: 120,
+      testSessionTimeoutMinutes: 30,
+      workerConcurrency: 2,
+    });
+  });
+
   afterEach(() => {
     vi.clearAllMocks();
     vi.restoreAllMocks();
@@ -191,7 +214,107 @@ describe("handleCheckJob", () => {
         existingTestSessionId: "session_1",
         record: true,
         runMode: "test",
+        testSessionDeadline: {
+          at: expect.any(Number),
+          timeoutMs: 30 * 60_000,
+        },
       }),
     );
+  });
+
+  it("marks the session and unfinished runs timed out at the configured limit", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-10T10:00:00.000Z"));
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    let child:
+      | (EventEmitter & {
+          kill: (signal: NodeJS.Signals) => boolean;
+        })
+      | undefined;
+    const kill = vi.fn((signal: NodeJS.Signals) => {
+      child?.emit("close", null, signal);
+      return true;
+    });
+    let resolveSpawned: () => void = () => {};
+    const spawned = new Promise<void>((resolve) => {
+      resolveSpawned = resolve;
+    });
+    mocks.spawn.mockImplementation(() => {
+      child = new EventEmitter() as EventEmitter & {
+        kill: (signal: NodeJS.Signals) => boolean;
+      };
+      child.kill = kill;
+      resolveSpawned();
+      return child;
+    });
+    mocks.readPerformanceRuntimeSettings.mockResolvedValue({
+      artifactRetentionDays: 14,
+      historyRetentionDays: 180,
+      queuedRunTimeoutMinutes: 30,
+      runningRunTimeoutMinutes: 120,
+      testSessionTimeoutMinutes: 10,
+      workerConcurrency: 2,
+    });
+    const jobPromise = handleTestSessionJob({
+      data: {
+        checkKeys: ["homepage"],
+        checks: [
+          {
+            enabled: true,
+            entrypoint: null,
+            key: "homepage",
+            name: "Homepage",
+            request: {
+              assertions: [],
+              headers: {},
+              method: "GET",
+              url: "https://example.test",
+            },
+            tags: [],
+            type: "api",
+          },
+        ],
+        env: [],
+        existingRunIds: {
+          homepage: "run_1",
+        },
+        kind: "test-session",
+        projectSlug: "account",
+        reporter: "github",
+        rootDir: "/runtime/test-sessions/session_1",
+        sessionId: "session_1",
+        tagSets: [],
+      },
+    });
+    const rejection = expect(jobPromise).rejects.toThrow("Test session timed out");
+
+    await spawned;
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+
+    await rejection;
+    expect(kill).toHaveBeenCalledWith("SIGTERM");
+    expect(mocks.runChecks).not.toHaveBeenCalled();
+
+    expect(mocks.testSessionUpdate).toHaveBeenCalledWith({
+      data: {
+        status: "TIMED_OUT",
+      },
+      where: {
+        id: "session_1",
+      },
+    });
+    expect(mocks.checkRunUpdateMany).toHaveBeenCalledWith({
+      data: {
+        errorMessage: "Test session timed out after 600000 ms.",
+        finishedAt: expect.any(Date),
+        status: "TIMED_OUT",
+      },
+      where: {
+        status: {
+          in: ["QUEUED", "RUNNING"],
+        },
+        testSessionId: "session_1",
+      },
+    });
   });
 });

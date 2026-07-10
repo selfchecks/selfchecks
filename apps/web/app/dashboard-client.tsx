@@ -129,6 +129,27 @@ const performanceSettingFields = [
     ...performanceSettingsLimits.workerConcurrency,
   },
   {
+    description: "Maximum time a run may wait in the worker queue.",
+    key: "queuedRunTimeoutMinutes",
+    label: "Queued run timeout",
+    suffix: "min",
+    ...performanceSettingsLimits.queuedRunTimeoutMinutes,
+  },
+  {
+    description: "Maximum time a started run may remain unfinished.",
+    key: "runningRunTimeoutMinutes",
+    label: "Running run timeout",
+    suffix: "min",
+    ...performanceSettingsLimits.runningRunTimeoutMinutes,
+  },
+  {
+    description: "Maximum wall-clock time for one CLI test session.",
+    key: "testSessionTimeoutMinutes",
+    label: "Maximum test session duration",
+    suffix: "min",
+    ...performanceSettingsLimits.testSessionTimeoutMinutes,
+  },
+  {
     description: "Recorded traces, screenshots, videos, reports and logs.",
     key: "artifactRetentionDays",
     label: "Test artifact retention",
@@ -1426,6 +1447,9 @@ function SettingsScreen({
   const [performanceDraft, setPerformanceDraft] = useState(() => ({
     artifactRetentionDays: settings.performance.artifactRetentionDays,
     historyRetentionDays: settings.performance.historyRetentionDays,
+    queuedRunTimeoutMinutes: settings.performance.queuedRunTimeoutMinutes,
+    runningRunTimeoutMinutes: settings.performance.runningRunTimeoutMinutes,
+    testSessionTimeoutMinutes: settings.performance.testSessionTimeoutMinutes,
     workerConcurrency: settings.performance.workerConcurrency,
   }));
   const [apiKeyName, setApiKeyName] = useState("");
@@ -1476,6 +1500,9 @@ function SettingsScreen({
     setPerformanceDraft({
       artifactRetentionDays: settings.performance.artifactRetentionDays,
       historyRetentionDays: settings.performance.historyRetentionDays,
+      queuedRunTimeoutMinutes: settings.performance.queuedRunTimeoutMinutes,
+      runningRunTimeoutMinutes: settings.performance.runningRunTimeoutMinutes,
+      testSessionTimeoutMinutes: settings.performance.testSessionTimeoutMinutes,
       workerConcurrency: settings.performance.workerConcurrency,
     });
   }, [settings.performance]);
@@ -2051,7 +2078,7 @@ function SettingsScreen({
           <div>
             <h3 className="text-base font-semibold text-slate-100">Performance</h3>
             <div className="text-xs text-slate-500">
-              Worker concurrency and retention windows
+              Execution limits and retention windows
             </div>
           </div>
         </div>

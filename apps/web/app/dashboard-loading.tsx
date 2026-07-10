@@ -336,10 +336,10 @@ function SettingsSkeleton() {
         widths={["w-28", "w-32"]}
       />
       <SettingsCardSkeleton
-        fields={3}
+        fields={6}
         title="Performance"
         variant="slider"
-        widths={["w-40", "w-44", "w-40"]}
+        widths={["w-40", "w-36", "w-40", "w-52", "w-44", "w-40"]}
       />
       <SettingsCardSkeleton
         fields={4}

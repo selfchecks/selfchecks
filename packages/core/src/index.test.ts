@@ -230,6 +230,9 @@ describe("normalizePerformanceSettings", () => {
     expect(normalizePerformanceSettings(undefined)).toEqual({
       artifactRetentionDays: 14,
       historyRetentionDays: 180,
+      queuedRunTimeoutMinutes: 30,
+      runningRunTimeoutMinutes: 120,
+      testSessionTimeoutMinutes: 30,
       workerConcurrency: 2,
     });
   });
@@ -238,5 +241,8 @@ describe("normalizePerformanceSettings", () => {
     expect(normalizePerformanceSettingValue("workerConcurrency", 100)).toBe(24);
     expect(normalizePerformanceSettingValue("artifactRetentionDays", 1)).toBe(2);
     expect(normalizePerformanceSettingValue("historyRetentionDays", 999)).toBe(365);
+    expect(normalizePerformanceSettingValue("queuedRunTimeoutMinutes", 5)).toBe(10);
+    expect(normalizePerformanceSettingValue("runningRunTimeoutMinutes", 500)).toBe(240);
+    expect(normalizePerformanceSettingValue("testSessionTimeoutMinutes", 5)).toBe(10);
   });
 });

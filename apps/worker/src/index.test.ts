@@ -77,6 +77,9 @@ describe("worker entrypoint", () => {
     mocks.readPerformanceRuntimeSettings.mockResolvedValue({
       artifactRetentionDays: 14,
       historyRetentionDays: 180,
+      queuedRunTimeoutMinutes: 30,
+      runningRunTimeoutMinutes: 120,
+      testSessionTimeoutMinutes: 30,
       workerConcurrency: 2,
     });
     mocks.workerClose.mockResolvedValue(undefined);
@@ -117,6 +120,9 @@ describe("worker entrypoint", () => {
       fallback: {
         artifactRetentionDays: 14,
         historyRetentionDays: 180,
+        queuedRunTimeoutMinutes: 30,
+        runningRunTimeoutMinutes: 120,
+        testSessionTimeoutMinutes: 30,
         workerConcurrency: 2,
       },
       logger: console,

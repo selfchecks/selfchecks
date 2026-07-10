@@ -3,7 +3,7 @@ import { unlink } from "node:fs/promises";
 import { type Queue } from "bullmq";
 
 import { getRunEnvironment } from "@selfchecks/cli/environment";
-import { type CheckType } from "@selfchecks/core";
+import { defaultPerformanceSettings, type CheckType } from "@selfchecks/core";
 import { prisma, type CheckRunStatus as PrismaCheckRunStatus } from "@selfchecks/db";
 
 import { type CheckJob } from "./jobs.js";
@@ -148,13 +148,18 @@ export async function scheduleDueChecks({
   queue,
 }: ScheduleDueChecksOptions): Promise<ScheduleDueChecksSummary> {
   const performanceSettings = await readPerformanceRuntimeSettings({
+    fallback: {
+      ...defaultPerformanceSettings,
+      queuedRunTimeoutMinutes: config.queuedRunTimeoutMinutes,
+      runningRunTimeoutMinutes: config.runningRunTimeoutMinutes,
+    },
     logger,
   });
   const cancelledRuns = await cancelStaleActiveRuns({
     logger,
     now,
-    queuedRunTimeoutMinutes: config.queuedRunTimeoutMinutes,
-    runningRunTimeoutMinutes: config.runningRunTimeoutMinutes,
+    queuedRunTimeoutMinutes: performanceSettings.queuedRunTimeoutMinutes,
+    runningRunTimeoutMinutes: performanceSettings.runningRunTimeoutMinutes,
   });
 
   await cleanupExpiredRunData({
@@ -458,6 +463,20 @@ async function cancelStaleActiveRuns({
           status: "CANCELLED",
         },
         where: {
+          OR: [
+            {
+              testSessionId: null,
+            },
+            {
+              testSession: {
+                is: {
+                  kind: {
+                    not: "TEST",
+                  },
+                },
+              },
+            },
+          ],
           createdAt: {
             lt: queuedCutoff,
           },

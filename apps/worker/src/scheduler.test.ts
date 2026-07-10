@@ -97,6 +97,9 @@ describe("scheduleDueChecks", () => {
     mocks.readPerformanceRuntimeSettings.mockResolvedValue({
       artifactRetentionDays: 14,
       historyRetentionDays: 180,
+      queuedRunTimeoutMinutes: 30,
+      runningRunTimeoutMinutes: 120,
+      testSessionTimeoutMinutes: 30,
       workerConcurrency: 2,
     });
   });
@@ -392,6 +395,14 @@ describe("scheduleDueChecks", () => {
 
   it("cancels stale queued and running runs before scanning checks", async () => {
     mocks.checkFindMany.mockResolvedValue([]);
+    mocks.readPerformanceRuntimeSettings.mockResolvedValue({
+      artifactRetentionDays: 14,
+      historyRetentionDays: 180,
+      queuedRunTimeoutMinutes: 40,
+      runningRunTimeoutMinutes: 180,
+      testSessionTimeoutMinutes: 30,
+      workerConcurrency: 2,
+    });
     mocks.checkRunUpdateMany
       .mockResolvedValueOnce({
         count: 2,
@@ -427,13 +438,27 @@ describe("scheduleDueChecks", () => {
 
     expect(mocks.checkRunUpdateMany).toHaveBeenNthCalledWith(1, {
       data: {
-        errorMessage: "Run was cancelled after waiting in queue for 30 minutes.",
+        errorMessage: "Run was cancelled after waiting in queue for 40 minutes.",
         finishedAt: now,
         status: "CANCELLED",
       },
       where: {
+        OR: [
+          {
+            testSessionId: null,
+          },
+          {
+            testSession: {
+              is: {
+                kind: {
+                  not: "TEST",
+                },
+              },
+            },
+          },
+        ],
         createdAt: {
-          lt: new Date("2026-06-29T09:30:00.000Z"),
+          lt: new Date("2026-06-29T09:20:00.000Z"),
         },
         status: "QUEUED",
       },
@@ -441,7 +466,7 @@ describe("scheduleDueChecks", () => {
     expect(mocks.checkRunUpdateMany).toHaveBeenNthCalledWith(2, {
       data: {
         errorMessage:
-          "Run was cancelled after running for 120 minutes without completion.",
+          "Run was cancelled after running for 180 minutes without completion.",
         finishedAt: now,
         status: "CANCELLED",
       },
@@ -449,12 +474,12 @@ describe("scheduleDueChecks", () => {
         OR: [
           {
             startedAt: {
-              lt: new Date("2026-06-29T08:00:00.000Z"),
+              lt: new Date("2026-06-29T07:00:00.000Z"),
             },
           },
           {
             createdAt: {
-              lt: new Date("2026-06-29T08:00:00.000Z"),
+              lt: new Date("2026-06-29T07:00:00.000Z"),
             },
             startedAt: null,
           },
@@ -493,6 +518,9 @@ describe("scheduleDueChecks", () => {
     mocks.readPerformanceRuntimeSettings.mockResolvedValue({
       artifactRetentionDays: 2,
       historyRetentionDays: 30,
+      queuedRunTimeoutMinutes: 60,
+      runningRunTimeoutMinutes: 180,
+      testSessionTimeoutMinutes: 60,
       workerConcurrency: 4,
     });
     mocks.artifactFindMany.mockResolvedValue([

@@ -92,14 +92,18 @@ export function getWorkerRuntimeConfig(
         env.SELFCHECKS_SCHEDULER_INTERVAL_MS,
         60_000,
       ),
-      queuedRunTimeoutMinutes: parsePositiveInteger(
+      queuedRunTimeoutMinutes: parseIntegerInRange(
         env.SELFCHECKS_QUEUED_RUN_TIMEOUT_MINUTES,
-        30,
+        performanceSettingsLimits.queuedRunTimeoutMinutes.default,
+        performanceSettingsLimits.queuedRunTimeoutMinutes.min,
+        performanceSettingsLimits.queuedRunTimeoutMinutes.max,
       ),
       reporter: env.SELFCHECKS_SCHEDULER_REPORTER?.trim() || "list",
-      runningRunTimeoutMinutes: parsePositiveInteger(
+      runningRunTimeoutMinutes: parseIntegerInRange(
         env.SELFCHECKS_RUNNING_RUN_TIMEOUT_MINUTES,
-        120,
+        performanceSettingsLimits.runningRunTimeoutMinutes.default,
+        performanceSettingsLimits.runningRunTimeoutMinutes.min,
+        performanceSettingsLimits.runningRunTimeoutMinutes.max,
       ),
     },
   };

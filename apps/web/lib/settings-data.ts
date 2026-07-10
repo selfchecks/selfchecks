@@ -191,6 +191,9 @@ export type PerformanceSettingsInput = {
   artifactRetentionDays?: unknown;
   historyRetentionDays?: unknown;
   projectSlug?: unknown;
+  queuedRunTimeoutMinutes?: unknown;
+  runningRunTimeoutMinutes?: unknown;
+  testSessionTimeoutMinutes?: unknown;
   workerConcurrency?: unknown;
 };
 
@@ -471,6 +474,24 @@ export async function updatePerformanceSettings(input: PerformanceSettingsInput)
       performanceSettingsLimits.historyRetentionDays.min,
       performanceSettingsLimits.historyRetentionDays.max,
     ),
+    queuedRunTimeoutMinutes: readRequiredIntegerInRange(
+      input.queuedRunTimeoutMinutes,
+      "Queued run timeout",
+      performanceSettingsLimits.queuedRunTimeoutMinutes.min,
+      performanceSettingsLimits.queuedRunTimeoutMinutes.max,
+    ),
+    runningRunTimeoutMinutes: readRequiredIntegerInRange(
+      input.runningRunTimeoutMinutes,
+      "Running run timeout",
+      performanceSettingsLimits.runningRunTimeoutMinutes.min,
+      performanceSettingsLimits.runningRunTimeoutMinutes.max,
+    ),
+    testSessionTimeoutMinutes: readRequiredIntegerInRange(
+      input.testSessionTimeoutMinutes,
+      "Maximum test session duration",
+      performanceSettingsLimits.testSessionTimeoutMinutes.min,
+      performanceSettingsLimits.testSessionTimeoutMinutes.max,
+    ),
     workerConcurrency: readRequiredIntegerInRange(
       input.workerConcurrency,
       "Concurrent test runs",
@@ -572,6 +593,9 @@ async function readPerformanceSettings(
     select: {
       artifactRetentionDays: true,
       historyRetentionDays: true,
+      queuedRunTimeoutMinutes: true,
+      runningRunTimeoutMinutes: true,
+      testSessionTimeoutMinutes: true,
       workerConcurrency: true,
     },
     where: {

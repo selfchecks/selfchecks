@@ -61,9 +61,25 @@ export type RunChecksOptions = {
   runSource?: CheckRunSource;
   source?: string;
   tagSets: string[][];
+  testSessionDeadline?: {
+    at: number;
+    timeoutMs: number;
+  };
   testSessionCommitSha?: string;
   testSessionName?: string;
 };
+
+export class TestSessionTimeoutError extends Error {
+  readonly timeoutMs: number;
+
+  constructor(timeoutMs: number) {
+    super(
+      `Test session reached its maximum duration of ${formatDurationMs(timeoutMs)}.`,
+    );
+    this.name = "TestSessionTimeoutError";
+    this.timeoutMs = timeoutMs;
+  }
+}
 
 export type RunCheckByIdOptions = {
   checkId: string;
@@ -134,14 +150,21 @@ const ANSI_ESCAPE_PATTERN = new RegExp(
 
 export async function runChecks(options: RunChecksOptions): Promise<RunChecksSummary> {
   const startedAt = Date.now();
+  assertTestSessionDeadline(options.testSessionDeadline);
   const checks = await findRunnableChecks(options);
   const session = options.record ? await resolveRunSession(options) : undefined;
   const results: RunCheckResult[] = [];
 
   for (const check of checks) {
-    results.push(
-      await runCheck(check, options, session, options.existingRunIds?.[check.key]),
+    assertTestSessionDeadline(options.testSessionDeadline);
+    const result = await runCheck(
+      check,
+      options,
+      session,
+      options.existingRunIds?.[check.key],
     );
+    results.push(result);
+    assertTestSessionDeadline(options.testSessionDeadline);
   }
 
   if (session) {
@@ -377,6 +400,7 @@ async function runCheck(
   let lastResult: RunCheckResult | undefined;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    assertTestSessionDeadline(options.testSessionDeadline);
     const startedAt = new Date();
     const run = options.record
       ? await upsertStartedRun(check, options, startedAt, session, attemptRunId, {
@@ -450,7 +474,7 @@ async function runCheck(
       return lastResult;
     }
 
-    await waitForRetry(retryDelayMs);
+    await waitForRetry(retryDelayMs, options.testSessionDeadline);
     attemptRunId = undefined;
   }
 
@@ -712,14 +736,23 @@ function addRetryMetadata(
   };
 }
 
-async function waitForRetry(delayMs: number): Promise<void> {
+async function waitForRetry(
+  delayMs: number,
+  deadline?: RunChecksOptions["testSessionDeadline"],
+): Promise<void> {
   if (delayMs <= 0) {
     return;
   }
 
+  const remainingMs = getTestSessionRemainingMs(deadline);
+  const waitMs =
+    typeof remainingMs === "number" ? Math.min(delayMs, remainingMs) : delayMs;
+
   await new Promise((resolve) => {
-    setTimeout(resolve, delayMs);
+    setTimeout(resolve, waitMs);
   });
+
+  assertTestSessionDeadline(deadline);
 }
 
 async function executeCheck(
@@ -732,6 +765,10 @@ async function executeCheck(
       ? await runBrowserCheck(check, options, run)
       : await runApiCheck(check, options);
   } catch (error) {
+    if (error instanceof TestSessionTimeoutError) {
+      throw error;
+    }
+
     const message = error instanceof Error ? error.message : String(error);
 
     return {
@@ -762,6 +799,17 @@ async function runBrowserCheck(
   const artifactStartedAt = Date.now();
   const artifactPaths = createBrowserArtifactPaths(options.rootDir, run?.id);
   const runTimeout = await resolveBrowserRunTimeoutConfig(options.rootDir);
+  const remainingSessionMs = getTestSessionRemainingMs(options.testSessionDeadline);
+  const processTimeout =
+    typeof remainingSessionMs === "number" && remainingSessionMs < runTimeout.timeoutMs
+      ? {
+          ms: remainingSessionMs,
+          source: "test session maximum duration",
+        }
+      : {
+          ms: runTimeout.timeoutMs,
+          source: runTimeout.source,
+        };
   await writeBrowserPerformanceCollector(artifactPaths.performanceCollectorPath);
   const logs = await runProcess({
     args: [
@@ -789,10 +837,7 @@ async function runBrowserCheck(
       ),
     },
     rootDir: options.rootDir,
-    timeout: {
-      ms: runTimeout.timeoutMs,
-      source: runTimeout.source,
-    },
+    timeout: processTimeout,
   });
   const logsPath = run
     ? await writeRunLog(options.rootDir, run.id, logs.output)
@@ -852,11 +897,33 @@ async function runApiCheck(
 
   const env = Object.fromEntries(options.env.map((item) => [item.name, item.value]));
   const url = interpolateEnv(request.url, env);
-  const response = await fetch(url, {
-    body: request.body ? interpolateEnv(request.body, env) : undefined,
-    headers: request.headers,
-    method: request.method,
-  });
+  const remainingSessionMs = getTestSessionRemainingMs(options.testSessionDeadline);
+  const controller =
+    typeof remainingSessionMs === "number" ? new AbortController() : undefined;
+  const timeoutTimer = controller
+    ? setTimeout(() => controller.abort(), remainingSessionMs)
+    : undefined;
+  timeoutTimer?.unref?.();
+  let response: Response;
+
+  try {
+    response = await fetch(url, {
+      body: request.body ? interpolateEnv(request.body, env) : undefined,
+      headers: request.headers,
+      method: request.method,
+      signal: controller?.signal,
+    });
+  } catch (error) {
+    if (controller?.signal.aborted && options.testSessionDeadline) {
+      throw new TestSessionTimeoutError(options.testSessionDeadline.timeoutMs);
+    }
+
+    throw error;
+  } finally {
+    if (timeoutTimer) {
+      clearTimeout(timeoutTimer);
+    }
+  }
   const responseBody = await response.text();
   const body =
     responseBody.length > MAX_RESPONSE_BODY_CHARS
@@ -879,6 +946,28 @@ async function runApiCheck(
     },
     status: response.ok ? "passed" : "failed",
   };
+}
+
+function assertTestSessionDeadline(
+  deadline?: RunChecksOptions["testSessionDeadline"],
+): void {
+  getTestSessionRemainingMs(deadline);
+}
+
+function getTestSessionRemainingMs(
+  deadline?: RunChecksOptions["testSessionDeadline"],
+): number | undefined {
+  if (!deadline) {
+    return undefined;
+  }
+
+  const remainingMs = deadline.at - Date.now();
+
+  if (remainingMs <= 0) {
+    throw new TestSessionTimeoutError(deadline.timeoutMs);
+  }
+
+  return remainingMs;
 }
 
 async function runProcess({

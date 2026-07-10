@@ -9,6 +9,21 @@ export const performanceSettingsLimits = {
     max: 365,
     min: 30,
   },
+  queuedRunTimeoutMinutes: {
+    default: 30,
+    max: 120,
+    min: 10,
+  },
+  runningRunTimeoutMinutes: {
+    default: 120,
+    max: 240,
+    min: 10,
+  },
+  testSessionTimeoutMinutes: {
+    default: 30,
+    max: 60,
+    min: 10,
+  },
   workerConcurrency: {
     default: 2,
     max: 24,
@@ -19,12 +34,19 @@ export const performanceSettingsLimits = {
 export type PerformanceSettingsData = {
   artifactRetentionDays: number;
   historyRetentionDays: number;
+  queuedRunTimeoutMinutes: number;
+  runningRunTimeoutMinutes: number;
+  testSessionTimeoutMinutes: number;
   workerConcurrency: number;
 };
 
 export const defaultPerformanceSettings: PerformanceSettingsData = {
   artifactRetentionDays: performanceSettingsLimits.artifactRetentionDays.default,
   historyRetentionDays: performanceSettingsLimits.historyRetentionDays.default,
+  queuedRunTimeoutMinutes: performanceSettingsLimits.queuedRunTimeoutMinutes.default,
+  runningRunTimeoutMinutes: performanceSettingsLimits.runningRunTimeoutMinutes.default,
+  testSessionTimeoutMinutes:
+    performanceSettingsLimits.testSessionTimeoutMinutes.default,
   workerConcurrency: performanceSettingsLimits.workerConcurrency.default,
 };
 
@@ -54,6 +76,18 @@ export function normalizePerformanceSettings(
     historyRetentionDays: normalizePerformanceSettingValue(
       "historyRetentionDays",
       value?.historyRetentionDays,
+    ),
+    queuedRunTimeoutMinutes: normalizePerformanceSettingValue(
+      "queuedRunTimeoutMinutes",
+      value?.queuedRunTimeoutMinutes,
+    ),
+    runningRunTimeoutMinutes: normalizePerformanceSettingValue(
+      "runningRunTimeoutMinutes",
+      value?.runningRunTimeoutMinutes,
+    ),
+    testSessionTimeoutMinutes: normalizePerformanceSettingValue(
+      "testSessionTimeoutMinutes",
+      value?.testSessionTimeoutMinutes,
     ),
     workerConcurrency: normalizePerformanceSettingValue(
       "workerConcurrency",

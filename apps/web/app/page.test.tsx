@@ -155,6 +155,9 @@ const fixtureSettings: DashboardSettingsData = {
   performance: {
     artifactRetentionDays: 14,
     historyRetentionDays: 180,
+    queuedRunTimeoutMinutes: 30,
+    runningRunTimeoutMinutes: 120,
+    testSessionTimeoutMinutes: 30,
     workerConcurrency: 2,
   },
   projectSlug: "default",
@@ -1255,6 +1258,9 @@ describe("DashboardPage", () => {
         const body = JSON.parse(String(init?.body ?? "{}")) as {
           artifactRetentionDays: number;
           historyRetentionDays: number;
+          queuedRunTimeoutMinutes: number;
+          runningRunTimeoutMinutes: number;
+          testSessionTimeoutMinutes: number;
           workerConcurrency: number;
         };
 
@@ -1264,6 +1270,9 @@ describe("DashboardPage", () => {
               settings: {
                 artifactRetentionDays: body.artifactRetentionDays,
                 historyRetentionDays: body.historyRetentionDays,
+                queuedRunTimeoutMinutes: body.queuedRunTimeoutMinutes,
+                runningRunTimeoutMinutes: body.runningRunTimeoutMinutes,
+                testSessionTimeoutMinutes: body.testSessionTimeoutMinutes,
                 workerConcurrency: body.workerConcurrency,
               },
             }),
@@ -1330,11 +1339,21 @@ describe("DashboardPage", () => {
       (screen.getByLabelText("Concurrent test runs") as HTMLInputElement).value,
     ).toBe("2");
     expect(
+      (screen.getByLabelText("Queued run timeout") as HTMLInputElement).value,
+    ).toBe("30");
+    expect(
+      (screen.getByLabelText("Running run timeout") as HTMLInputElement).value,
+    ).toBe("120");
+    expect(
       (screen.getByLabelText("Test artifact retention") as HTMLInputElement).value,
     ).toBe("14");
     expect(
       (screen.getByLabelText("Test history retention") as HTMLInputElement).value,
     ).toBe("180");
+    expect(
+      (screen.getByLabelText("Maximum test session duration") as HTMLInputElement)
+        .value,
+    ).toBe("30");
     expect(screen.getByRole("heading", { name: "AI / LLM" })).toBeTruthy();
     expect((screen.getByLabelText("AI_API_ENDPOINT") as HTMLSelectElement).value).toBe(
       "https://openrouter.ai/api/v1",
@@ -1438,6 +1457,16 @@ describe("DashboardPage", () => {
         value: "6",
       },
     });
+    fireEvent.change(screen.getByLabelText("Queued run timeout"), {
+      target: {
+        value: "45",
+      },
+    });
+    fireEvent.change(screen.getByLabelText("Running run timeout"), {
+      target: {
+        value: "180",
+      },
+    });
     fireEvent.change(screen.getByLabelText("Test artifact retention"), {
       target: {
         value: "21",
@@ -1446,6 +1475,11 @@ describe("DashboardPage", () => {
     fireEvent.change(screen.getByLabelText("Test history retention"), {
       target: {
         value: "240",
+      },
+    });
+    fireEvent.change(screen.getByLabelText("Maximum test session duration"), {
+      target: {
+        value: "45",
       },
     });
     await user.click(getSectionSaveButton("Performance"));
@@ -1465,6 +1499,9 @@ describe("DashboardPage", () => {
       artifactRetentionDays: 21,
       historyRetentionDays: 240,
       projectSlug: "default",
+      queuedRunTimeoutMinutes: 45,
+      runningRunTimeoutMinutes: 180,
+      testSessionTimeoutMinutes: 45,
       workerConcurrency: 6,
     });
     expect(screen.getByText("Performance settings saved.")).toBeTruthy();

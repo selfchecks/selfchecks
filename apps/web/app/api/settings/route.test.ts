@@ -179,11 +179,17 @@ describe("settings routes", () => {
     const settings = {
       artifactRetentionDays: 14,
       historyRetentionDays: 180,
+      queuedRunTimeoutMinutes: 30,
+      runningRunTimeoutMinutes: 120,
+      testSessionTimeoutMinutes: 30,
       workerConcurrency: 4,
     };
     const input = {
       artifactRetentionDays: 14,
       historyRetentionDays: 180,
+      queuedRunTimeoutMinutes: 30,
+      runningRunTimeoutMinutes: 120,
+      testSessionTimeoutMinutes: 30,
       workerConcurrency: 4,
     };
     mocks.updatePerformanceSettings.mockResolvedValue(settings);

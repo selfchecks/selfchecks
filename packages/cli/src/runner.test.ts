@@ -58,7 +58,7 @@ vi.mock("./ai-analysis.js", () => ({
   analyzeFailedCheck: vi.fn(),
 }));
 
-import { runCheckById, runChecks } from "./runner.js";
+import { runCheckById, runChecks, TestSessionTimeoutError } from "./runner.js";
 
 const tempDirs: string[] = [];
 
@@ -777,6 +777,88 @@ describe("runChecks", () => {
         where: {
           id: "run_queued",
         },
+      }),
+    );
+  });
+
+  it("aborts an API check when the test session deadline is reached", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-10T10:00:00.000Z"));
+    mocks.testSessionFindUnique.mockResolvedValue({
+      id: "session_queued",
+      kind: "TEST",
+      status: "QUEUED",
+    });
+    mocks.testSessionUpdate.mockImplementation(async (args) => ({
+      id: args.where.id,
+      kind: "TEST",
+      ...args.data,
+    }));
+    mocks.checkRunFindFirst.mockResolvedValue({
+      id: "run_queued",
+      status: "QUEUED",
+    });
+    mocks.checkRunUpdate.mockImplementation(async (args) => ({
+      id: args.where.id,
+      ...args.data,
+    }));
+    const fetchMock = vi.fn(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("Aborted", "AbortError"));
+          });
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const timeoutMs = 1000;
+    const runPromise = runChecks({
+      checkKeys: ["api-health"],
+      checks: [
+        {
+          enabled: true,
+          key: "api-health",
+          name: "API health",
+          request: {
+            assertions: [],
+            headers: {},
+            method: "GET",
+            url: "https://example.test/health",
+          },
+          tags: [],
+          type: "api",
+        },
+      ],
+      env: [],
+      existingRunIds: {
+        "api-health": "run_queued",
+      },
+      existingTestSessionId: "session_queued",
+      projectSlug: "default",
+      record: true,
+      reporter: "list",
+      rootDir: "/runtime/test-sessions/session_queued",
+      runMode: "test",
+      tagSets: [],
+      testSessionDeadline: {
+        at: Date.now() + timeoutMs,
+        timeoutMs,
+      },
+    });
+    const rejection = expect(runPromise).rejects.toEqual(
+      expect.objectContaining<TestSessionTimeoutError>({
+        name: "TestSessionTimeoutError",
+        timeoutMs,
+      }),
+    );
+
+    await vi.advanceTimersByTimeAsync(timeoutMs);
+
+    await rejection;
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://example.test/health",
+      expect.objectContaining({
+        signal: expect.any(AbortSignal),
       }),
     );
   });

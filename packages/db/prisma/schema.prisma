@@ -229,14 +229,17 @@ model AiSettings {
 }
 
 model PerformanceSettings {
-  id                    String   @id @default(cuid())
-  projectId             String   @unique
-  workerConcurrency     Int      @default(2)
-  artifactRetentionDays Int      @default(14)
-  historyRetentionDays  Int      @default(180)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
-  project               Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id                        String   @id @default(cuid())
+  projectId                 String   @unique
+  workerConcurrency         Int      @default(2)
+  artifactRetentionDays     Int      @default(14)
+  historyRetentionDays      Int      @default(180)
+  queuedRunTimeoutMinutes   Int      @default(30)
+  runningRunTimeoutMinutes  Int      @default(120)
+  testSessionTimeoutMinutes Int      @default(30)
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+  project                   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
 
 model RuntimeEnvironment {

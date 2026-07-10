@@ -24,6 +24,9 @@ const mocks = vi.hoisted(() => ({
     | {
         artifactRetentionDays: number;
         historyRetentionDays: number;
+        queuedRunTimeoutMinutes: number;
+        runningRunTimeoutMinutes: number;
+        testSessionTimeoutMinutes: number;
         workerConcurrency: number;
       }
     | undefined,
@@ -100,6 +103,9 @@ describe("settings data", () => {
       mocks.storedPerformanceSettings = {
         artifactRetentionDays: args.create.artifactRetentionDays,
         historyRetentionDays: args.create.historyRetentionDays,
+        queuedRunTimeoutMinutes: args.create.queuedRunTimeoutMinutes,
+        runningRunTimeoutMinutes: args.create.runningRunTimeoutMinutes,
+        testSessionTimeoutMinutes: args.create.testSessionTimeoutMinutes,
         workerConcurrency: args.create.workerConcurrency,
         ...args.update,
       };
@@ -272,6 +278,9 @@ describe("settings data", () => {
       artifactRetentionDays: 21,
       historyRetentionDays: 240,
       projectSlug: "default",
+      queuedRunTimeoutMinutes: 45,
+      runningRunTimeoutMinutes: 150,
+      testSessionTimeoutMinutes: 45,
       workerConcurrency: 8,
     });
 
@@ -280,11 +289,17 @@ describe("settings data", () => {
         artifactRetentionDays: 21,
         historyRetentionDays: 240,
         projectId: "project_1",
+        queuedRunTimeoutMinutes: 45,
+        runningRunTimeoutMinutes: 150,
+        testSessionTimeoutMinutes: 45,
         workerConcurrency: 8,
       },
       update: {
         artifactRetentionDays: 21,
         historyRetentionDays: 240,
+        queuedRunTimeoutMinutes: 45,
+        runningRunTimeoutMinutes: 150,
+        testSessionTimeoutMinutes: 45,
         workerConcurrency: 8,
       },
       where: {
@@ -294,6 +309,9 @@ describe("settings data", () => {
     expect(settings).toEqual({
       artifactRetentionDays: 21,
       historyRetentionDays: 240,
+      queuedRunTimeoutMinutes: 45,
+      runningRunTimeoutMinutes: 150,
+      testSessionTimeoutMinutes: 45,
       workerConcurrency: 8,
     });
   });
@@ -304,9 +322,48 @@ describe("settings data", () => {
         artifactRetentionDays: 1,
         historyRetentionDays: 180,
         projectSlug: "default",
+        queuedRunTimeoutMinutes: 30,
+        runningRunTimeoutMinutes: 120,
+        testSessionTimeoutMinutes: 30,
         workerConcurrency: 2,
       }),
     ).rejects.toThrow("Test artifact retention must be between 2 and 60.");
+
+    await expect(
+      updatePerformanceSettings({
+        artifactRetentionDays: 14,
+        historyRetentionDays: 180,
+        projectSlug: "default",
+        queuedRunTimeoutMinutes: 30,
+        runningRunTimeoutMinutes: 120,
+        testSessionTimeoutMinutes: 61,
+        workerConcurrency: 2,
+      }),
+    ).rejects.toThrow("Maximum test session duration must be between 10 and 60.");
+
+    await expect(
+      updatePerformanceSettings({
+        artifactRetentionDays: 14,
+        historyRetentionDays: 180,
+        projectSlug: "default",
+        queuedRunTimeoutMinutes: 121,
+        runningRunTimeoutMinutes: 120,
+        testSessionTimeoutMinutes: 30,
+        workerConcurrency: 2,
+      }),
+    ).rejects.toThrow("Queued run timeout must be between 10 and 120.");
+
+    await expect(
+      updatePerformanceSettings({
+        artifactRetentionDays: 14,
+        historyRetentionDays: 180,
+        projectSlug: "default",
+        queuedRunTimeoutMinutes: 30,
+        runningRunTimeoutMinutes: 241,
+        testSessionTimeoutMinutes: 30,
+        workerConcurrency: 2,
+      }),
+    ).rejects.toThrow("Running run timeout must be between 10 and 240.");
 
     expect(mocks.performanceSettingsUpsert).not.toHaveBeenCalled();
   });

@@ -45,6 +45,7 @@ import {
   getDashboardData,
   getJournalData,
   getRunDetailData,
+  getTestSessionCheckData,
   getTestSessionsData,
 } from "./dashboard-data";
 
@@ -157,29 +158,12 @@ describe("dashboard data", () => {
     });
   });
 
-  it("cancels stale queued runs before reading check details", async () => {
-    const now = new Date("2026-06-24T09:00:00.000Z");
-
-    vi.useFakeTimers();
-    vi.setSystemTime(now);
-    mocks.checkRunUpdateMany.mockResolvedValue({ count: 1 });
+  it("does not mutate queued runs while reading check details", async () => {
     mocks.checkFindFirst.mockResolvedValue(null);
 
     await expect(getCheckDetailData("check_1")).resolves.toBeUndefined();
 
-    expect(mocks.checkRunUpdateMany).toHaveBeenCalledWith({
-      data: {
-        errorMessage: "Run was cancelled after waiting in queue for 30 minutes.",
-        finishedAt: now,
-        status: "CANCELLED",
-      },
-      where: {
-        createdAt: {
-          lt: new Date("2026-06-24T08:30:00.000Z"),
-        },
-        status: "QUEUED",
-      },
-    });
+    expect(mocks.checkRunUpdateMany).not.toHaveBeenCalled();
     expect(mocks.checkFindFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
@@ -351,6 +335,9 @@ describe("dashboard data", () => {
             },
             {
               checkSnapshotKey: "check_1",
+            },
+            {
+              id: "check_1",
             },
           ],
         },
@@ -1735,5 +1722,92 @@ describe("dashboard data", () => {
         total: 1,
       },
     });
+  });
+
+  it("opens cancelled session tests that only have a run id", async () => {
+    const cancelledRun = {
+      artifacts: [],
+      attempt: 1,
+      check: null,
+      checkId: null,
+      checkSnapshotEntrypoint: null,
+      checkSnapshotGroupName: null,
+      checkSnapshotKey: null,
+      checkSnapshotName: null,
+      checkSnapshotProjectSlug: "default",
+      checkSnapshotRequest: null,
+      checkSnapshotTags: [],
+      checkSnapshotType: "BROWSER",
+      createdAt: new Date("2026-07-10T09:20:00.000Z"),
+      durationMs: null,
+      errorMessage: "Session cancelled before the test started.",
+      finishedAt: new Date("2026-07-10T09:46:00.000Z"),
+      id: "run_cancelled",
+      logsPath: null,
+      maxAttempts: 1,
+      result: null,
+      retryGroupId: null,
+      runSource: "CLI",
+      startedAt: null,
+      status: "CANCELLED",
+      testSessionId: "session_1",
+    };
+    mocks.testSessionFindFirst.mockResolvedValue({
+      commitSha: null,
+      createdAt: new Date("2026-07-10T09:20:00.000Z"),
+      id: "session_1",
+      kind: "TEST",
+      name: "Release v1.2.3",
+      runs: [cancelledRun],
+      source: null,
+      status: "CANCELLED",
+      targetUrl: "https://example.test",
+    });
+
+    await expect(
+      getTestSessionCheckData("session_1", "run_cancelled"),
+    ).resolves.toMatchObject({
+      check: {
+        id: "run_cancelled",
+        name: "Unknown check",
+      },
+      runs: [
+        {
+          id: "run_cancelled",
+          runHref: "/checks/run_cancelled/runs/run_cancelled",
+          runState: "cancelled",
+        },
+      ],
+    });
+    expect(mocks.testSessionFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: expect.objectContaining({
+          runs: expect.objectContaining({
+            where: {
+              OR: expect.arrayContaining([{ id: "run_cancelled" }]),
+            },
+          }),
+        }),
+        where: expect.objectContaining({
+          runs: {
+            some: {
+              OR: expect.arrayContaining([{ id: "run_cancelled" }]),
+            },
+          },
+        }),
+      }),
+    );
+
+    mocks.checkRunFindFirst.mockResolvedValue(null);
+    await expect(
+      getRunDetailData("run_cancelled", "run_cancelled"),
+    ).resolves.toBeUndefined();
+    expect(mocks.checkRunFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([{ id: "run_cancelled" }]),
+        }),
+      }),
+    );
   });
 });

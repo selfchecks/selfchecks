@@ -24,7 +24,6 @@ import { getRunResultTone } from "./run-result-tone";
 import { getRuntimeTimeZone } from "./runtime-config";
 import { getTestSessionSourceBranch } from "./test-session-source";
 
-const DEFAULT_QUEUED_RUN_TIMEOUT_MINUTES = 30;
 const FIREWATCH_LOOKBACK_DAYS = 7;
 const MAX_LOG_PREVIEW_CHARS = 12_000;
 const DASHBOARD_RESULT_BAR_COUNT = 24;
@@ -424,8 +423,6 @@ export async function getDashboardData(
   const timeZone = getRuntimeTimeZone();
 
   try {
-    await cancelStaleQueuedRuns();
-
     const project =
       (await prisma.project.findUnique({
         select: {
@@ -477,8 +474,6 @@ export async function getDashboardData(
 export async function getDashboardActivityData(
   projectSlug: string,
 ): Promise<DashboardActivityData> {
-  await cancelStaleQueuedRuns();
-
   const project = await findProjectForDashboard(projectSlug);
 
   if (!project) {
@@ -529,8 +524,6 @@ export async function getCheckDetailShellData(
   const timeZone = getRuntimeTimeZone();
 
   try {
-    await cancelStaleQueuedRuns();
-
     const check = await prisma.check.findFirst({
       select: {
         enabled: true,
@@ -628,8 +621,6 @@ export async function getCheckDetailData(
   const timeZone = getRuntimeTimeZone();
 
   try {
-    await cancelStaleQueuedRuns();
-
     const check = await prisma.check.findFirst({
       include: {
         group: true,
@@ -682,8 +673,6 @@ export async function getRunDetailData(
   const timeZone = getRuntimeTimeZone();
 
   try {
-    await cancelStaleQueuedRuns();
-
     const run = await prisma.checkRun.findFirst({
       include: {
         artifacts: {
@@ -713,6 +702,9 @@ export async function getRunDetailData(
           },
           {
             checkSnapshotKey: checkId,
+          },
+          {
+            id: checkId,
           },
         ],
       },
@@ -781,8 +773,6 @@ export async function getJournalData(
   const timeZone = getRuntimeTimeZone();
 
   try {
-    await cancelStaleQueuedRuns();
-
     const project =
       (await prisma.project.findUnique({
         select: {
@@ -872,8 +862,6 @@ export async function getTestSessionsData(
   const timeZone = getRuntimeTimeZone();
 
   try {
-    await cancelStaleQueuedRuns();
-
     const project = await findProjectForDashboard(projectSlug);
     const resolvedProjectSlug = project?.slug ?? projectSlug;
     const projectRunFilters: Prisma.CheckRunWhereInput[] = [
@@ -974,8 +962,6 @@ export async function getTestSessionData(
   const timeZone = getRuntimeTimeZone();
 
   try {
-    await cancelStaleQueuedRuns();
-
     const session = await prisma.testSession.findFirst({
       include: {
         runs: {
@@ -1035,8 +1021,6 @@ export async function getTestSessionCheckData(
   const timeZone = getRuntimeTimeZone();
 
   try {
-    await cancelStaleQueuedRuns();
-
     const session = await prisma.testSession.findFirst({
       include: {
         runs: {
@@ -1073,6 +1057,9 @@ export async function getTestSessionCheckData(
               {
                 checkSnapshotKey: checkId,
               },
+              {
+                id: checkId,
+              },
             ],
           },
         },
@@ -1088,6 +1075,9 @@ export async function getTestSessionCheckData(
               },
               {
                 checkSnapshotKey: checkId,
+              },
+              {
+                id: checkId,
               },
             ],
           },
@@ -2217,46 +2207,6 @@ function readMetricNumber(
   }
 
   return undefined;
-}
-
-async function cancelStaleQueuedRuns(now = new Date()) {
-  const timeoutMinutes = parsePositiveInteger(
-    process.env.SELFCHECKS_QUEUED_RUN_TIMEOUT_MINUTES,
-    DEFAULT_QUEUED_RUN_TIMEOUT_MINUTES,
-  );
-  const cutoff = new Date(now.getTime() - timeoutMinutes * 60_000);
-
-  try {
-    await prisma.checkRun.updateMany({
-      data: {
-        errorMessage: `Run was cancelled after waiting in queue for ${timeoutMinutes} minutes.`,
-        finishedAt: now,
-        status: "CANCELLED",
-      },
-      where: {
-        createdAt: {
-          lt: cutoff,
-        },
-        status: "QUEUED",
-      },
-    });
-  } catch (error) {
-    console.warn("Unable to cancel stale queued runs.", error);
-  }
-}
-
-function parsePositiveInteger(value: string | undefined, fallback: number): number {
-  if (!value) {
-    return fallback;
-  }
-
-  const parsedValue = Number.parseInt(value, 10);
-
-  if (!Number.isSafeInteger(parsedValue) || parsedValue <= 0) {
-    return fallback;
-  }
-
-  return parsedValue;
 }
 
 function hasRunRetries(result: unknown): boolean {
