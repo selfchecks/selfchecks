@@ -251,15 +251,9 @@ describe("RunDetailView", () => {
         .href,
     ).toContain("/runs/run_1/artifacts/artifact_1/trace");
     expect(
-      (
-        screen.getByRole("link", {
-          name: "Open screenshot screenshot.png in new tab",
-        }) as HTMLAnchorElement
-      ).href,
-    ).toContain("/api/runs/run_1/artifacts/artifact_2");
-    expect(
-      (screen.getByRole("link", { name: "View video.webm" }) as HTMLAnchorElement).href,
-    ).toContain("/api/runs/run_1/artifacts/artifact_3");
+      screen.getByRole("button", { name: "Open screenshot screenshot.png" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Open video video.webm" })).toBeTruthy();
     expect(
       (screen.getByRole("link", { name: "Download trace.zip" }) as HTMLAnchorElement)
         .href,
@@ -269,6 +263,8 @@ describe("RunDetailView", () => {
   });
 
   it("groups artifacts and previews text files", async () => {
+    const user = userEvent.setup();
+
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(new Response("line 1\nline 2", { status: 200 })),
@@ -284,6 +280,24 @@ describe("RunDetailView", () => {
             artifacts: [
               ...detail.run.artifacts,
               {
+                downloadUrl: "/api/runs/run_1/artifacts/expected?download=1",
+                id: "expected",
+                mimeType: "image/png",
+                name: "home-expected.png",
+                size: "250 KB",
+                type: "screenshot",
+                viewUrl: "/api/runs/run_1/artifacts/expected",
+              },
+              {
+                downloadUrl: "/api/runs/run_1/artifacts/actual?download=1",
+                id: "actual",
+                mimeType: "image/png",
+                name: "home-actual.png",
+                size: "251 KB",
+                type: "screenshot",
+                viewUrl: "/api/runs/run_1/artifacts/actual",
+              },
+              {
                 downloadUrl: "/api/runs/run_1/artifacts/artifact_4?download=1",
                 id: "artifact_4",
                 mimeType: "text/plain",
@@ -298,19 +312,63 @@ describe("RunDetailView", () => {
       />,
     );
 
-    expect(screen.getByRole("heading", { name: "Traces" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Screenshots" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Logs" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Other" })).toBeTruthy();
+    const groupHeadings = [
+      screen.getByRole("heading", { name: "Traces" }),
+      screen.getByRole("heading", { name: "Screenshot comparisons" }),
+      screen.getByRole("heading", { name: "Screenshots" }),
+      screen.getByRole("heading", { name: "Videos" }),
+      screen.getByRole("heading", { name: "Logs" }),
+    ];
+
+    expect(
+      groupHeadings.every(
+        (heading, index) =>
+          index === 0 ||
+          Boolean(
+            groupHeadings[index - 1]!.compareDocumentPosition(heading) &
+            Node.DOCUMENT_POSITION_FOLLOWING,
+          ),
+      ),
+    ).toBe(true);
+    expect(
+      groupHeadings.every(
+        (heading) =>
+          heading.closest("section")?.parentElement ===
+          groupHeadings[0]!.closest("section")?.parentElement,
+      ),
+    ).toBe(true);
     expect(screen.getByRole("link", { name: "Open trace trace.zip" }).textContent).toBe(
       "Open trace",
     );
 
-    const screenshotLink = screen.getByRole("link", {
-      name: "Open screenshot screenshot.png in new tab",
+    const screenshotButton = screen.getByRole("button", {
+      name: "Open screenshot screenshot.png",
     });
-    expect(screenshotLink.getAttribute("target")).toBe("_blank");
-    expect(screen.getByRole("img", { name: "screenshot.png" })).toBeTruthy();
+    await user.click(screenshotButton);
+
+    const screenshotDialog = screen.getByRole("dialog", { name: "screenshot.png" });
+    expect(screenshotDialog.className).toContain("h-[90vh]");
+    expect(screenshotDialog.className).toContain("w-[90vw]");
+    expect(
+      within(screenshotDialog).getByRole("img", {
+        name: "Full-size screenshot.png",
+      }),
+    ).toBeTruthy();
+    await user.click(
+      within(screenshotDialog).getByRole("button", { name: "Close preview" }),
+    );
+    expect(screen.queryByRole("dialog", { name: "screenshot.png" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Open video video.webm" }));
+
+    const videoDialog = screen.getByRole("dialog", { name: "video.webm" });
+    const videoPlayer = within(videoDialog).getByLabelText(
+      "Video player for video.webm",
+    ) as HTMLVideoElement;
+    expect(videoPlayer.tagName).toBe("VIDEO");
+    expect(videoPlayer.controls).toBe(true);
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "video.webm" })).toBeNull();
 
     const preview = screen.getByRole("textbox", { name: "Contents of output.txt" });
     expect(preview.getAttribute("rows")).toBe("5");
@@ -319,7 +377,6 @@ describe("RunDetailView", () => {
     );
     expect(screen.getByRole("link", { name: "View output.txt" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Download output.txt" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "View video.webm" })).toBeTruthy();
   });
 
   it("hides empty API-only blocks for browser runs", () => {

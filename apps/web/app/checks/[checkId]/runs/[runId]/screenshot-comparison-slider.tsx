@@ -2,8 +2,8 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { useId, useState } from "react";
 import { ExternalLink } from "lucide-react";
+import { useId, useState } from "react";
 
 import type { DashboardRunArtifact } from "@/lib/dashboard-types";
 
@@ -25,26 +25,11 @@ export function ScreenshotComparisonPanel({
   }
 
   return (
-    <section className="grid gap-4 rounded-md border border-slate-700 bg-[#0f151d] p-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="text-sm font-semibold text-slate-100">
-            Screenshot comparisons
-          </h3>
-          <div className="mt-1 text-xs text-slate-500">
-            {comparisons.length === 1
-              ? "1 visual mismatch"
-              : `${comparisons.length} visual mismatches`}
-          </div>
-        </div>
-      </div>
-
-      <div className="grid gap-4">
-        {comparisons.map((comparison) => (
-          <ScreenshotComparisonSlider comparison={comparison} key={comparison.id} />
-        ))}
-      </div>
-    </section>
+    <div className="divide-y divide-slate-800">
+      {comparisons.map((comparison) => (
+        <ScreenshotComparisonSlider comparison={comparison} key={comparison.id} />
+      ))}
+    </div>
   );
 }
 
@@ -58,8 +43,8 @@ function ScreenshotComparisonSlider({
   const actualClipPath = `inset(0 ${100 - position}% 0 0)`;
 
   return (
-    <article className="overflow-hidden rounded-md border border-slate-800 bg-[#0b0f14]">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 px-3 py-2">
+    <article className="grid gap-3 py-4 first:pt-0 last:pb-0">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <h4
             className="truncate text-sm font-medium text-slate-100"
@@ -87,7 +72,7 @@ function ScreenshotComparisonSlider({
         ) : null}
       </div>
 
-      <div className="p-3">
+      <div>
         <div className="relative overflow-hidden rounded border border-slate-800 bg-black">
           <img
             alt={`Expected screenshot for ${comparison.label}`}

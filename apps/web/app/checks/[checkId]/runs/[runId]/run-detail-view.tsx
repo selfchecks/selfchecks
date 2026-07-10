@@ -17,7 +17,6 @@ import {
   Video,
   type LucideIcon,
 } from "lucide-react";
-import Image from "next/image";
 import Link from "next/link";
 
 import type { RunDetailData } from "@/lib/dashboard-data";
@@ -33,6 +32,7 @@ import {
   ScreenshotComparisonPanel,
   type ScreenshotComparison,
 } from "./screenshot-comparison-slider";
+import { ArtifactMediaPreview } from "./artifact-media-preview";
 import { ArtifactTextPreview } from "./artifact-text-preview";
 
 type RunDetailViewProps = {
@@ -413,7 +413,6 @@ function PlaywrightReportPanel({
   const hasBrowserArtifacts = run.artifacts.some((artifact) =>
     ["screenshot", "trace", "video"].includes(artifact.type),
   );
-  const screenshotComparisons = buildScreenshotComparisons(run.artifacts);
   const title =
     checkType === "browser" || hasBrowserArtifacts
       ? "Playwright test report"
@@ -455,7 +454,6 @@ function PlaywrightReportPanel({
             <DetailRow label="Finished" value={run.finishedAt} />
             <DetailRow label="Run" value={run.id} />
           </div>
-          <ScreenshotComparisonPanel comparisons={screenshotComparisons} />
           <ArtifactList artifacts={run.artifacts} />
         </div>
       </details>
@@ -746,12 +744,13 @@ function ArtifactList({ artifacts }: { artifacts: DashboardRunArtifact[] }) {
   }
 
   const groups = groupArtifacts(artifacts);
+  const screenshotComparisons = buildScreenshotComparisons(artifacts);
 
   return (
-    <div className="grid gap-5">
+    <div className="divide-y divide-slate-800 overflow-hidden rounded-md border border-slate-700 bg-[#0f151d]">
       {groups.traces.length > 0 ? (
         <ArtifactGroup title="Traces">
-          <div className="grid gap-2">
+          <div className="divide-y divide-slate-800">
             {groups.traces.map((artifact) => (
               <ArtifactRow artifact={artifact} key={artifact.id}>
                 <a
@@ -768,35 +767,42 @@ function ArtifactList({ artifacts }: { artifacts: DashboardRunArtifact[] }) {
         </ArtifactGroup>
       ) : null}
 
+      {screenshotComparisons.length > 0 ? (
+        <ArtifactGroup
+          description={
+            screenshotComparisons.length === 1
+              ? "1 visual mismatch"
+              : `${screenshotComparisons.length} visual mismatches`
+          }
+          title="Screenshot comparisons"
+        >
+          <ScreenshotComparisonPanel comparisons={screenshotComparisons} />
+        </ArtifactGroup>
+      ) : null}
+
       {groups.screenshots.length > 0 ? (
         <ArtifactGroup title="Screenshots">
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {groups.screenshots.map((artifact) => (
-              <div
-                className="min-w-0 overflow-hidden rounded-md border border-slate-700 bg-[#0f151d] text-sm text-slate-300"
+              <ArtifactMediaPreview
+                artifact={artifact}
                 key={artifact.id}
-              >
-                <a
-                  aria-label={`Open screenshot ${artifact.name} in new tab`}
-                  className="relative block aspect-video overflow-hidden bg-[#0b0f14]"
-                  href={artifact.viewUrl}
-                  rel="noreferrer"
-                  target="_blank"
-                >
-                  <Image
-                    alt={artifact.name}
-                    className="object-cover transition-transform hover:scale-[1.02]"
-                    fill
-                    sizes="(min-width: 1280px) 25vw, (min-width: 640px) 40vw, 90vw"
-                    src={artifact.viewUrl}
-                    unoptimized
-                  />
-                </a>
-                <div className="flex items-center gap-3 px-3 py-2">
-                  <ArtifactMetadata artifact={artifact} />
-                  <ArtifactDownloadLink artifact={artifact} />
-                </div>
-              </div>
+                mediaType="screenshot"
+              />
+            ))}
+          </div>
+        </ArtifactGroup>
+      ) : null}
+
+      {groups.videos.length > 0 ? (
+        <ArtifactGroup title="Videos">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {groups.videos.map((artifact) => (
+              <ArtifactMediaPreview
+                artifact={artifact}
+                key={artifact.id}
+                mediaType="video"
+              />
             ))}
           </div>
         </ArtifactGroup>
@@ -804,10 +810,10 @@ function ArtifactList({ artifacts }: { artifacts: DashboardRunArtifact[] }) {
 
       {groups.logs.length > 0 ? (
         <ArtifactGroup title="Logs">
-          <div className="grid gap-3">
+          <div className="divide-y divide-slate-800">
             {groups.logs.map((artifact) => (
               <div
-                className="grid min-w-0 gap-3 rounded-md border border-slate-700 bg-[#0f151d] p-3 text-sm text-slate-300"
+                className="grid min-w-0 gap-3 py-3 text-sm text-slate-300 first:pt-0 last:pb-0"
                 key={artifact.id}
               >
                 <div className="flex items-center gap-3">
@@ -827,7 +833,7 @@ function ArtifactList({ artifacts }: { artifacts: DashboardRunArtifact[] }) {
 
       {groups.other.length > 0 ? (
         <ArtifactGroup title="Other">
-          <div className="grid gap-2">
+          <div className="divide-y divide-slate-800">
             {groups.other.map((artifact) => (
               <ArtifactRow artifact={artifact} key={artifact.id}>
                 <ArtifactViewLink artifact={artifact} />
@@ -843,17 +849,22 @@ function ArtifactList({ artifacts }: { artifacts: DashboardRunArtifact[] }) {
 
 function ArtifactGroup({
   children,
+  description,
   title,
 }: {
   children: React.ReactNode;
+  description?: string;
   title: string;
 }) {
   return (
-    <section className="grid gap-2">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-        {title}
-      </h3>
-      {children}
+    <section className="p-4">
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="text-sm font-semibold text-slate-100">{title}</h3>
+        {description ? (
+          <span className="text-xs text-slate-500">{description}</span>
+        ) : null}
+      </div>
+      <div>{children}</div>
     </section>
   );
 }
@@ -868,7 +879,7 @@ function ArtifactRow({
   const Icon = getArtifactIcon(artifact.type);
 
   return (
-    <div className="flex max-w-full items-center gap-3 rounded-md border border-slate-700 bg-[#0f151d] px-3 py-2 text-sm text-slate-300">
+    <div className="flex max-w-full items-center gap-3 py-2 text-sm text-slate-300 first:pt-0 last:pb-0">
       <Icon className="h-4 w-4 shrink-0 text-slate-500" />
       <ArtifactMetadata artifact={artifact} />
       {children}
@@ -931,6 +942,7 @@ function groupArtifacts(artifacts: DashboardRunArtifact[]) {
     other: [] as DashboardRunArtifact[],
     screenshots: [] as DashboardRunArtifact[],
     traces: [] as DashboardRunArtifact[],
+    videos: [] as DashboardRunArtifact[],
   };
 
   for (const artifact of artifacts) {
@@ -938,6 +950,8 @@ function groupArtifacts(artifacts: DashboardRunArtifact[]) {
       groups.traces.push(artifact);
     } else if (artifact.type === "screenshot") {
       groups.screenshots.push(artifact);
+    } else if (artifact.type === "video") {
+      groups.videos.push(artifact);
     } else if (isTextArtifact(artifact)) {
       groups.logs.push(artifact);
     } else {
