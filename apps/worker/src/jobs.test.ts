@@ -3,11 +3,15 @@ import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  checkRunFindFirst: vi.fn(),
+  checkRunFindMany: vi.fn(),
+  checkRunFindUnique: vi.fn(),
   checkRunUpdateMany: vi.fn(),
   checkRunUpdate: vi.fn(),
+  queueAddBulk: vi.fn(),
   readPerformanceRuntimeSettings: vi.fn(),
   runCheckById: vi.fn(),
-  runChecks: vi.fn(),
+  runTestSessionCheck: vi.fn(),
   spawn: vi.fn(),
   testSessionUpdate: vi.fn(),
   TestSessionTimeoutError: class TestSessionTimeoutError extends Error {
@@ -28,7 +32,7 @@ vi.mock("node:child_process", () => ({
 
 vi.mock("@selfchecks/cli/runner", () => ({
   runCheckById: mocks.runCheckById,
-  runChecks: mocks.runChecks,
+  runTestSessionCheck: mocks.runTestSessionCheck,
   TestSessionTimeoutError: mocks.TestSessionTimeoutError,
 }));
 
@@ -40,6 +44,9 @@ vi.mock("@selfchecks/db", () => ({
   prisma: {
     $transaction: mocks.transaction,
     checkRun: {
+      findFirst: mocks.checkRunFindFirst,
+      findMany: mocks.checkRunFindMany,
+      findUnique: mocks.checkRunFindUnique,
       update: mocks.checkRunUpdate,
       updateMany: mocks.checkRunUpdateMany,
     },
@@ -49,10 +56,16 @@ vi.mock("@selfchecks/db", () => ({
   },
 }));
 
-import { handleCheckJob, handleTestSessionJob } from "./jobs.js";
+import {
+  handleCheckJob,
+  handleTestSessionCheckJob,
+  handleTestSessionJob,
+} from "./jobs.js";
 
 describe("handleCheckJob", () => {
   beforeEach(() => {
+    mocks.checkRunFindFirst.mockResolvedValue(null);
+    mocks.checkRunFindMany.mockResolvedValue([]);
     mocks.readPerformanceRuntimeSettings.mockResolvedValue({
       artifactRetentionDays: 14,
       historyRetentionDays: 180,
@@ -64,6 +77,7 @@ describe("handleCheckJob", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.clearAllMocks();
     vi.restoreAllMocks();
   });
@@ -142,51 +156,61 @@ describe("handleCheckJob", () => {
     });
   });
 
-  it("installs and runs an uploaded test session workspace", async () => {
+  it("installs an uploaded workspace and queues every check independently", async () => {
     vi.spyOn(console, "log").mockImplementation(() => undefined);
     mocks.spawn.mockImplementation(() => {
       const child = new EventEmitter();
       setImmediate(() => child.emit("close", 0));
       return child;
     });
-    mocks.runChecks.mockResolvedValue({
-      durationMs: 42,
-      failed: 0,
-      passed: 1,
-      results: [],
-      sessionId: "session_1",
-      skipped: 0,
-      total: 1,
-    });
 
     await expect(
-      handleTestSessionJob({
-        data: {
-          checkKeys: ["homepage"],
-          checks: [
-            {
-              enabled: true,
-              entrypoint: "homepage.spec.ts",
-              key: "homepage",
-              name: "Homepage",
-              tags: [],
-              type: "browser",
+      handleTestSessionJob(
+        {
+          data: {
+            checkKeys: ["homepage", "health"],
+            checks: [
+              {
+                enabled: true,
+                entrypoint: "homepage.spec.ts",
+                key: "homepage",
+                name: "Homepage",
+                tags: [],
+                type: "browser",
+              },
+              {
+                enabled: true,
+                key: "health",
+                name: "Health",
+                request: {
+                  assertions: [],
+                  headers: {},
+                  method: "GET",
+                  url: "https://example.test/health",
+                },
+                tags: [],
+                type: "api",
+              },
+            ],
+            env: [],
+            existingRunIds: {
+              health: "run_2",
+              homepage: "run_1",
             },
-          ],
-          env: [],
-          existingRunIds: {
-            homepage: "run_1",
+            kind: "test-session",
+            projectSlug: "account",
+            reporter: "github",
+            rootDir: "/runtime/test-sessions/session_1",
+            sessionId: "session_1",
+            tagSets: [],
           },
-          kind: "test-session",
-          projectSlug: "account",
-          reporter: "github",
-          rootDir: "/runtime/test-sessions/session_1",
-          sessionId: "session_1",
-          tagSets: [],
         },
-      }),
-    ).resolves.toMatchObject({
-      passed: 1,
+        {
+          addBulk: mocks.queueAddBulk,
+        },
+      ),
+    ).resolves.toEqual({
+      queued: 2,
       sessionId: "session_1",
     });
 
@@ -206,20 +230,166 @@ describe("handleCheckJob", () => {
         cwd: "/runtime/test-sessions/session_1",
       }),
     );
-    expect(mocks.runChecks).toHaveBeenCalledWith(
+    expect(mocks.queueAddBulk).toHaveBeenCalledWith([
       expect.objectContaining({
-        existingRunIds: {
-          homepage: "run_1",
-        },
-        existingTestSessionId: "session_1",
-        record: true,
-        runMode: "test",
-        testSessionDeadline: {
-          at: expect.any(Number),
-          timeoutMs: 30 * 60_000,
+        data: expect.objectContaining({
+          existingRunId: "run_1",
+          kind: "test-session-check",
+          sessionId: "session_1",
+          testSessionDeadline: {
+            at: expect.any(Number),
+            timeoutMs: 30 * 60_000,
+          },
+        }),
+        name: "run-test-session-check",
+        opts: {
+          jobId: "run_1",
+          priority: 10,
         },
       }),
+      expect.objectContaining({
+        data: expect.objectContaining({
+          existingRunId: "run_2",
+          kind: "test-session-check",
+          sessionId: "session_1",
+        }),
+        opts: {
+          jobId: "run_2",
+          priority: 10,
+        },
+      }),
+    ]);
+    expect(mocks.runTestSessionCheck).not.toHaveBeenCalled();
+  });
+
+  it("runs one test-session check and finalizes from the latest attempts", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    mocks.checkRunFindUnique.mockResolvedValue({
+      checkSnapshotKey: "homepage",
+      checkSnapshotName: "Homepage",
+      durationMs: null,
+      id: "run_1",
+      status: "QUEUED",
+      testSessionId: "session_1",
+    });
+    mocks.runTestSessionCheck.mockResolvedValue({
+      checkKey: "homepage",
+      checkName: "Homepage",
+      durationMs: 42,
+      runId: "run_2",
+      status: "passed",
+    });
+    mocks.checkRunFindMany.mockResolvedValue([
+      {
+        attempt: 1,
+        checkSnapshotKey: "homepage",
+        id: "run_1",
+        status: "FAILED",
+      },
+      {
+        attempt: 2,
+        checkSnapshotKey: "homepage",
+        id: "run_2",
+        status: "PASSED",
+      },
+      {
+        attempt: 1,
+        checkSnapshotKey: "health",
+        id: "run_3",
+        status: "PASSED",
+      },
+    ]);
+
+    await expect(
+      handleTestSessionCheckJob({
+        data: {
+          check: {
+            enabled: true,
+            entrypoint: "homepage.spec.ts",
+            key: "homepage",
+            name: "Homepage",
+            tags: [],
+            type: "browser",
+          },
+          env: [],
+          existingRunId: "run_1",
+          kind: "test-session-check",
+          projectSlug: "account",
+          reporter: "github",
+          rootDir: "/runtime/test-sessions/session_1",
+          sessionId: "session_1",
+          testSessionDeadline: {
+            at: Date.now() + 30 * 60_000,
+            timeoutMs: 30 * 60_000,
+          },
+        },
+      }),
+    ).resolves.toMatchObject({
+      runId: "run_2",
+      status: "passed",
+    });
+
+    expect(mocks.runTestSessionCheck).toHaveBeenCalledWith(
+      expect.objectContaining({
+        existingRunId: "run_1",
+        existingTestSessionId: "session_1",
+      }),
     );
+    expect(mocks.testSessionUpdate).toHaveBeenCalledWith({
+      data: {
+        status: "PASSED",
+      },
+      where: {
+        id: "session_1",
+      },
+    });
+  });
+
+  it("keeps a test session active while another check is queued", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    mocks.checkRunFindUnique.mockResolvedValue({
+      checkSnapshotKey: "homepage",
+      checkSnapshotName: "Homepage",
+      durationMs: null,
+      id: "run_1",
+      status: "QUEUED",
+      testSessionId: "session_1",
+    });
+    mocks.runTestSessionCheck.mockResolvedValue({
+      checkKey: "homepage",
+      checkName: "Homepage",
+      durationMs: 42,
+      runId: "run_1",
+      status: "passed",
+    });
+    mocks.checkRunFindFirst.mockResolvedValue({ id: "run_2" });
+
+    await handleTestSessionCheckJob({
+      data: {
+        check: {
+          enabled: true,
+          entrypoint: "homepage.spec.ts",
+          key: "homepage",
+          name: "Homepage",
+          tags: [],
+          type: "browser",
+        },
+        env: [],
+        existingRunId: "run_1",
+        kind: "test-session-check",
+        projectSlug: "account",
+        reporter: "github",
+        rootDir: "/runtime/test-sessions/session_1",
+        sessionId: "session_1",
+        testSessionDeadline: {
+          at: Date.now() + 30 * 60_000,
+          timeoutMs: 30 * 60_000,
+        },
+      },
+    });
+
+    expect(mocks.testSessionUpdate).not.toHaveBeenCalled();
+    expect(mocks.checkRunFindMany).not.toHaveBeenCalled();
   });
 
   it("marks the session and unfinished runs timed out at the configured limit", async () => {
@@ -255,37 +425,41 @@ describe("handleCheckJob", () => {
       testSessionTimeoutMinutes: 10,
       workerConcurrency: 2,
     });
-    const jobPromise = handleTestSessionJob({
-      data: {
-        checkKeys: ["homepage"],
-        checks: [
-          {
-            enabled: true,
-            entrypoint: null,
-            key: "homepage",
-            name: "Homepage",
-            request: {
-              assertions: [],
-              headers: {},
-              method: "GET",
-              url: "https://example.test",
+    const jobPromise = handleTestSessionJob(
+      {
+        data: {
+          checkKeys: ["homepage"],
+          checks: [
+            {
+              enabled: true,
+              key: "homepage",
+              name: "Homepage",
+              request: {
+                assertions: [],
+                headers: {},
+                method: "GET",
+                url: "https://example.test",
+              },
+              tags: [],
+              type: "api",
             },
-            tags: [],
-            type: "api",
+          ],
+          env: [],
+          existingRunIds: {
+            homepage: "run_1",
           },
-        ],
-        env: [],
-        existingRunIds: {
-          homepage: "run_1",
+          kind: "test-session",
+          projectSlug: "account",
+          reporter: "github",
+          rootDir: "/runtime/test-sessions/session_1",
+          sessionId: "session_1",
+          tagSets: [],
         },
-        kind: "test-session",
-        projectSlug: "account",
-        reporter: "github",
-        rootDir: "/runtime/test-sessions/session_1",
-        sessionId: "session_1",
-        tagSets: [],
       },
-    });
+      {
+        addBulk: mocks.queueAddBulk,
+      },
+    );
     const rejection = expect(jobPromise).rejects.toThrow("Test session timed out");
 
     await spawned;
@@ -293,7 +467,7 @@ describe("handleCheckJob", () => {
 
     await rejection;
     expect(kill).toHaveBeenCalledWith("SIGTERM");
-    expect(mocks.runChecks).not.toHaveBeenCalled();
+    expect(mocks.queueAddBulk).not.toHaveBeenCalled();
 
     expect(mocks.testSessionUpdate).toHaveBeenCalledWith({
       data: {

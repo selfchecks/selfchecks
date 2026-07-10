@@ -1,14 +1,13 @@
 import { spawn } from "node:child_process";
 
-import { type Job } from "bullmq";
+import { type Job, type Queue } from "bullmq";
 
 import {
   runCheckById,
-  runChecks,
+  runTestSessionCheck,
   TestSessionTimeoutError,
   type CheckRunSource,
   type EnvVar,
-  type RunChecksSummary,
 } from "@selfchecks/cli/runner";
 import { type CheckDefinition, type CheckType } from "@selfchecks/core";
 import { prisma } from "@selfchecks/db";
@@ -41,7 +40,22 @@ export type TestSessionJob = {
   tagSets: string[][];
 };
 
-export type CheckJob = RunCheckJob | TestSessionJob;
+export type TestSessionCheckJob = {
+  check: CheckDefinition;
+  env: EnvVar[];
+  existingRunId: string;
+  kind: "test-session-check";
+  projectSlug: string;
+  reporter: string;
+  retries?: number;
+  rootDir: string;
+  sessionId: string;
+  testSessionDeadline: TestSessionDeadline;
+};
+
+export type CheckJob = RunCheckJob | TestSessionCheckJob | TestSessionJob;
+
+export type CheckJobQueue = Pick<Queue<CheckJob>, "addBulk">;
 
 export type CheckJobResult = {
   checkKey: string;
@@ -50,6 +64,18 @@ export type CheckJobResult = {
   runId?: string;
   status: string;
 };
+
+export type TestSessionJobResult = {
+  queued: number;
+  sessionId: string;
+};
+
+const TEST_SESSION_JOB_PRIORITY = 10;
+const activeRunStatuses = ["QUEUED", "RUNNING"] as const;
+
+function isActiveRunStatus(status: string): boolean {
+  return status === "QUEUED" || status === "RUNNING";
+}
 
 export async function handleCheckJob(
   job: Pick<Job<RunCheckJob>, "data">,
@@ -89,9 +115,14 @@ export async function handleCheckJob(
 
 export async function handleSelfchecksJob(
   job: Pick<Job<CheckJob>, "data">,
-): Promise<CheckJobResult | RunChecksSummary> {
+  queue: CheckJobQueue,
+): Promise<CheckJobResult | TestSessionJobResult> {
   if ("kind" in job.data && job.data.kind === "test-session") {
-    return handleTestSessionJob(job as Pick<Job<TestSessionJob>, "data">);
+    return handleTestSessionJob(job as Pick<Job<TestSessionJob>, "data">, queue);
+  }
+
+  if ("kind" in job.data && job.data.kind === "test-session-check") {
+    return handleTestSessionCheckJob(job as Pick<Job<TestSessionCheckJob>, "data">);
   }
 
   return handleCheckJob(job as Pick<Job<RunCheckJob>, "data">);
@@ -99,7 +130,8 @@ export async function handleSelfchecksJob(
 
 export async function handleTestSessionJob(
   job: Pick<Job<TestSessionJob>, "data">,
-): Promise<RunChecksSummary> {
+  queue: CheckJobQueue,
+): Promise<TestSessionJobResult> {
   const { data } = job;
 
   console.log(
@@ -117,54 +149,231 @@ export async function handleTestSessionJob(
 
   try {
     await installTestSessionDependencies(data.rootDir, data.checks, deadline);
+    await queue.addBulk(
+      data.checks.map((check) => {
+        const existingRunId = data.existingRunIds[check.key];
 
-    return await runChecks({
-      checkKeys: data.checkKeys,
-      checks: data.checks,
-      env: data.env,
-      existingRunIds: data.existingRunIds,
-      existingTestSessionId: data.sessionId,
-      projectSlug: data.projectSlug,
-      record: true,
-      reporter: data.reporter,
-      retries: data.retries,
-      rootDir: data.rootDir,
-      runMode: "test",
-      tagSets: data.tagSets,
-      testSessionDeadline: deadline,
-    });
+        if (!existingRunId) {
+          throw new Error(`Queued run for check ${check.key} was not found.`);
+        }
+
+        return {
+          data: {
+            check,
+            env: data.env,
+            existingRunId,
+            kind: "test-session-check" as const,
+            projectSlug: data.projectSlug,
+            reporter: data.reporter,
+            retries: data.retries,
+            rootDir: data.rootDir,
+            sessionId: data.sessionId,
+            testSessionDeadline: deadline,
+          },
+          name: "run-test-session-check",
+          opts: {
+            jobId: existingRunId,
+            priority: TEST_SESSION_JOB_PRIORITY,
+          },
+        };
+      }),
+    );
+
+    return {
+      queued: data.checks.length,
+      sessionId: data.sessionId,
+    };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    const finishedAt = new Date();
     const timedOut = error instanceof TestSessionTimeoutError;
     const status = timedOut ? "TIMED_OUT" : "FAILED";
 
-    await prisma.$transaction([
-      prisma.testSession.update({
-        data: {
-          status,
-        },
-        where: {
-          id: data.sessionId,
-        },
-      }),
-      prisma.checkRun.updateMany({
-        data: {
-          errorMessage,
-          finishedAt,
-          status,
-        },
-        where: {
-          status: {
-            in: ["QUEUED", "RUNNING"],
-          },
-          testSessionId: data.sessionId,
-        },
-      }),
-    ]);
+    await markTestSessionRuns(data.sessionId, errorMessage, status);
 
     throw error;
   }
+}
+
+export async function handleTestSessionCheckJob(
+  job: Pick<Job<TestSessionCheckJob>, "data">,
+): Promise<CheckJobResult> {
+  const { data } = job;
+  const existingRun = await prisma.checkRun.findUnique({
+    select: {
+      checkSnapshotKey: true,
+      checkSnapshotName: true,
+      durationMs: true,
+      id: true,
+      status: true,
+      testSessionId: true,
+    },
+    where: {
+      id: data.existingRunId,
+    },
+  });
+
+  if (!existingRun || existingRun.testSessionId !== data.sessionId) {
+    throw new Error(
+      `Run ${data.existingRunId} was not found in test session ${data.sessionId}.`,
+    );
+  }
+
+  if (existingRun.status !== "QUEUED") {
+    await finalizeTestSession(data.sessionId);
+
+    return {
+      checkKey: existingRun.checkSnapshotKey ?? data.check.key,
+      checkName: existingRun.checkSnapshotName ?? data.check.name,
+      durationMs: existingRun.durationMs ?? 0,
+      runId: existingRun.id,
+      status: existingRun.status.toLowerCase(),
+    };
+  }
+
+  console.log(
+    `Running ${data.check.type} check ${data.check.key} for test session ${data.sessionId}`,
+  );
+
+  try {
+    return await runTestSessionCheck({
+      check: data.check,
+      env: data.env,
+      existingRunId: data.existingRunId,
+      existingTestSessionId: data.sessionId,
+      projectSlug: data.projectSlug,
+      reporter: data.reporter,
+      retries: data.retries,
+      rootDir: data.rootDir,
+      testSessionDeadline: data.testSessionDeadline,
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+
+    if (error instanceof TestSessionTimeoutError) {
+      await markTestSessionRuns(data.sessionId, errorMessage, "TIMED_OUT");
+    } else {
+      await prisma.checkRun.updateMany({
+        data: {
+          errorMessage,
+          finishedAt: new Date(),
+          status: "FAILED",
+        },
+        where: {
+          id: data.existingRunId,
+          status: {
+            in: [...activeRunStatuses],
+          },
+        },
+      });
+    }
+
+    throw error;
+  } finally {
+    await finalizeTestSession(data.sessionId);
+  }
+}
+
+async function markTestSessionRuns(
+  sessionId: string,
+  errorMessage: string,
+  status: "FAILED" | "TIMED_OUT",
+) {
+  const finishedAt = new Date();
+
+  await prisma.$transaction([
+    prisma.testSession.update({
+      data: {
+        status,
+      },
+      where: {
+        id: sessionId,
+      },
+    }),
+    prisma.checkRun.updateMany({
+      data: {
+        errorMessage,
+        finishedAt,
+        status,
+      },
+      where: {
+        status: {
+          in: [...activeRunStatuses],
+        },
+        testSessionId: sessionId,
+      },
+    }),
+  ]);
+}
+
+async function finalizeTestSession(sessionId: string): Promise<void> {
+  const activeRun = await prisma.checkRun.findFirst({
+    select: {
+      id: true,
+    },
+    where: {
+      status: {
+        in: [...activeRunStatuses],
+      },
+      testSessionId: sessionId,
+    },
+  });
+
+  if (activeRun) {
+    return;
+  }
+
+  const runs = await prisma.checkRun.findMany({
+    orderBy: [
+      {
+        createdAt: "asc",
+      },
+      {
+        attempt: "asc",
+      },
+    ],
+    select: {
+      attempt: true,
+      checkSnapshotKey: true,
+      id: true,
+      status: true,
+    },
+    where: {
+      testSessionId: sessionId,
+    },
+  });
+
+  if (runs.length === 0 || runs.some((run) => isActiveRunStatus(run.status))) {
+    return;
+  }
+
+  const finalRuns = new Map<string, (typeof runs)[number]>();
+
+  runs.forEach((run) => {
+    const key = run.checkSnapshotKey ?? run.id;
+    const current = finalRuns.get(key);
+
+    if (!current || run.attempt >= current.attempt) {
+      finalRuns.set(key, run);
+    }
+  });
+
+  const statuses = [...finalRuns.values()].map((run) => run.status);
+  const status = statuses.every((runStatus) => runStatus === "PASSED")
+    ? "PASSED"
+    : statuses.some((runStatus) => runStatus === "TIMED_OUT")
+      ? "TIMED_OUT"
+      : statuses.some((runStatus) => runStatus === "CANCELLED")
+        ? "CANCELLED"
+        : "FAILED";
+
+  await prisma.testSession.update({
+    data: {
+      status,
+    },
+    where: {
+      id: sessionId,
+    },
+  });
 }
 
 async function installTestSessionDependencies(

@@ -91,7 +91,7 @@ export async function POST(request: Request) {
 
     try {
       await queue.add(
-        "run-test-session",
+        "prepare-test-session",
         {
           checkKeys: checks.map((check) => check.key),
           checks,
@@ -107,6 +107,7 @@ export async function POST(request: Request) {
         },
         {
           jobId: session.id,
+          priority: 10,
         },
       );
     } catch (error) {

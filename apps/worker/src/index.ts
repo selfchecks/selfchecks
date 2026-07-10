@@ -21,11 +21,16 @@ export const checkQueue = new Queue<CheckJob>(config.queueName, {
   connection: config.connection,
   defaultJobOptions: config.defaultJobOptions,
 });
+await checkQueue.setGlobalConcurrency(performanceSettings.workerConcurrency);
 
-const worker = new Worker<CheckJob>(config.queueName, handleSelfchecksJob, {
-  concurrency: performanceSettings.workerConcurrency,
-  connection: config.connection,
-});
+const worker = new Worker<CheckJob>(
+  config.queueName,
+  (job) => handleSelfchecksJob(job, checkQueue),
+  {
+    concurrency: performanceSettings.workerConcurrency,
+    connection: config.connection,
+  },
+);
 const scheduler = config.scheduler.enabled
   ? new CheckScheduler({
       config: {
@@ -67,6 +72,7 @@ async function syncPerformanceSettings(): Promise<void> {
     return;
   }
 
+  await checkQueue.setGlobalConcurrency(nextSettings.workerConcurrency);
   worker.concurrency = nextSettings.workerConcurrency;
   console.log(
     `selfchecks worker concurrency updated to ${nextSettings.workerConcurrency}`,
@@ -79,7 +85,9 @@ function startPerformanceSettingsSync(): void {
   }
 
   performanceSyncTimer = setInterval(() => {
-    void syncPerformanceSettings();
+    void syncPerformanceSettings().catch((error) => {
+      console.error("Unable to update worker concurrency.", error);
+    });
   }, config.scheduler.pollIntervalMs);
   performanceSyncTimer.unref?.();
 }

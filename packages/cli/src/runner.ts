@@ -93,6 +93,21 @@ export type RunCheckByIdOptions = {
   runSource?: CheckRunSource;
 };
 
+export type RunTestSessionCheckOptions = {
+  check: CheckDefinition;
+  env: EnvVar[];
+  existingRunId: string;
+  existingTestSessionId: string;
+  projectSlug: string;
+  reporter: string;
+  retries?: number;
+  rootDir: string;
+  testSessionDeadline: {
+    at: number;
+    timeoutMs: number;
+  };
+};
+
 export type RunnableCheck = {
   entrypoint: string | null;
   group?: {
@@ -235,6 +250,39 @@ export async function runCheckById(
     undefined,
     options.runId,
   );
+}
+
+export async function runTestSessionCheck(
+  options: RunTestSessionCheckOptions,
+): Promise<RunCheckResult> {
+  const runOptions: RunChecksOptions = {
+    checkKeys: [options.check.key],
+    checks: [options.check],
+    env: options.env,
+    existingRunIds: {
+      [options.check.key]: options.existingRunId,
+    },
+    existingTestSessionId: options.existingTestSessionId,
+    projectSlug: options.projectSlug,
+    record: true,
+    reporter: options.reporter,
+    retries: options.retries,
+    rootDir: options.rootDir,
+    runMode: "test",
+    tagSets: [],
+    testSessionDeadline: options.testSessionDeadline,
+  };
+
+  assertTestSessionDeadline(runOptions.testSessionDeadline);
+  const [check] = await findRunnableChecks(runOptions);
+
+  if (!check) {
+    throw new Error(`Check ${options.check.key} was not found in the test session.`);
+  }
+
+  const session = await resolveRunSession(runOptions);
+
+  return runCheck(check, runOptions, session, options.existingRunId);
 }
 
 async function findRunnableChecks(options: RunChecksOptions): Promise<RunnableCheck[]> {
@@ -444,6 +492,15 @@ async function runCheck(
       }
     }
 
+    const queuedRetryRun =
+      run && shouldRetry && session && options.existingTestSessionId
+        ? await createQueuedRetryRun(check, options, session, {
+            attempt: attempt + 1,
+            maxAttempts,
+            retryGroupId,
+          })
+        : undefined;
+
     if (run) {
       await prisma.checkRun.update({
         data: {
@@ -475,7 +532,7 @@ async function runCheck(
     }
 
     await waitForRetry(retryDelayMs, options.testSessionDeadline);
-    attemptRunId = undefined;
+    attemptRunId = queuedRetryRun?.id;
   }
 
   if (!lastResult) {
@@ -549,6 +606,33 @@ async function upsertStartedRun(
     where: {
       id: run.id,
     },
+  });
+}
+
+async function createQueuedRetryRun(
+  check: RunnableCheck,
+  options: RunChecksOptions,
+  session: TestSession,
+  retryMetadata: {
+    attempt: number;
+    maxAttempts: number;
+    retryGroupId: string;
+  },
+): Promise<CheckRun> {
+  const snapshot = buildCheckRunSnapshot(check, options);
+  const data: Prisma.CheckRunUncheckedCreateInput = {
+    attempt: retryMetadata.attempt,
+    ...(check.id ? { checkId: check.id } : {}),
+    ...snapshot,
+    maxAttempts: retryMetadata.maxAttempts,
+    retryGroupId: retryMetadata.retryGroupId,
+    runSource: options.runSource ?? "CLI",
+    status: "QUEUED",
+    testSessionId: session.id,
+  };
+
+  return prisma.checkRun.create({
+    data,
   });
 }
 

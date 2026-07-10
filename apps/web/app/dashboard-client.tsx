@@ -122,7 +122,7 @@ const preferredTimeZoneOptions = [
 
 const performanceSettingFields = [
   {
-    description: "Worker slots used for simultaneous test launches.",
+    description: "Maximum simultaneous test runs across all workers.",
     key: "workerConcurrency",
     label: "Concurrent test runs",
     suffix: "runs",

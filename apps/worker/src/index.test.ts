@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   getWorkerRuntimeConfig: vi.fn(),
   handleSelfchecksJob: vi.fn(),
   queueClose: vi.fn(),
+  queueSetGlobalConcurrency: vi.fn(),
   readPerformanceRuntimeSettings: vi.fn(),
   schedulerClose: vi.fn(),
   schedulerStart: vi.fn(),
@@ -63,6 +64,7 @@ describe("worker entrypoint", () => {
     });
     mocks.Queue.mockImplementation(() => ({
       close: mocks.queueClose,
+      setGlobalConcurrency: mocks.queueSetGlobalConcurrency,
     }));
     mocks.Worker.mockImplementation(() => ({
       close: mocks.workerClose,
@@ -74,6 +76,7 @@ describe("worker entrypoint", () => {
       start: mocks.schedulerStart,
     }));
     mocks.queueClose.mockResolvedValue(undefined);
+    mocks.queueSetGlobalConcurrency.mockResolvedValue(2);
     mocks.readPerformanceRuntimeSettings.mockResolvedValue({
       artifactRetentionDays: 14,
       historyRetentionDays: 180,
@@ -107,7 +110,7 @@ describe("worker entrypoint", () => {
     });
     expect(mocks.Worker).toHaveBeenCalledWith(
       "selfchecks-checks",
-      mocks.handleSelfchecksJob,
+      expect.any(Function),
       {
         concurrency: 2,
         connection: {
@@ -116,6 +119,7 @@ describe("worker entrypoint", () => {
         },
       },
     );
+    expect(mocks.queueSetGlobalConcurrency).toHaveBeenCalledWith(2);
     expect(mocks.readPerformanceRuntimeSettings).toHaveBeenCalledWith({
       fallback: {
         artifactRetentionDays: 14,

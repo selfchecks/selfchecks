@@ -151,14 +151,14 @@ describe("CLI test session upload route", () => {
       select: { id: true },
     });
     expect(mocks.queueAdd).toHaveBeenCalledWith(
-      "run-test-session",
+      "prepare-test-session",
       expect.objectContaining({
         existingRunIds: { homepage: "run_1" },
         kind: "test-session",
         rootDir,
         sessionId: "session_1",
       }),
-      { jobId: "session_1" },
+      { jobId: "session_1", priority: 10 },
     );
     expect(mocks.queueClose).toHaveBeenCalledOnce();
   });
