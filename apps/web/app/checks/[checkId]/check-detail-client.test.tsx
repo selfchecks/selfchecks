@@ -497,11 +497,16 @@ describe("CheckDetailClient", () => {
       initialDetail: queuedDetail,
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const getDetailRequestCount = () =>
+      fetchMock.mock.calls.filter(([input]) =>
+        getFetchUrl(input).endsWith("/api/checks/check_1/detail"),
+      ).length;
+
+    expect(getDetailRequestCount()).toBe(1);
 
     vi.advanceTimersByTime(2000);
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(getDetailRequestCount()).toBe(2);
     expect(mocks.routerRefresh).not.toHaveBeenCalled();
   });
 });

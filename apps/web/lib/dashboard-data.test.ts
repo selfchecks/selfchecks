@@ -41,6 +41,7 @@ vi.mock("@/lib/prisma", () => ({
 import {
   getCheckDetailData,
   getCheckDetailShellData,
+  getDashboardActivityData,
   getDashboardData,
   getJournalData,
   getRunDetailData,
@@ -110,6 +111,50 @@ describe("dashboard data", () => {
     vi.resetAllMocks();
     vi.useRealTimers();
     delete process.env.SELFCHECKS_QUEUED_RUN_TIMEOUT_MINUTES;
+  });
+
+  it("counts queued and running checks for the sidebar", async () => {
+    mocks.projectFindUnique.mockResolvedValue({
+      id: "project_1",
+      slug: "default",
+    });
+    mocks.checkRunCount.mockResolvedValueOnce(4).mockResolvedValueOnce(2);
+
+    await expect(getDashboardActivityData("default")).resolves.toEqual({
+      projectSlug: "default",
+      queued: 4,
+      running: 2,
+    });
+    expect(mocks.checkRunCount).toHaveBeenNthCalledWith(1, {
+      where: {
+        OR: [
+          {
+            check: {
+              projectId: "project_1",
+            },
+          },
+          {
+            checkSnapshotProjectSlug: "default",
+          },
+        ],
+        status: "QUEUED",
+      },
+    });
+    expect(mocks.checkRunCount).toHaveBeenNthCalledWith(2, {
+      where: {
+        OR: [
+          {
+            check: {
+              projectId: "project_1",
+            },
+          },
+          {
+            checkSnapshotProjectSlug: "default",
+          },
+        ],
+        status: "RUNNING",
+      },
+    });
   });
 
   it("cancels stale queued runs before reading check details", async () => {

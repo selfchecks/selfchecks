@@ -53,7 +53,11 @@ export default async function JournalPage({ searchParams }: JournalPageProps) {
 
   return (
     <main className="min-h-screen bg-[#0d1117] text-slate-200">
-      <AppSidebar activeItem="journal" />
+      <AppSidebar
+        accountLabel={settings.basic.login || "Admin"}
+        activeItem="journal"
+        projectSlug={journal.projectSlug}
+      />
 
       <div className="min-h-screen xl:pl-72">
         <header className="sticky top-0 z-30 border-b border-slate-800 bg-[#12171f]/95 backdrop-blur">

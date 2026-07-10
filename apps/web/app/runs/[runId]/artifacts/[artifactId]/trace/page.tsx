@@ -1,3 +1,5 @@
+import { getDashboardAccountLabel } from "@/lib/settings-data";
+
 import { TraceArtifactViewer } from "./trace-artifact-viewer";
 
 type TraceArtifactPageProps = {
@@ -16,6 +18,7 @@ export default async function TraceArtifactPage({ params }: TraceArtifactPagePro
 
   return (
     <TraceArtifactViewer
+      accountLabel={getDashboardAccountLabel()}
       artifactUrl={artifactUrl}
       downloadUrl={downloadUrl}
       runId={runId}

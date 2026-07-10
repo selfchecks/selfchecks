@@ -79,7 +79,7 @@ export function RunDetailView({ accountLabel, detail }: RunDetailViewProps) {
 
   return (
     <main className="min-h-screen bg-[#0d1117] text-slate-200">
-      <DetailSidebar />
+      <DetailSidebar accountLabel={accountLabel} projectSlug={detail.projectSlug} />
 
       <div className="min-h-screen xl:pl-72">
         <header className="sticky top-0 z-30 border-b border-slate-800 bg-[#12171f]/95 backdrop-blur">

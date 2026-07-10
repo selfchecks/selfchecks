@@ -44,6 +44,12 @@ type DashboardDataOptions = {
   onError?: "empty" | "throw";
 };
 
+export type DashboardActivityData = {
+  projectSlug: string;
+  queued: number;
+  running: number;
+};
+
 export type TestSessionRunCountSummary = {
   failed: number;
   passed: number;
@@ -466,6 +472,55 @@ export async function getDashboardData(
 
     return createEmptyDashboard(projectSlug);
   }
+}
+
+export async function getDashboardActivityData(
+  projectSlug: string,
+): Promise<DashboardActivityData> {
+  await cancelStaleQueuedRuns();
+
+  const project = await findProjectForDashboard(projectSlug);
+
+  if (!project) {
+    return {
+      projectSlug,
+      queued: 0,
+      running: 0,
+    };
+  }
+
+  const projectRunsWhere: Prisma.CheckRunWhereInput = {
+    OR: [
+      {
+        check: {
+          projectId: project.id,
+        },
+      },
+      {
+        checkSnapshotProjectSlug: project.slug,
+      },
+    ],
+  };
+  const [queued, running] = await Promise.all([
+    prisma.checkRun.count({
+      where: {
+        ...projectRunsWhere,
+        status: "QUEUED",
+      },
+    }),
+    prisma.checkRun.count({
+      where: {
+        ...projectRunsWhere,
+        status: "RUNNING",
+      },
+    }),
+  ]);
+
+  return {
+    projectSlug: project.slug,
+    queued,
+    running,
+  };
 }
 
 export async function getCheckDetailShellData(

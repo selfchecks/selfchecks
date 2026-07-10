@@ -273,7 +273,6 @@ export default function DashboardClient({
   const optimisticQueuedCheckIdsRef = useRef<Set<string>>(new Set());
   const router = useRouter();
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [activeActionMenu, setActiveActionMenu] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<DateRange>("24h");
   const [firewatchOpen, setFirewatchOpen] = useState(false);
@@ -492,15 +491,8 @@ export default function DashboardClient({
     setTypeFilter("all");
   }
 
-  function openSettings() {
-    setActiveView("settings");
-    setAccountMenuOpen(false);
-    setActiveActionMenu(null);
-  }
-
   function openQueue() {
     setActiveView("queue");
-    setAccountMenuOpen(false);
     setActiveActionMenu(null);
   }
 
@@ -636,6 +628,7 @@ export default function DashboardClient({
     <main className="min-h-screen bg-[#0d1117] text-slate-200">
       <h1 className="sr-only">Synthetic checks dashboard</h1>
       <AppSidebar
+        accountLabel={settings.basic.login || "Admin"}
         activeItem={
           activeView === "settings"
             ? "settings"
@@ -643,15 +636,15 @@ export default function DashboardClient({
               ? "queue"
               : "home"
         }
+        initialQueuedCount={summary.queued}
+        initialRunningCount={summary.running}
         onHomeClick={resetDashboard}
         onQueueClick={openQueue}
-        onSettingsClick={openSettings}
+        projectSlug={settings.projectSlug}
       />
 
       <div className="min-h-screen xl:pl-72">
         <Topbar
-          accountMenuOpen={accountMenuOpen}
-          accountLabel={settings.basic.login || "Admin"}
           actions={
             activeView === "dashboard" ? (
               <button
@@ -665,10 +658,6 @@ export default function DashboardClient({
               </button>
             ) : null
           }
-          onAccountMenuToggle={() => setAccountMenuOpen((open) => !open)}
-          queuedCount={summary.queued}
-          runningCount={summary.running}
-          onSettingsClick={openSettings}
         />
 
         <section className="mx-auto flex w-full max-w-[1760px] flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8">
@@ -1301,91 +1290,14 @@ function CheckTypeBadge({ type }: { type: CheckRow["type"] }) {
   );
 }
 
-function Topbar({
-  accountMenuOpen,
-  accountLabel,
-  actions,
-  onAccountMenuToggle,
-  onSettingsClick,
-  queuedCount,
-  runningCount,
-}: {
-  accountMenuOpen: boolean;
-  accountLabel: string;
-  actions?: ReactNode;
-  onAccountMenuToggle: () => void;
-  onSettingsClick: () => void;
-  queuedCount: number;
-  runningCount: number;
-}) {
-  const initials = getInitials(accountLabel);
-
+function Topbar({ actions }: { actions?: ReactNode }) {
   return (
-    <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-slate-800 bg-[#12171f]/95 px-4 backdrop-blur sm:px-6 lg:px-8">
+    <header className="sticky top-0 z-20 flex h-16 items-center border-b border-slate-800 bg-[#12171f]/95 px-4 backdrop-blur sm:px-6 lg:px-8">
       <div className="flex min-w-0 items-center gap-3">
         <ServiceMark className="h-9 w-9 shrink-0 rounded-md xl:hidden" />
         {actions}
       </div>
-
-      <div className="relative flex items-center gap-4">
-        <QueueIndicators queuedCount={queuedCount} runningCount={runningCount} />
-        <button
-          aria-expanded={accountMenuOpen}
-          aria-label="Open account menu"
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-lime-600/70 text-sm font-semibold text-lime-50 hover:bg-lime-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-          onClick={onAccountMenuToggle}
-          type="button"
-        >
-          {initials}
-        </button>
-
-        {accountMenuOpen ? (
-          <div className="absolute right-0 top-12 z-30 w-64 rounded-md border border-slate-700 bg-[#12171f] p-3 text-sm shadow-xl shadow-black/30">
-            <div className="truncate font-medium text-slate-100">{accountLabel}</div>
-            <div className="mt-1 text-xs text-slate-500">Signed in locally</div>
-            <button
-              className="mt-3 flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-slate-300 hover:bg-slate-800"
-              onClick={onSettingsClick}
-              type="button"
-            >
-              <Settings2 className="h-4 w-4 text-slate-500" />
-              <span>Settings</span>
-            </button>
-            <a
-              className="mt-1 block rounded-md px-2 py-2 text-slate-300 hover:bg-slate-800"
-              href="/api/auth/signout"
-            >
-              Sign out
-            </a>
-          </div>
-        ) : null}
-      </div>
     </header>
-  );
-}
-
-function QueueIndicators({
-  queuedCount,
-  runningCount,
-}: {
-  queuedCount: number;
-  runningCount: number;
-}) {
-  return (
-    <div
-      aria-label={`Running ${runningCount}, queued ${queuedCount}`}
-      className="flex items-center gap-3 text-sm font-semibold text-slate-300"
-      role="status"
-    >
-      <span className="inline-flex items-center gap-1.5">
-        <span className="h-2.5 w-2.5 rounded-full bg-blue-400" />
-        <span>{runningCount}</span>
-      </span>
-      <span className="inline-flex items-center gap-1.5">
-        <span className="h-2.5 w-2.5 rounded-full bg-yellow-400" />
-        <span>{queuedCount}</span>
-      </span>
-    </div>
   );
 }
 
@@ -1516,7 +1428,7 @@ function SettingsScreen({
     historyRetentionDays: settings.performance.historyRetentionDays,
     workerConcurrency: settings.performance.workerConcurrency,
   }));
-  const [apiKeyName, setApiKeyName] = useState("GitLab CI");
+  const [apiKeyName, setApiKeyName] = useState("");
   const [generatedApiKey, setGeneratedApiKey] = useState<
     { id: string; value: string } | undefined
   >();
@@ -1959,31 +1871,33 @@ function SettingsScreen({
           className="grid gap-4 border-b border-slate-800 p-5"
           onSubmit={(event) => void generateApiKey(event)}
         >
-          <div className="grid gap-2 sm:grid-cols-[minmax(0,28rem)_auto] sm:items-end">
+          <div className="grid max-w-2xl gap-2">
             <label
-              className="grid gap-2 text-sm font-medium text-slate-200"
+              className="text-sm font-medium text-slate-200"
               htmlFor="settings-api-key-name"
             >
               Key name
+            </label>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <input
-                className="h-10 rounded-md border border-slate-700 bg-[#0f151d] px-3 text-sm text-slate-100 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                className="h-10 min-w-0 flex-1 rounded-md border border-slate-700 bg-[#0f151d] px-3 text-sm text-slate-100 outline-none placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
                 id="settings-api-key-name"
                 maxLength={80}
                 onChange={(event) => setApiKeyName(event.target.value)}
-                placeholder="GitLab CI"
+                placeholder="API key name"
                 required
                 type="text"
                 value={apiKeyName}
               />
-            </label>
-            <button
-              className="inline-flex h-10 w-fit items-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={savingApiKey}
-              type="submit"
-            >
-              <Plus className="h-4 w-4" />
-              Generate
-            </button>
+              <button
+                className="inline-flex h-10 w-fit shrink-0 items-center justify-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={savingApiKey}
+                type="submit"
+              >
+                <Plus className="h-4 w-4" />
+                Generate
+              </button>
+            </div>
           </div>
 
           {generatedApiKey ? (
@@ -2548,20 +2462,6 @@ function SettingsScreen({
       </form>
     </div>
   );
-}
-
-function getInitials(value: string) {
-  const parts = value
-    .replace(/@.*$/, "")
-    .split(/[\s._-]+/)
-    .filter(Boolean);
-  const initials = parts
-    .slice(0, 2)
-    .map((part) => part[0])
-    .join("")
-    .toUpperCase();
-
-  return initials || "AD";
 }
 
 function createDraftId() {

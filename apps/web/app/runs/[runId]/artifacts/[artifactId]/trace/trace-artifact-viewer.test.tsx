@@ -24,6 +24,7 @@ describe("TraceArtifactViewer", () => {
   it("builds a Playwright trace viewer URL and download link", async () => {
     render(
       <TraceArtifactViewer
+        accountLabel="admin@example.com"
         artifactUrl="/api/runs/run_1/artifacts/artifact_1"
         downloadUrl="/api/runs/run_1/artifacts/artifact_1?download=1"
         runId="run_1"

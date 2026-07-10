@@ -276,9 +276,15 @@ function createQueueRow(overrides: Partial<DashboardQueueRow>): DashboardQueueRo
   };
 }
 
-function renderDashboard(options: { queue?: DashboardQueueRow[] } = {}) {
+function renderDashboard(
+  options: {
+    activeView?: "dashboard" | "queue" | "settings";
+    queue?: DashboardQueueRow[];
+  } = {},
+) {
   render(
     <DashboardClient
+      initialActiveView={options.activeView}
       initialGroups={fixtureGroups}
       initialQueue={options.queue}
       initialSettings={fixtureSettings}
@@ -1116,7 +1122,19 @@ describe("DashboardPage", () => {
     expect(screen.getByText("No checks match the current filters.")).toBeTruthy();
   });
 
-  it("opens settings from the account menu and saves settings forms", async () => {
+  it("links to system settings from the sidebar account menu", async () => {
+    const user = userEvent.setup();
+
+    renderDashboard();
+
+    await user.click(screen.getByRole("button", { name: "Open account menu" }));
+    const settingsLinks = screen.getAllByRole("link", { name: "Settings" });
+
+    expect(settingsLinks).toHaveLength(2);
+    expect(settingsLinks[1]?.getAttribute("href")).toBe("/settings");
+  });
+
+  it("renders and saves settings forms on the settings view", async () => {
     const user = userEvent.setup();
     const getSectionSaveButton = (heading: string) => {
       const form = screen.getByRole("heading", { name: heading }).closest("form");
@@ -1288,11 +1306,7 @@ describe("DashboardPage", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    renderDashboard();
-
-    await user.click(screen.getByRole("button", { name: "Open account menu" }));
-    const settingsButtons = screen.getAllByRole("button", { name: "Settings" });
-    await user.click(settingsButtons[settingsButtons.length - 1]!);
+    renderDashboard({ activeView: "settings" });
 
     expect(screen.getByRole("heading", { name: "Administration" })).toBeTruthy();
     expect((screen.getByLabelText("Domain") as HTMLInputElement).value).toBe(
@@ -1305,6 +1319,10 @@ describe("DashboardPage", () => {
     expect(screen.queryByLabelText("Notification email")).toBeNull();
     expect(screen.getByRole("heading", { name: "Security" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "API keys" })).toBeTruthy();
+    expect((screen.getByLabelText("Key name") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("Key name") as HTMLInputElement).placeholder).toBe(
+      "API key name",
+    );
     expect(screen.getByText("Existing CI")).toBeTruthy();
     expect(screen.getByText("sck_example...cdef")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Performance" })).toBeTruthy();
