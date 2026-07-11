@@ -79,6 +79,7 @@ export type TestSessionsData = {
     page: number;
     pageSize: number;
     query: string;
+    sessionName: string;
   };
   pagination: {
     from: number;
@@ -98,6 +99,7 @@ export type TestSessionsDataOptions = {
   page?: number;
   pageSize?: number;
   query?: string;
+  sessionName?: string;
 };
 
 export type TestSessionCheckRow = {
@@ -1152,6 +1154,7 @@ function normalizeTestSessionsFilters(
     page: clampInteger(options.page, 1, 1, Number.MAX_SAFE_INTEGER),
     pageSize,
     query: options.query?.trim() ?? "",
+    sessionName: options.sessionName?.trim() ?? "",
   };
 }
 
@@ -1279,13 +1282,20 @@ function buildTestSessionsWhere(
     },
   };
   const query = filters.query.trim();
+  const sessionName = filters.sessionName.trim();
+  const conditions: Prisma.TestSessionWhereInput[] = [];
 
-  if (!query) {
-    return where;
+  if (sessionName) {
+    conditions.push({
+      name: {
+        equals: sessionName,
+        mode: "insensitive",
+      },
+    });
   }
 
-  where.AND = [
-    {
+  if (query) {
+    conditions.push({
       OR: [
         {
           id: {
@@ -1319,8 +1329,12 @@ function buildTestSessionsWhere(
           },
         },
       ],
-    },
-  ];
+    });
+  }
+
+  if (conditions.length > 0) {
+    where.AND = conditions;
+  }
 
   return where;
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { type ChangeEvent, type KeyboardEvent, useEffect, useState } from "react";
-import { Link2, Search, SlidersHorizontal } from "lucide-react";
+import { Filter, Link2, Search, SlidersHorizontal, X } from "lucide-react";
 import Link from "next/link";
 
 import type { TestSessionRow, TestSessionsData } from "@/lib/dashboard-data";
@@ -53,7 +53,7 @@ export function TestSessionsClient({ initialData }: { initialData: TestSessionsD
       </div>
 
       <TestSessionsFilters filters={data.filters} />
-      <TestSessionsTable sessions={data.sessions} />
+      <TestSessionsTable filters={data.filters} sessions={data.sessions} />
       <TestSessionsPagination data={data} />
     </>
   );
@@ -83,6 +83,9 @@ function TestSessionsFilters({ filters }: { filters: TestSessionsData["filters"]
       className="rounded-md border border-slate-800 bg-[#111821] p-4"
       method="get"
     >
+      {filters.sessionName ? (
+        <input name="session" type="hidden" value={filters.sessionName} />
+      ) : null}
       <div className="grid gap-3 lg:grid-cols-[minmax(18rem,1fr)_8rem]">
         <label className="relative min-w-0" htmlFor="test-sessions-search">
           <span className="sr-only">Search test sessions</span>
@@ -117,11 +120,37 @@ function TestSessionsFilters({ filters }: { filters: TestSessionsData["filters"]
           </select>
         </label>
       </div>
+
+      {filters.sessionName ? (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <span className="inline-flex h-8 min-w-0 max-w-full items-center gap-2 rounded-md border border-blue-500/40 bg-blue-500/10 pl-2.5 pr-1 text-xs text-blue-200">
+            <Filter className="h-3.5 w-3.5 shrink-0" />
+            <span className="shrink-0 text-slate-400">Session:</span>
+            <span className="truncate font-medium" title={filters.sessionName}>
+              {filters.sessionName}
+            </span>
+            <Link
+              aria-label="Clear session filter"
+              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-700 hover:text-slate-100"
+              href={buildTestSessionsHref(filters, { sessionName: "" })}
+              title="Clear session filter"
+            >
+              <X className="h-3.5 w-3.5" />
+            </Link>
+          </span>
+        </div>
+      ) : null}
     </form>
   );
 }
 
-function TestSessionsTable({ sessions }: { sessions: TestSessionRow[] }) {
+function TestSessionsTable({
+  filters,
+  sessions,
+}: {
+  filters: TestSessionsData["filters"];
+  sessions: TestSessionRow[];
+}) {
   return (
     <section className="overflow-hidden rounded-md border border-slate-800 bg-[#111821]">
       <div className="overflow-x-auto">
@@ -142,7 +171,11 @@ function TestSessionsTable({ sessions }: { sessions: TestSessionRow[] }) {
           <tbody>
             {sessions.length > 0 ? (
               sessions.map((session) => (
-                <TestSessionTableRow key={session.id} session={session} />
+                <TestSessionTableRow
+                  filters={filters}
+                  key={session.id}
+                  session={session}
+                />
               ))
             ) : (
               <tr>
@@ -158,21 +191,44 @@ function TestSessionsTable({ sessions }: { sessions: TestSessionRow[] }) {
   );
 }
 
-function TestSessionTableRow({ session }: { session: TestSessionRow }) {
+function TestSessionTableRow({
+  filters,
+  session,
+}: {
+  filters: TestSessionsData["filters"];
+  session: TestSessionRow;
+}) {
+  const sessionLabel = session.name || session.createdAtLabel;
+
   return (
     <tr className="border-t border-slate-800 align-top hover:bg-slate-900/40">
       <td className="px-4 py-3">
-        <Link
-          className="inline-flex max-w-64 flex-col text-blue-300 hover:text-blue-200"
-          href={session.href}
-        >
-          <span className="truncate font-medium">
-            {session.name || session.createdAtLabel}
-          </span>
+        <div className="flex w-72 max-w-full flex-col">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <Link
+              className="min-w-0 truncate font-medium text-blue-300 hover:text-blue-200"
+              href={session.href}
+              title={sessionLabel}
+            >
+              {sessionLabel}
+            </Link>
+            {session.name ? (
+              <Link
+                aria-label={`Filter sessions by ${session.name}`}
+                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-500 hover:bg-slate-800 hover:text-blue-300"
+                href={buildTestSessionsHref(filters, {
+                  sessionName: session.name,
+                })}
+                title={`Show all sessions named ${session.name}`}
+              >
+                <Filter className="h-3.5 w-3.5" />
+              </Link>
+            ) : null}
+          </div>
           <span className="mt-1 truncate text-xs text-slate-500">
             {session.createdAtLabel}
           </span>
-        </Link>
+        </div>
       </td>
       <td className="px-4 py-3">
         <RunStateBadge runState={session.runState} status={session.status} />
@@ -222,7 +278,9 @@ function TestSessionsPagination({ data }: { data: TestSessionsData }) {
       <div className="flex items-center gap-2">
         <PaginationLink
           disabled={!pagination.hasPrevious}
-          href={buildTestSessionsHref(data, { page: pagination.page - 1 })}
+          href={buildTestSessionsHref(data.filters, {
+            page: pagination.page - 1,
+          })}
         >
           Previous
         </PaginationLink>
@@ -231,7 +289,7 @@ function TestSessionsPagination({ data }: { data: TestSessionsData }) {
         </span>
         <PaginationLink
           disabled={!pagination.hasNext}
-          href={buildTestSessionsHref(data, { page: pagination.page + 1 })}
+          href={buildTestSessionsHref(data.filters, { page: pagination.page + 1 })}
         >
           Next
         </PaginationLink>
@@ -267,17 +325,25 @@ function PaginationLink({
   );
 }
 
-function buildTestSessionsHref(data: TestSessionsData, overrides: { page: number }) {
+function buildTestSessionsHref(
+  filters: TestSessionsData["filters"],
+  overrides: {
+    page?: number;
+    sessionName?: string;
+  } = {},
+) {
   const params = new URLSearchParams();
-  const { filters } = data;
+  const page = overrides.page ?? 1;
+  const sessionName = overrides.sessionName ?? filters.sessionName;
 
   setSearchParam(params, "q", filters.query);
+  setSearchParam(params, "session", sessionName);
   setSearchParam(
     params,
     "pageSize",
     filters.pageSize === 20 ? "" : String(filters.pageSize),
   );
-  setSearchParam(params, "page", overrides.page === 1 ? "" : String(overrides.page));
+  setSearchParam(params, "page", page === 1 ? "" : String(page));
 
   const query = params.toString();
 
@@ -304,6 +370,7 @@ async function fetchTestSessionsData(
   const params = new URLSearchParams();
 
   setSearchParam(params, "q", filters.query);
+  setSearchParam(params, "session", filters.sessionName);
   setSearchParam(params, "page", String(filters.page));
   setSearchParam(params, "pageSize", String(filters.pageSize));
 

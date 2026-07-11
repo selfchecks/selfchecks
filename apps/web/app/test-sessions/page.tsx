@@ -21,6 +21,7 @@ export default async function TestSessionsPage({
     page: readNumberParam(params.page),
     pageSize: readNumberParam(params.pageSize),
     query: readStringParam(params.q),
+    sessionName: readStringParam(params.session),
   });
   const settings = await getDashboardSettingsData(data.projectSlug);
 

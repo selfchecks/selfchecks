@@ -24,6 +24,7 @@ const testSessionsFixture: TestSessionsData = {
     page: 2,
     pageSize: 10,
     query: "release",
+    sessionName: "Nightly regression",
   },
   pagination: {
     from: 11,
@@ -79,6 +80,7 @@ describe("TestSessionsPage", () => {
           page: "2",
           pageSize: "10",
           q: "release",
+          session: "Nightly regression",
         }),
       }),
     );
@@ -87,6 +89,7 @@ describe("TestSessionsPage", () => {
       page: 2,
       pageSize: 10,
       query: "release",
+      sessionName: "Nightly regression",
     });
     expect(mocks.getDashboardSettingsData).toHaveBeenCalledWith("default");
     expect(screen.getByRole("heading", { name: "Test sessions" })).toBeTruthy();
@@ -104,8 +107,20 @@ describe("TestSessionsPage", () => {
         .value,
     ).toBe("10");
     expect(
-      screen.getByRole("link", { name: /Nightly regression/ }).getAttribute("href"),
+      screen.getByRole("link", { name: "Nightly regression" }).getAttribute("href"),
     ).toBe("/test-sessions/session_1");
+    expect(
+      screen
+        .getByRole("link", { name: "Filter sessions by Nightly regression" })
+        .getAttribute("href"),
+    ).toBe("/test-sessions?q=release&session=Nightly+regression&pageSize=10");
+    expect(screen.getByText("Session:")).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: "Clear session filter" }).getAttribute("href"),
+    ).toBe("/test-sessions?q=release&pageSize=10");
+    expect(
+      document.querySelector<HTMLInputElement>('input[name="session"]')?.value,
+    ).toBe("Nightly regression");
     const targetUrlLink = screen.getByRole("link", {
       name: "https://example.test",
     });
@@ -148,7 +163,7 @@ describe("TestSessionsPage", () => {
     expect(screen.getByText("2.4 s")).toBeTruthy();
     expect(screen.getByText("Page 2 of 2")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Previous" }).getAttribute("href")).toBe(
-      "/test-sessions?q=release&pageSize=10",
+      "/test-sessions?q=release&session=Nightly+regression&pageSize=10",
     );
   });
 
@@ -158,6 +173,7 @@ describe("TestSessionsPage", () => {
         page: 1,
         pageSize: 20,
         query: "",
+        sessionName: "",
       },
       pagination: {
         from: 0,

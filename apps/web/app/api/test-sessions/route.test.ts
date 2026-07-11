@@ -21,6 +21,7 @@ describe("test sessions route", () => {
         page: 2,
         pageSize: 10,
         query: "release",
+        sessionName: "Release v1.2.3",
       },
       pagination: {
         from: 11,
@@ -40,7 +41,7 @@ describe("test sessions route", () => {
 
     const response = await GET(
       new Request(
-        "http://localhost/api/test-sessions?project=account&page=2&pageSize=10&q=release",
+        "http://localhost/api/test-sessions?project=account&page=2&pageSize=10&q=release&session=Release%20v1.2.3",
       ),
     );
 
@@ -50,6 +51,7 @@ describe("test sessions route", () => {
       page: 2,
       pageSize: 10,
       query: "release",
+      sessionName: "Release v1.2.3",
     });
   });
 
@@ -59,6 +61,7 @@ describe("test sessions route", () => {
         page: 1,
         pageSize: 20,
         query: "",
+        sessionName: "",
       },
       pagination: {
         from: 0,
@@ -80,6 +83,7 @@ describe("test sessions route", () => {
       page: undefined,
       pageSize: undefined,
       query: undefined,
+      sessionName: undefined,
     });
   });
 

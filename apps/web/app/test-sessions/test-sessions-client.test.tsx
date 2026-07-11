@@ -10,6 +10,7 @@ const initialData: TestSessionsData = {
     page: 2,
     pageSize: 10,
     query: "release",
+    sessionName: "Initial session",
   },
   pagination: {
     from: 11,
@@ -83,7 +84,7 @@ describe("TestSessionsClient", () => {
 
     render(<TestSessionsClient initialData={initialData} />);
 
-    expect(screen.getByRole("link", { name: /Initial session/ })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Initial session" })).toBeTruthy();
 
     await act(async () => {
       vi.advanceTimersByTime(2000);
@@ -92,11 +93,11 @@ describe("TestSessionsClient", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/test-sessions?q=release&page=2&pageSize=10",
+      "/api/test-sessions?q=release&session=Initial+session&page=2&pageSize=10",
       {
         cache: "no-store",
       },
     );
-    expect(screen.getByRole("link", { name: /Updated session/ })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Updated session" })).toBeTruthy();
   });
 });

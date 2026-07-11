@@ -1419,7 +1419,7 @@ describe("dashboard data", () => {
       {
         createdAt: new Date("2026-07-05T11:20:00.000Z"),
         id: "session_1",
-        name: null,
+        name: "Release v1.2.3",
         source: "/repo/config/checkly",
         status: "FAILED",
         targetUrl: "https://example.test",
@@ -1477,11 +1477,18 @@ describe("dashboard data", () => {
       page: 2,
       pageSize: 1,
       query: "signin",
+      sessionName: "Release v1.2.3",
     });
 
     expect(mocks.testSessionCount).toHaveBeenCalledWith({
       where: expect.objectContaining({
         AND: [
+          {
+            name: {
+              equals: "Release v1.2.3",
+              mode: "insensitive",
+            },
+          },
           {
             OR: expect.arrayContaining([
               {
@@ -1531,6 +1538,12 @@ describe("dashboard data", () => {
         where: {
           AND: [
             {
+              name: {
+                equals: "Release v1.2.3",
+                mode: "insensitive",
+              },
+            },
+            {
               OR: expect.any(Array),
             },
           ],
@@ -1556,6 +1569,7 @@ describe("dashboard data", () => {
       page: 2,
       pageSize: 1,
       query: "signin",
+      sessionName: "Release v1.2.3",
     });
     expect(data.pagination).toMatchObject({
       from: 2,
@@ -1645,6 +1659,7 @@ describe("dashboard data", () => {
         page: 1,
         pageSize: 20,
         query: "",
+        sessionName: "",
       },
       pagination: {
         from: 1,

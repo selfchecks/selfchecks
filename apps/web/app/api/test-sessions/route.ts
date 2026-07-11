@@ -14,6 +14,7 @@ export async function GET(request: Request) {
       page: readNumberParam(url.searchParams.get("page")),
       pageSize: readNumberParam(url.searchParams.get("pageSize")),
       query: url.searchParams.get("q") ?? undefined,
+      sessionName: url.searchParams.get("session") ?? undefined,
     });
 
     return NextResponse.json(data, {
