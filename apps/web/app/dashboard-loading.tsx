@@ -35,19 +35,21 @@ export function DashboardPageSkeleton({
       <SkeletonSidebar activeView={activeView} />
 
       <div className="min-h-screen xl:pl-72">
-        <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-slate-800 bg-[#12171f]/95 px-4 backdrop-blur sm:px-6 lg:px-8">
+        <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-4 border-b border-slate-800 bg-[#12171f]/95 px-4 backdrop-blur sm:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-3">
             <ServiceMark className="h-9 w-9 shrink-0 rounded-md xl:hidden" />
-            {activeView === "dashboard" ? (
-              <SkeletonLine className="h-9 w-36 rounded-md" />
-            ) : null}
           </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-3">
-              <SkeletonLine className="h-3 w-8" />
-              <SkeletonLine className="h-3 w-8" />
-            </div>
-            <SkeletonLine className="h-10 w-10 rounded-full bg-lime-600/30" />
+          <div className="flex shrink-0 items-center gap-2">
+            {activeView === "dashboard" ? (
+              <button
+                className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md bg-blue-600/40 px-4 text-sm font-semibold text-white"
+                disabled
+                type="button"
+              >
+                <Zap className="h-4 w-4" />
+                Run all checks
+              </button>
+            ) : null}
           </div>
         </header>
 
@@ -108,7 +110,53 @@ function SkeletonSidebar({ activeView }: { activeView: DashboardActiveView }) {
           })}
         </div>
       </nav>
+
+      <div className="border-t border-slate-800 p-4">
+        <div className="relative flex items-center justify-between gap-3">
+          <a
+            aria-label="Open queue: running 0, queued 0"
+            className="flex h-10 min-w-0 flex-1 items-center rounded-md px-3 text-slate-300"
+            href="/?view=queue"
+          >
+            <SkeletonSidebarQueueIndicators queuedCount={0} runningCount={0} />
+          </a>
+          <button
+            aria-expanded="false"
+            aria-label="Open account menu"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-lime-600/30 text-sm font-semibold text-lime-50"
+            disabled
+            type="button"
+          >
+            AD
+          </button>
+        </div>
+      </div>
     </aside>
+  );
+}
+
+function SkeletonSidebarQueueIndicators({
+  queuedCount,
+  runningCount,
+}: {
+  queuedCount: number;
+  runningCount: number;
+}) {
+  return (
+    <span
+      aria-label={`Running ${runningCount}, queued ${queuedCount}`}
+      className="flex items-center gap-3 text-sm font-semibold"
+      role="status"
+    >
+      <span className="inline-flex items-center gap-1.5">
+        <span className="h-2.5 w-2.5 rounded-full bg-blue-400" />
+        <span>{runningCount}</span>
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <span className="h-2.5 w-2.5 rounded-full bg-yellow-400" />
+        <span>{queuedCount}</span>
+      </span>
+    </span>
   );
 }
 
@@ -241,15 +289,15 @@ function ChecksTableSkeleton() {
   return (
     <section className="overflow-hidden rounded-md border border-slate-800 bg-[#11161d]">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1120px] table-fixed text-left text-sm">
+        <table className="w-full min-w-[1280px] table-fixed text-left text-sm">
           <thead className="border-b border-slate-700 bg-[#121820] text-xs font-semibold uppercase text-slate-400">
             <tr>
-              <th className="w-[46%] px-5 py-3">Name</th>
+              <th className="w-[42%] px-5 py-3">Name</th>
               <th className="w-[8%] px-4 py-3">Type</th>
               <th className="w-[18%] px-4 py-3">Last results</th>
               <th className="w-[6%] px-4 py-3">AVA</th>
-              <th className="w-[6%] px-4 py-3">AVG</th>
-              <th className="w-[6%] px-4 py-3">P95</th>
+              <th className="w-[8%] px-4 py-3">AVG</th>
+              <th className="w-[8%] px-4 py-3">P95</th>
               <th className="w-[6%] px-4 py-3">DT</th>
               <th className="w-[4%] px-4 py-3" />
             </tr>

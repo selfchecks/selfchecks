@@ -3,12 +3,15 @@
 import {
   type CSSProperties,
   type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
+  forwardRef,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   ArrowDownUp,
   Bot,
@@ -26,7 +29,6 @@ import {
   KeyRound,
   LockKeyhole,
   MoreVertical,
-  Play,
   Plus,
   Route,
   Save,
@@ -669,12 +671,12 @@ export default function DashboardClient({
           actions={
             activeView === "dashboard" ? (
               <button
-                className="inline-flex h-9 shrink-0 items-center gap-2 rounded-md bg-blue-600 px-3 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={queueingAllChecks || allRunnableChecks.length === 0}
                 onClick={() => void runAllChecks()}
                 type="button"
               >
-                <Play className="h-4 w-4" />
+                <Zap className="h-4 w-4" />
                 Run all checks
               </button>
             ) : null
@@ -1313,11 +1315,11 @@ function CheckTypeBadge({ type }: { type: CheckRow["type"] }) {
 
 function Topbar({ actions }: { actions?: ReactNode }) {
   return (
-    <header className="sticky top-0 z-20 flex h-16 items-center border-b border-slate-800 bg-[#12171f]/95 px-4 backdrop-blur sm:px-6 lg:px-8">
+    <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-4 border-b border-slate-800 bg-[#12171f]/95 px-4 backdrop-blur sm:px-6 lg:px-8">
       <div className="flex min-w-0 items-center gap-3">
         <ServiceMark className="h-9 w-9 shrink-0 rounded-md xl:hidden" />
-        {actions}
       </div>
+      <div className="flex shrink-0 items-center gap-2">{actions}</div>
     </header>
   );
 }
@@ -3111,118 +3113,239 @@ function StatusTooltip({
 function SparkBars({ bars }: { bars: CheckRow["bars"] }) {
   return (
     <div className="flex h-12 items-end gap-1 overflow-visible py-1">
-      {bars.map((bar, index) => {
-        const tooltipContent = runStateTooltipContent[bar.runState];
-        const attempts =
-          bar.attempts && bar.attempts.length > 0
-            ? bar.attempts
-            : [
-                {
-                  duration: bar.duration,
-                  label: "Attempt #1",
-                  occurredAt: bar.occurredAt,
-                  runner: bar.runner,
-                  runState: bar.runState,
-                  status: bar.status,
-                  tone: bar.tone,
-                },
-              ];
-        const attemptCountLabel =
-          attempts.length > 1 ? ` ${attempts.length} attempts` : "";
-        const ariaLabel = `${tooltipContent.title} ${bar.runner} ${bar.duration} ${bar.occurredAt}${attemptCountLabel}`;
-        const className =
-          "group relative flex h-11 w-2 items-end justify-center outline-none hover:z-20 focus-visible:ring-2 focus-visible:ring-blue-400/60 focus-within:z-20";
-        const content = (
-          <>
-            <span
-              aria-hidden="true"
-              className={cn(
-                "block w-1 rounded-sm transition",
-                getRunResultToneClassName(bar.tone),
-              )}
-              style={{ height: `${bar.value}px` }}
-            />
-            {bar.hasRetries ? (
-              <span
-                aria-hidden="true"
-                className="absolute bottom-0 h-1.5 w-1.5 translate-y-2 rounded-full bg-orange-400 shadow-sm shadow-orange-950/40"
-              />
-            ) : null}
-            <span
-              className={cn(
-                "pointer-events-none absolute left-1/2 top-full z-30 mt-3 hidden w-max min-w-64 -translate-x-1/2 rounded-md border border-slate-500/20 bg-slate-600 px-4 py-3 text-left shadow-2xl shadow-black/40",
-                "group-hover:block group-focus-within:block",
-              )}
-              role="tooltip"
-            >
-              <span className="flex items-center gap-2 text-base font-semibold text-slate-50">
-                <ResultTooltipStatus runState={bar.runState} status={bar.status} />
-                {tooltipContent.title}
-              </span>
-              {attempts.length > 1 ? (
-                <span className="mt-3 grid gap-3">
-                  {attempts.map((attempt, attemptIndex) => (
-                    <span
-                      className="block"
-                      key={`${attempt.label}-${attempt.occurredAt}-${attemptIndex}`}
-                    >
-                      <span className="block text-xs font-semibold uppercase text-slate-300">
-                        {attempt.label}
-                        {attemptIndex === attempts.length - 1 ? " (final)" : ""}
-                      </span>
-                      <span className="mt-1 flex items-center gap-2 text-sm font-semibold text-slate-50">
-                        <ResultTooltipStatus
-                          runState={attempt.runState}
-                          status={attempt.status}
-                        />
-                        <span>{attempt.runner}</span>
-                      </span>
-                      <span className="mt-1 flex items-center gap-4 text-xs text-slate-200">
-                        <span>{attempt.duration}</span>
-                        <span>{attempt.occurredAt}</span>
-                      </span>
-                    </span>
-                  ))}
-                </span>
-              ) : (
-                <span className="mt-2 flex items-center gap-6 text-sm text-slate-100">
-                  <span>{bar.runner}</span>
-                  <span>{bar.duration}</span>
-                  <span>{bar.occurredAt}</span>
-                </span>
-              )}
-              <span className="absolute bottom-full left-1/2 h-3 w-3 -translate-x-1/2 translate-y-1/2 rotate-45 bg-slate-600" />
-            </span>
-          </>
-        );
-
-        return bar.href ? (
-          <Link
-            aria-label={ariaLabel}
-            className={className}
-            href={bar.href}
-            key={`${bar.occurredAt}-${bar.value}-${index}`}
-            onClick={(event) => event.stopPropagation()}
-            onKeyDown={(event) => event.stopPropagation()}
-          >
-            {content}
-          </Link>
-        ) : (
-          <span
-            aria-label={ariaLabel}
-            className={className}
-            key={`${bar.occurredAt}-${bar.value}-${index}`}
-            onClick={(event) => event.stopPropagation()}
-            onKeyDown={(event) => event.stopPropagation()}
-            tabIndex={0}
-          >
-            {content}
-          </span>
-        );
-      })}
+      {bars.map((bar, index) => (
+        <SparkBar bar={bar} key={`${bar.occurredAt}-${bar.value}-${index}`} />
+      ))}
     </div>
   );
 }
+
+type SparkBarData = CheckRow["bars"][number];
+type SparkBarAttempt = NonNullable<SparkBarData["attempts"]>[number];
+type SparkBarTooltipPosition = {
+  arrowLeft: number;
+  left: number;
+  placement: "bottom" | "top";
+  top: number;
+};
+
+function SparkBar({ bar }: { bar: SparkBarData }) {
+  const anchorRef = useRef<HTMLElement | null>(null);
+  const tooltipRef = useRef<HTMLSpanElement | null>(null);
+  const [active, setActive] = useState(false);
+  const [position, setPosition] = useState<SparkBarTooltipPosition | null>(null);
+  const tooltipContent = runStateTooltipContent[bar.runState];
+  const attempts = getSparkBarAttempts(bar);
+  const attemptCountLabel = attempts.length > 1 ? ` ${attempts.length} attempts` : "";
+  const ariaLabel = `${tooltipContent.title} ${bar.runner} ${bar.duration} ${bar.occurredAt}${attemptCountLabel}`;
+  const className =
+    "group relative flex h-11 w-2 items-end justify-center outline-none hover:z-20 focus-visible:ring-2 focus-visible:ring-blue-400/60 focus-within:z-20";
+  const content = (
+    <>
+      <span
+        aria-hidden="true"
+        className={cn(
+          "block w-1 rounded-sm transition",
+          getRunResultToneClassName(bar.tone),
+        )}
+        style={{ height: `${bar.value}px` }}
+      />
+      {bar.hasRetries ? (
+        <span
+          aria-hidden="true"
+          className="absolute bottom-0 h-1.5 w-1.5 translate-y-2 rounded-full bg-orange-400 shadow-sm shadow-orange-950/40"
+        />
+      ) : null}
+      {active ? (
+        <SparkBarTooltipPortal
+          attempts={attempts}
+          bar={bar}
+          position={position}
+          ref={tooltipRef}
+          title={tooltipContent.title}
+        />
+      ) : null}
+    </>
+  );
+
+  useEffect(() => {
+    if (!active) {
+      setPosition(null);
+      return;
+    }
+
+    function updatePosition() {
+      const anchor = anchorRef.current;
+      const tooltip = tooltipRef.current;
+
+      if (!anchor || !tooltip) {
+        return;
+      }
+
+      const viewportPadding = 8;
+      const tooltipGap = 12;
+      const anchorRect = anchor.getBoundingClientRect();
+      const tooltipWidth = tooltip.offsetWidth || 256;
+      const tooltipHeight = tooltip.offsetHeight || 120;
+      const anchorCenter = anchorRect.left + anchorRect.width / 2;
+      const availableBelow = window.innerHeight - anchorRect.bottom;
+      const availableAbove = anchorRect.top;
+      const placement =
+        availableBelow >= tooltipHeight + tooltipGap || availableBelow >= availableAbove
+          ? "bottom"
+          : "top";
+      const unclampedLeft = anchorCenter - tooltipWidth / 2;
+      const left = Math.min(
+        window.innerWidth - tooltipWidth - viewportPadding,
+        Math.max(viewportPadding, unclampedLeft),
+      );
+      const top =
+        placement === "bottom"
+          ? Math.min(
+              window.innerHeight - tooltipHeight - viewportPadding,
+              anchorRect.bottom + tooltipGap,
+            )
+          : Math.max(viewportPadding, anchorRect.top - tooltipHeight - tooltipGap);
+
+      setPosition({
+        arrowLeft: Math.min(tooltipWidth - 16, Math.max(16, anchorCenter - left)),
+        left,
+        placement,
+        top,
+      });
+    }
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [active]);
+
+  const sharedProps = {
+    "aria-label": ariaLabel,
+    className,
+    onBlur: () => setActive(false),
+    onFocus: () => setActive(true),
+    onKeyDown: (event: ReactKeyboardEvent) => event.stopPropagation(),
+    onMouseEnter: () => setActive(true),
+    onMouseLeave: () => setActive(false),
+  };
+  const setAnchorNode = (node: HTMLElement | null) => {
+    anchorRef.current = node;
+  };
+
+  return bar.href ? (
+    <Link
+      {...sharedProps}
+      href={bar.href}
+      onClick={(event) => event.stopPropagation()}
+      ref={setAnchorNode}
+    >
+      {content}
+    </Link>
+  ) : (
+    <span
+      {...sharedProps}
+      onClick={(event) => event.stopPropagation()}
+      ref={setAnchorNode}
+      tabIndex={0}
+    >
+      {content}
+    </span>
+  );
+}
+
+function getSparkBarAttempts(bar: SparkBarData): SparkBarAttempt[] {
+  return bar.attempts && bar.attempts.length > 0
+    ? bar.attempts
+    : [
+        {
+          duration: bar.duration,
+          label: "Attempt #1",
+          occurredAt: bar.occurredAt,
+          runner: bar.runner,
+          runState: bar.runState,
+          status: bar.status,
+          tone: bar.tone,
+        },
+      ];
+}
+
+const SparkBarTooltipPortal = forwardRef<
+  HTMLSpanElement,
+  {
+    attempts: SparkBarAttempt[];
+    bar: SparkBarData;
+    position: SparkBarTooltipPosition | null;
+    title: string;
+  }
+>(function SparkBarTooltipPortal({ attempts, bar, position, title }, ref) {
+  return createPortal(
+    <span
+      className="pointer-events-none fixed z-50 w-max min-w-64 rounded-md border border-slate-500/20 bg-slate-600 px-4 py-3 text-left shadow-2xl shadow-black/40"
+      ref={ref}
+      role="tooltip"
+      style={{
+        left: position?.left ?? 0,
+        top: position?.top ?? 0,
+        visibility: position ? "visible" : "hidden",
+      }}
+    >
+      <span className="flex items-center gap-2 text-base font-semibold text-slate-50">
+        <ResultTooltipStatus runState={bar.runState} status={bar.status} />
+        {title}
+      </span>
+      {attempts.length > 1 ? (
+        <span className="mt-3 grid gap-3">
+          {attempts.map((attempt, attemptIndex) => (
+            <span
+              className="block"
+              key={`${attempt.label}-${attempt.occurredAt}-${attemptIndex}`}
+            >
+              <span className="block text-xs font-semibold uppercase text-slate-300">
+                {attempt.label}
+                {attemptIndex === attempts.length - 1 ? " (final)" : ""}
+              </span>
+              <span className="mt-1 flex items-center gap-2 text-sm font-semibold text-slate-50">
+                <ResultTooltipStatus
+                  runState={attempt.runState}
+                  status={attempt.status}
+                />
+                <span>{attempt.runner}</span>
+              </span>
+              <span className="mt-1 flex items-center gap-4 text-xs text-slate-200">
+                <span>{attempt.duration}</span>
+                <span>{attempt.occurredAt}</span>
+              </span>
+            </span>
+          ))}
+        </span>
+      ) : (
+        <span className="mt-2 flex items-center gap-6 text-sm text-slate-100">
+          <span>{bar.runner}</span>
+          <span>{bar.duration}</span>
+          <span>{bar.occurredAt}</span>
+        </span>
+      )}
+      <span
+        className={cn(
+          "absolute h-3 w-3 rotate-45 bg-slate-600",
+          position?.placement === "top"
+            ? "top-full -translate-y-1/2"
+            : "bottom-full translate-y-1/2",
+        )}
+        style={{
+          left: position?.arrowLeft ?? 16,
+        }}
+      />
+    </span>,
+    document.body,
+  );
+});
 
 function ResultTooltipStatus({
   runState,

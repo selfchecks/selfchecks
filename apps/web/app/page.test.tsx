@@ -346,6 +346,16 @@ describe("DashboardPage", () => {
     render(<DashboardPageSkeleton />);
 
     expect(screen.getByLabelText("Loading dashboard data")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Run all checks" }).hasAttribute("disabled"),
+    ).toBe(true);
+    expect(
+      screen
+        .getByRole("button", { name: "Open account menu" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    expect(screen.getByRole("status", { name: "Running 0, queued 0" })).toBeTruthy();
+    expect(screen.getByLabelText("Open queue: running 0, queued 0")).toBeTruthy();
     expect(screen.getByText("Firewatch")).toBeTruthy();
     expect(screen.getByText("PASSING")).toBeTruthy();
     expect(screen.getByText("Last results")).toBeTruthy();
@@ -726,13 +736,20 @@ describe("DashboardPage", () => {
     ).toBeGreaterThan(0);
   });
 
-  it("renders last result hover targets with run details", () => {
+  it("renders last result hover targets with run details", async () => {
+    const user = userEvent.setup();
+
     renderDashboard();
 
-    expect(
-      screen.getAllByLabelText("Passing Local runner 100 ms Jun 22 22:20").length,
-    ).toBeGreaterThan(0);
-    expect(screen.getAllByRole("tooltip").length).toBeGreaterThan(0);
+    const resultBar = screen.getAllByLabelText(
+      "Passing Local runner 100 ms Jun 22 22:20",
+    )[0]!;
+
+    await user.hover(resultBar);
+
+    await waitFor(() => {
+      expect(document.querySelector("[role='tooltip'].fixed")).toBeTruthy();
+    });
     expect(screen.getAllByText("Local runner").length).toBeGreaterThan(0);
   });
 
@@ -798,7 +815,9 @@ describe("DashboardPage", () => {
     );
   });
 
-  it("renders grouped retry result bars with all attempts and a retry marker", () => {
+  it("renders grouped retry result bars with all attempts and a retry marker", async () => {
+    const user = userEvent.setup();
+
     render(
       <DashboardClient
         initialGroups={[
@@ -865,7 +884,10 @@ describe("DashboardPage", () => {
     );
 
     expect(retryBar.querySelector(".bg-orange-400")).toBeTruthy();
-    expect(screen.getByText("Attempt #1")).toBeTruthy();
+
+    await user.hover(retryBar);
+
+    expect(await screen.findByText("Attempt #1")).toBeTruthy();
     expect(screen.getByText("Attempt #2 (final)")).toBeTruthy();
     expect(screen.getByText("1.41 min")).toBeTruthy();
     expect(screen.getByText("28.64 s")).toBeTruthy();
