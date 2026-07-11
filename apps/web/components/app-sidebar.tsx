@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  ChartNoAxesColumnIncreasing,
   FlaskConical,
   History,
   Home,
@@ -19,7 +20,8 @@ export type AppSidebarItem =
   | "journal"
   | "queue"
   | "settings"
-  | "test-sessions";
+  | "test-sessions"
+  | "usage";
 
 type SidebarEntry = {
   href: string;
@@ -37,6 +39,12 @@ const sidebarItems: SidebarEntry[] = [
     icon: FlaskConical,
     id: "test-sessions",
     label: "Test sessions",
+  },
+  {
+    href: "/usage",
+    icon: ChartNoAxesColumnIncreasing,
+    id: "usage",
+    label: "Usage",
   },
   { href: "/settings", icon: Settings2, id: "settings", label: "Settings" },
 ];
