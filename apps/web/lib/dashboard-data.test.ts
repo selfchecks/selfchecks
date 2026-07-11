@@ -1700,10 +1700,11 @@ describe("dashboard data", () => {
             checkSnapshotType: "BROWSER",
             createdAt: new Date("2026-07-05T11:20:00.000Z"),
             durationMs: null,
+            finishedAt: new Date("2026-07-05T11:21:00.000Z"),
             id: "run_1",
             logsPath: null,
             result: null,
-            status: "CANCELLED",
+            status: "FAILED",
           },
         ],
       },
@@ -1712,7 +1713,7 @@ describe("dashboard data", () => {
     const data = await getTestSessionsData("default");
 
     expect(data.sessions[0]).toMatchObject({
-      runState: "cancelled",
+      runState: "failed",
       status: "failing",
       summary: {
         failed: 1,

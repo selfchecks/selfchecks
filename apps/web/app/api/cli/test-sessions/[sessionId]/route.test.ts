@@ -46,7 +46,7 @@ describe("CLI test session status route", () => {
           status: "PASSED",
         },
       ],
-      status: "PASSED",
+      status: "RUNNING",
     });
 
     const response = await GET(createRequest(), {

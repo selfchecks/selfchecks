@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import type { CheckRunStatus } from "@selfchecks/core";
+import { summarizeTerminalRunStatuses, type CheckRunStatus } from "@selfchecks/core";
 
 import { isCliRequestAuthorized } from "@/lib/cli-auth";
 import { prisma } from "@/lib/prisma";
@@ -42,7 +42,15 @@ export async function GET(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Test session was not found." }, { status: 404 });
   }
 
-  const status = session.status.toLowerCase();
+  const inferredStatus = summarizeTerminalRunStatuses(
+    getFinalRuns(session.runs).map((run) => run.status),
+  );
+  const persistedStatus = session.status;
+  const status = (
+    persistedStatus === "QUEUED" || persistedStatus === "RUNNING"
+      ? (inferredStatus ?? persistedStatus)
+      : persistedStatus
+  ).toLowerCase();
 
   return NextResponse.json({
     sessionId: session.id,
@@ -66,18 +74,7 @@ function buildSummary(session: {
     status: string;
   }>;
 }) {
-  const finalRuns = new Map<string, (typeof session.runs)[number]>();
-
-  session.runs.forEach((run) => {
-    const key = run.checkSnapshotKey ?? run.id;
-    const current = finalRuns.get(key);
-
-    if (!current || run.attempt >= current.attempt) {
-      finalRuns.set(key, run);
-    }
-  });
-
-  const results = [...finalRuns.values()].map((run) => ({
+  const results = getFinalRuns(session.runs).map((run) => ({
     checkKey: run.checkSnapshotKey ?? run.id,
     checkName: run.checkSnapshotName ?? run.checkSnapshotKey ?? "Unknown check",
     durationMs: run.durationMs ?? 0,
@@ -103,6 +100,27 @@ function buildSummary(session: {
     skipped: 0,
     total: results.length,
   };
+}
+
+function getFinalRuns<
+  T extends {
+    attempt: number;
+    checkSnapshotKey: string | null;
+    id: string;
+  },
+>(runs: T[]): T[] {
+  const finalRuns = new Map<string, T>();
+
+  runs.forEach((run) => {
+    const key = run.checkSnapshotKey ?? run.id;
+    const current = finalRuns.get(key);
+
+    if (!current || run.attempt >= current.attempt) {
+      finalRuns.set(key, run);
+    }
+  });
+
+  return [...finalRuns.values()];
 }
 
 function isTerminalStatus(status: string) {

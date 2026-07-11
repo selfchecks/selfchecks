@@ -6,7 +6,7 @@ import { getRunEnvironment } from "@selfchecks/cli/environment";
 import { defaultPerformanceSettings, type CheckType } from "@selfchecks/core";
 import { prisma, type CheckRunStatus as PrismaCheckRunStatus } from "@selfchecks/db";
 
-import { type CheckJob } from "./jobs.js";
+import { finalizeTestSession, type CheckJob } from "./jobs.js";
 import { readPerformanceRuntimeSettings } from "./performance-settings.js";
 
 type LatestRun = {
@@ -61,6 +61,7 @@ export type ScheduleDueChecksSummary = {
 
 const activeRunStatuses = new Set<PrismaCheckRunStatus>(["QUEUED", "RUNNING"]);
 const activeSessionStatuses: PrismaCheckRunStatus[] = ["QUEUED", "RUNNING"];
+const TEST_SESSION_FINALIZATION_GRACE_MS = 60_000;
 
 export class CheckScheduler {
   private running = false;
@@ -161,6 +162,8 @@ export async function scheduleDueChecks({
     queuedRunTimeoutMinutes: performanceSettings.queuedRunTimeoutMinutes,
     runningRunTimeoutMinutes: performanceSettings.runningRunTimeoutMinutes,
   });
+
+  await reconcileTerminalTestSessions({ logger, now });
 
   await cleanupExpiredRunData({
     artifactRetentionDays: performanceSettings.artifactRetentionDays,
@@ -508,12 +511,6 @@ async function cancelStaleActiveRuns({
       }),
     ]);
 
-    try {
-      await finalizeCancelledTestSessions();
-    } catch (error) {
-      logger.warn("Unable to finalize cancelled test sessions.", error);
-    }
-
     return {
       queued: queued.count,
       running: running.count,
@@ -528,28 +525,52 @@ async function cancelStaleActiveRuns({
   }
 }
 
-async function finalizeCancelledTestSessions(): Promise<void> {
-  await prisma.testSession.updateMany({
-    data: {
-      status: "CANCELLED",
-    },
-    where: {
-      kind: "TEST",
-      runs: {
-        none: {
-          status: {
-            in: activeSessionStatuses,
+async function reconcileTerminalTestSessions({
+  logger,
+  now,
+}: {
+  logger: Pick<Console, "warn">;
+  now: Date;
+}): Promise<void> {
+  const finishedBefore = new Date(now.getTime() - TEST_SESSION_FINALIZATION_GRACE_MS);
+
+  try {
+    const sessions = await prisma.testSession.findMany({
+      select: {
+        id: true,
+      },
+      where: {
+        kind: "TEST",
+        runs: {
+          none: {
+            OR: [
+              {
+                status: {
+                  in: activeSessionStatuses,
+                },
+              },
+              {
+                finishedAt: null,
+              },
+              {
+                finishedAt: {
+                  gte: finishedBefore,
+                },
+              },
+            ],
           },
+          some: {},
         },
-        some: {
-          status: "CANCELLED",
+        status: {
+          in: activeSessionStatuses,
         },
       },
-      status: {
-        in: activeSessionStatuses,
-      },
-    },
-  });
+    });
+
+    await Promise.all(sessions.map((session) => finalizeTestSession(session.id)));
+  } catch (error) {
+    logger.warn("Unable to reconcile terminal test sessions.", error);
+  }
 }
 
 function formatScheduleSummary(summary: ScheduleDueChecksSummary): string {

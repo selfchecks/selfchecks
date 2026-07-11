@@ -9,10 +9,11 @@ const mocks = vi.hoisted(() => ({
   checkRunFindMany: vi.fn(),
   checkRunUpdate: vi.fn(),
   checkRunUpdateMany: vi.fn(),
+  finalizeTestSession: vi.fn(),
   getRunEnvironment: vi.fn(),
   queueAdd: vi.fn(),
   readPerformanceRuntimeSettings: vi.fn(),
-  testSessionUpdateMany: vi.fn(),
+  testSessionFindMany: vi.fn(),
 }));
 
 vi.mock("@selfchecks/db", () => ({
@@ -32,7 +33,7 @@ vi.mock("@selfchecks/db", () => ({
       updateMany: mocks.checkRunUpdateMany,
     },
     testSession: {
-      updateMany: mocks.testSessionUpdateMany,
+      findMany: mocks.testSessionFindMany,
     },
   },
 }));
@@ -43,6 +44,10 @@ vi.mock("@selfchecks/cli/environment", () => ({
 
 vi.mock("./performance-settings.js", () => ({
   readPerformanceRuntimeSettings: mocks.readPerformanceRuntimeSettings,
+}));
+
+vi.mock("./jobs.js", () => ({
+  finalizeTestSession: mocks.finalizeTestSession,
 }));
 
 import { scheduleDueChecks } from "./scheduler.js";
@@ -91,9 +96,7 @@ describe("scheduleDueChecks", () => {
     mocks.checkRunUpdateMany.mockResolvedValue({
       count: 0,
     });
-    mocks.testSessionUpdateMany.mockResolvedValue({
-      count: 0,
-    });
+    mocks.testSessionFindMany.mockResolvedValue([]);
     mocks.readPerformanceRuntimeSettings.mockResolvedValue({
       artifactRetentionDays: 14,
       historyRetentionDays: 180,
@@ -487,27 +490,57 @@ describe("scheduleDueChecks", () => {
         status: "RUNNING",
       },
     });
-    expect(mocks.testSessionUpdateMany).toHaveBeenCalledWith({
-      data: {
-        status: "CANCELLED",
+  });
+
+  it("reconciles stale active test sessions without active runs", async () => {
+    mocks.checkFindMany.mockResolvedValue([]);
+    mocks.testSessionFindMany.mockResolvedValue([{ id: "session_stuck" }]);
+
+    await scheduleDueChecks({
+      config: {
+        pollIntervalMs: 60_000,
+        queuedRunTimeoutMinutes: 30,
+        reporter: "list",
+        runningRunTimeoutMinutes: 120,
+      },
+      now,
+      queue: {
+        add: mocks.queueAdd,
+      },
+    });
+
+    expect(mocks.testSessionFindMany).toHaveBeenCalledWith({
+      select: {
+        id: true,
       },
       where: {
         kind: "TEST",
         runs: {
           none: {
-            status: {
-              in: ["QUEUED", "RUNNING"],
-            },
+            OR: [
+              {
+                status: {
+                  in: ["QUEUED", "RUNNING"],
+                },
+              },
+              {
+                finishedAt: null,
+              },
+              {
+                finishedAt: {
+                  gte: new Date("2026-06-29T09:59:00.000Z"),
+                },
+              },
+            ],
           },
-          some: {
-            status: "CANCELLED",
-          },
+          some: {},
         },
         status: {
           in: ["QUEUED", "RUNNING"],
         },
       },
     });
+    expect(mocks.finalizeTestSession).toHaveBeenCalledWith("session_stuck");
   });
 
   it("cleans expired artifact files and finished run history", async () => {

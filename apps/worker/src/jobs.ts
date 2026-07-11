@@ -9,7 +9,11 @@ import {
   type CheckRunSource,
   type EnvVar,
 } from "@selfchecks/cli/runner";
-import { type CheckDefinition, type CheckType } from "@selfchecks/core";
+import {
+  summarizeTerminalRunStatuses,
+  type CheckDefinition,
+  type CheckType,
+} from "@selfchecks/core";
 import { prisma } from "@selfchecks/db";
 
 import { readPerformanceRuntimeSettings } from "./performance-settings.js";
@@ -72,10 +76,6 @@ export type TestSessionJobResult = {
 
 const TEST_SESSION_JOB_PRIORITY = 10;
 const activeRunStatuses = ["QUEUED", "RUNNING"] as const;
-
-function isActiveRunStatus(status: string): boolean {
-  return status === "QUEUED" || status === "RUNNING";
-}
 
 export async function handleCheckJob(
   job: Pick<Job<RunCheckJob>, "data">,
@@ -305,7 +305,7 @@ async function markTestSessionRuns(
   ]);
 }
 
-async function finalizeTestSession(sessionId: string): Promise<void> {
+export async function finalizeTestSession(sessionId: string): Promise<void> {
   const activeRun = await prisma.checkRun.findFirst({
     select: {
       id: true,
@@ -342,10 +342,6 @@ async function finalizeTestSession(sessionId: string): Promise<void> {
     },
   });
 
-  if (runs.length === 0 || runs.some((run) => isActiveRunStatus(run.status))) {
-    return;
-  }
-
   const finalRuns = new Map<string, (typeof runs)[number]>();
 
   runs.forEach((run) => {
@@ -357,21 +353,31 @@ async function finalizeTestSession(sessionId: string): Promise<void> {
     }
   });
 
-  const statuses = [...finalRuns.values()].map((run) => run.status);
-  const status = statuses.every((runStatus) => runStatus === "PASSED")
-    ? "PASSED"
-    : statuses.some((runStatus) => runStatus === "TIMED_OUT")
-      ? "TIMED_OUT"
-      : statuses.some((runStatus) => runStatus === "CANCELLED")
-        ? "CANCELLED"
-        : "FAILED";
+  const status = summarizeTerminalRunStatuses(
+    [...finalRuns.values()].map((run) => run.status),
+  );
 
-  await prisma.testSession.update({
+  if (!status) {
+    return;
+  }
+
+  await prisma.testSession.updateMany({
     data: {
       status,
     },
     where: {
       id: sessionId,
+      kind: "TEST",
+      runs: {
+        none: {
+          status: {
+            in: [...activeRunStatuses],
+          },
+        },
+      },
+      status: {
+        in: [...activeRunStatuses],
+      },
     },
   });
 }

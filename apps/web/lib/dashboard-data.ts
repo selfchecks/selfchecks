@@ -2,6 +2,7 @@ import path from "node:path";
 import { readFile } from "node:fs/promises";
 
 import type { Prisma } from "@prisma/client";
+import { summarizeTerminalRunStatuses } from "@selfchecks/core";
 
 import type {
   DashboardCheckRow,
@@ -31,6 +32,7 @@ const MAX_RETRY_ATTEMPTS_PER_RUN = 11;
 const MAX_RESULT_BAR_HEIGHT = 44;
 const MIN_RESULT_BAR_HEIGHT = 8;
 const activeSessionStatuses = ["QUEUED", "RUNNING"];
+const TEST_SESSION_FINALIZATION_GRACE_MS = 60_000;
 
 type DashboardData = {
   firewatch: DashboardFirewatch;
@@ -294,6 +296,7 @@ type MappableRun = {
   createdAt: Date;
   durationMs: number | null;
   errorMessage: string | null;
+  finishedAt?: Date | null;
   checkId?: string | null;
   checkSnapshotEntrypoint?: string | null;
   checkSnapshotGroupName?: string | null;
@@ -1477,15 +1480,19 @@ function resolveTestSessionStatus(
   status: string,
   runs: TestSessionRunWithCheck[],
 ): string {
-  if (
-    !activeSessionStatuses.includes(status) ||
-    runs.length === 0 ||
-    runs.some((run) => activeSessionStatuses.includes(run.status))
-  ) {
+  const terminalStatus = summarizeTerminalRunStatuses(runs.map((run) => run.status));
+
+  if (!activeSessionStatuses.includes(status) || !terminalStatus) {
     return status;
   }
 
-  return runs.some((run) => run.status === "CANCELLED") ? "CANCELLED" : status;
+  const finishedBefore = Date.now() - TEST_SESSION_FINALIZATION_GRACE_MS;
+
+  return runs.every(
+    (run) => run.finishedAt && run.finishedAt.getTime() < finishedBefore,
+  )
+    ? terminalStatus
+    : status;
 }
 
 function mapTestSessionChecks(

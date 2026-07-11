@@ -11,7 +11,22 @@ import {
   normalizeCheckQueueName,
   normalizeTags,
   retryStrategySchema,
+  summarizeTerminalRunStatuses,
 } from "./index.js";
+
+describe("summarizeTerminalRunStatuses", () => {
+  it("returns no result while a run is active", () => {
+    expect(summarizeTerminalRunStatuses(["PASSED", "RUNNING"])).toBeUndefined();
+    expect(summarizeTerminalRunStatuses([])).toBeUndefined();
+  });
+
+  it("summarizes terminal run statuses with deterministic precedence", () => {
+    expect(summarizeTerminalRunStatuses(["PASSED", "PASSED"])).toBe("PASSED");
+    expect(summarizeTerminalRunStatuses(["PASSED", "FAILED"])).toBe("FAILED");
+    expect(summarizeTerminalRunStatuses(["FAILED", "CANCELLED"])).toBe("CANCELLED");
+    expect(summarizeTerminalRunStatuses(["CANCELLED", "TIMED_OUT"])).toBe("TIMED_OUT");
+  });
+});
 
 describe("normalizeTags", () => {
   it("trims, deduplicates, and sorts tags", () => {

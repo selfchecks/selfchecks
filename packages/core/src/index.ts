@@ -27,6 +27,35 @@ export const checkRunStatuses = [
 ] as const;
 export type CheckRunStatus = (typeof checkRunStatuses)[number];
 
+export type PersistedCheckRunStatus =
+  | "CANCELLED"
+  | "FAILED"
+  | "PASSED"
+  | "QUEUED"
+  | "RUNNING"
+  | "TIMED_OUT";
+
+export function summarizeTerminalRunStatuses(
+  statuses: readonly string[],
+): Exclude<PersistedCheckRunStatus, "QUEUED" | "RUNNING"> | undefined {
+  if (
+    statuses.length === 0 ||
+    statuses.some((status) => status === "QUEUED" || status === "RUNNING")
+  ) {
+    return undefined;
+  }
+
+  if (statuses.every((status) => status === "PASSED")) {
+    return "PASSED";
+  }
+
+  if (statuses.some((status) => status === "TIMED_OUT")) {
+    return "TIMED_OUT";
+  }
+
+  return statuses.some((status) => status === "CANCELLED") ? "CANCELLED" : "FAILED";
+}
+
 export const defaultCheckQueueName = "selfchecks-checks";
 
 export function normalizeCheckQueueName(value: string | undefined): string {

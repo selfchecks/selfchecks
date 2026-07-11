@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   runTestSessionCheck: vi.fn(),
   spawn: vi.fn(),
   testSessionUpdate: vi.fn(),
+  testSessionUpdateMany: vi.fn(),
   TestSessionTimeoutError: class TestSessionTimeoutError extends Error {
     constructor(timeoutMs: number) {
       super(`Test session timed out after ${timeoutMs} ms.`);
@@ -52,6 +53,7 @@ vi.mock("@selfchecks/db", () => ({
     },
     testSession: {
       update: mocks.testSessionUpdate,
+      updateMany: mocks.testSessionUpdateMany,
     },
   },
 }));
@@ -335,12 +337,23 @@ describe("handleCheckJob", () => {
         existingTestSessionId: "session_1",
       }),
     );
-    expect(mocks.testSessionUpdate).toHaveBeenCalledWith({
+    expect(mocks.testSessionUpdateMany).toHaveBeenCalledWith({
       data: {
         status: "PASSED",
       },
       where: {
         id: "session_1",
+        kind: "TEST",
+        runs: {
+          none: {
+            status: {
+              in: ["QUEUED", "RUNNING"],
+            },
+          },
+        },
+        status: {
+          in: ["QUEUED", "RUNNING"],
+        },
       },
     });
   });
@@ -388,7 +401,7 @@ describe("handleCheckJob", () => {
       },
     });
 
-    expect(mocks.testSessionUpdate).not.toHaveBeenCalled();
+    expect(mocks.testSessionUpdateMany).not.toHaveBeenCalled();
     expect(mocks.checkRunFindMany).not.toHaveBeenCalled();
   });
 
