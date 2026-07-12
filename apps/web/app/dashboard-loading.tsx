@@ -42,7 +42,7 @@ export function DashboardPageSkeleton({
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {activeView === "dashboard" ? (
-              <SkeletonLine className="h-10 w-44 shrink-0 border border-slate-700 bg-[#111821]" />
+              <SkeletonLine className="h-10 w-44 shrink-0" />
             ) : null}
           </div>
         </header>
@@ -186,7 +186,7 @@ function DashboardSkeleton() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <SkeletonLine className="h-9 w-9" />
-            <SkeletonLine className="h-9 w-56 border border-slate-700 bg-[#111821]" />
+            <SkeletonLine className="h-9 w-56" />
           </div>
         </div>
       </section>
