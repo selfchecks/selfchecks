@@ -63,8 +63,9 @@ describe("UsagePage", () => {
     render(await UsagePage());
 
     expect(screen.getByRole("heading", { name: "Usage" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Usage" }).getAttribute("aria-current"))
-      .toBe("page");
+    expect(
+      screen.getByRole("link", { name: "Usage" }).getAttribute("aria-current"),
+    ).toBe("page");
     expect(
       screen.getByRole("img", { name: "Completed API and browser tests by day" }),
     ).toBeTruthy();

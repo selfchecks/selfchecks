@@ -181,7 +181,14 @@ function SuccessRateCard({
             role="img"
             viewBox="0 0 100 100"
           >
-            <circle cx="50" cy="50" fill="none" r="42" stroke="#273244" strokeWidth="9" />
+            <circle
+              cx="50"
+              cy="50"
+              fill="none"
+              r="42"
+              stroke="#273244"
+              strokeWidth="9"
+            />
             <circle
               cx="50"
               cy="50"
@@ -229,7 +236,11 @@ function ResultCount({
   );
 }
 
-function UnstableTests({ tests }: { tests: Awaited<ReturnType<typeof getUsageData>>["unstableTests"] }) {
+function UnstableTests({
+  tests,
+}: {
+  tests: Awaited<ReturnType<typeof getUsageData>>["unstableTests"];
+}) {
   return (
     <div className="overflow-hidden rounded-md border border-slate-800 bg-[#111821]">
       <div className="border-b border-slate-800 px-5 py-4">
