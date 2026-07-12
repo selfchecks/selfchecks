@@ -7,6 +7,11 @@ import type { UsageData, UsageDay } from "@/lib/usage-data";
 const CHART_HEIGHT = 240;
 const CHART_WIDTH = 960;
 const PADDING = { bottom: 36, left: 44, right: 12, top: 16 };
+type PopoverSeries = {
+  color: string;
+  label: string;
+  value: number;
+};
 
 export function UsageChart({ days }: { days: UsageData["days"] }) {
   const [activeIndex, setActiveIndex] = useState<number>();
@@ -19,7 +24,14 @@ export function UsageChart({ days }: { days: UsageData["days"] }) {
   const ticks = Array.from({ length: 5 }, (_, index) => (yMax / 4) * index);
 
   return (
-    <ChartContainer activeIndex={activeIndex} days={days}>
+    <ChartContainer
+      activeIndex={activeIndex}
+      days={days}
+      getSeries={(day) => [
+        { color: "bg-sky-400", label: "API", value: day.api },
+        { color: "bg-violet-400", label: "Browser", value: day.browser },
+      ]}
+    >
       <svg
         aria-label="Completed API and browser tests by day"
         className="block w-full"
@@ -79,7 +91,14 @@ export function TestResultsChart({ days }: { days: UsageData["days"] }) {
   const ticks = Array.from({ length: 5 }, (_, index) => (yMax / 4) * index);
 
   return (
-    <ChartContainer activeIndex={activeIndex} days={days}>
+    <ChartContainer
+      activeIndex={activeIndex}
+      days={days}
+      getSeries={(day) => [
+        { color: "bg-emerald-400", label: "Passed", value: day.passed },
+        { color: "bg-red-400", label: "Failed", value: day.failed },
+      ]}
+    >
       <svg
         aria-label="Passed and failed tests by day"
         className="block w-full"
@@ -130,14 +149,87 @@ export function TestResultsChart({ days }: { days: UsageData["days"] }) {
   );
 }
 
+export function TestSourcesChart({ days }: { days: UsageData["days"] }) {
+  const [activeIndex, setActiveIndex] = useState<number>();
+  const plotHeight = CHART_HEIGHT - PADDING.top - PADDING.bottom;
+  const plotWidth = CHART_WIDTH - PADDING.left - PADDING.right;
+  const maxValue = Math.max(
+    1,
+    ...days.map((day) => Math.max(day.scheduled, day.testSessions)),
+  );
+  const yMax = getRoundedMax(maxValue);
+  const groupWidth = plotWidth / days.length;
+  const barWidth = Math.max(3, Math.min(10, groupWidth * 0.34));
+  const ticks = Array.from({ length: 5 }, (_, index) => (yMax / 4) * index);
+
+  return (
+    <ChartContainer
+      activeIndex={activeIndex}
+      days={days}
+      getSeries={(day) => [
+        { color: "bg-emerald-400", label: "Scheduled", value: day.scheduled },
+        { color: "bg-amber-400", label: "Test sessions", value: day.testSessions },
+      ]}
+    >
+      <svg
+        aria-label="Scheduled checks and test sessions by day"
+        className="block w-full"
+        role="img"
+        viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
+      >
+        <ChartGrid plotHeight={plotHeight} ticks={ticks} yMax={yMax} />
+
+        {days.map((day, index) => {
+          const center = PADDING.left + groupWidth * (index + 0.5);
+          const scheduledHeight = (day.scheduled / yMax) * plotHeight;
+          const sessionsHeight = (day.testSessions / yMax) * plotHeight;
+          const showLabel = index === 0 || index === days.length - 1 || index % 5 === 4;
+
+          return (
+            <ChartDayTarget
+              center={center}
+              day={day}
+              groupWidth={groupWidth}
+              index={index}
+              key={day.date}
+              onActiveChange={setActiveIndex}
+              plotHeight={plotHeight}
+            >
+              <rect
+                fill="#34d399"
+                height={scheduledHeight}
+                rx="2"
+                width={barWidth}
+                x={center - barWidth - 1}
+                y={PADDING.top + plotHeight - scheduledHeight}
+              />
+              <rect
+                fill="#fbbf24"
+                height={sessionsHeight}
+                rx="2"
+                width={barWidth}
+                x={center + 1}
+                y={PADDING.top + plotHeight - sessionsHeight}
+              />
+              {showLabel ? <ChartDateLabel center={center} label={day.label} /> : null}
+            </ChartDayTarget>
+          );
+        })}
+      </svg>
+    </ChartContainer>
+  );
+}
+
 function ChartContainer({
   activeIndex,
   children,
   days,
+  getSeries,
 }: {
   activeIndex?: number;
   children: React.ReactNode;
   days: UsageDay[];
+  getSeries: (day: UsageDay) => [PopoverSeries, PopoverSeries];
 }) {
   const activeDay = activeIndex === undefined ? undefined : days[activeIndex];
 
@@ -146,7 +238,12 @@ function ChartContainer({
       <div className="relative min-w-[720px]">
         {children}
         {activeDay && activeIndex !== undefined ? (
-          <ChartPopover day={activeDay} index={activeIndex} totalDays={days.length} />
+          <ChartPopover
+            day={activeDay}
+            index={activeIndex}
+            series={getSeries(activeDay)}
+            totalDays={days.length}
+          />
         ) : null}
       </div>
     </div>
@@ -239,10 +336,12 @@ function ChartDateLabel({ center, label }: { center: number; label: string }) {
 function ChartPopover({
   day,
   index,
+  series,
   totalDays,
 }: {
   day: UsageDay;
   index: number;
+  series: [PopoverSeries, PopoverSeries];
   totalDays: number;
 }) {
   const alignment =
@@ -263,18 +362,7 @@ function ChartPopover({
       <div className="mt-0.5 text-slate-500">{day.date}</div>
       <div className="mt-3 space-y-1.5 tabular-nums">
         <PopoverRow label="Total" value={day.total} />
-        <PopoverPair
-          left={{ color: "bg-sky-400", label: "API", value: day.api }}
-          right={{ color: "bg-violet-400", label: "Browser", value: day.browser }}
-        />
-        <PopoverPair
-          left={{ color: "bg-emerald-400", label: "Passed", value: day.passed }}
-          right={{ color: "bg-red-400", label: "Failed", value: day.failed }}
-        />
-        <PopoverPair
-          left={{ color: "bg-emerald-300", label: "Scheduled", value: day.scheduled }}
-          right={{ color: "bg-amber-400", label: "Sessions", value: day.testSessions }}
-        />
+        <PopoverPair left={series[0]} right={series[1]} />
       </div>
     </div>
   );

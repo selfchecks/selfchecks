@@ -71,10 +71,13 @@ describe("UsagePage", () => {
     expect(
       screen.getByRole("img", { name: "Completed API and browser tests by day" }),
     ).toBeTruthy();
-    expect(screen.getByText("Scheduled checks")).toBeTruthy();
+    expect(
+      screen.getByRole("img", { name: "Scheduled checks and test sessions by day" }),
+    ).toBeTruthy();
+    expect(screen.getByText("Scheduled")).toBeTruthy();
     expect(screen.getAllByText("Test sessions")).toHaveLength(2);
-    expect(screen.getAllByText("75%")).toHaveLength(2);
-    expect(screen.getAllByText("25%")).toHaveLength(2);
+    expect(screen.getByText("75%")).toBeTruthy();
+    expect(screen.getByText("25%")).toBeTruthy();
     expect(screen.getByRole("img", { name: "75% success rate" })).toBeTruthy();
     expect(
       screen.getByRole("img", { name: "Passed and failed tests by day" }),
@@ -83,12 +86,42 @@ describe("UsagePage", () => {
       "/checks/check_1",
     );
 
-    fireEvent.mouseEnter(
-      screen.getAllByRole("button", { name: "Show details for Jul 11" })[0]!,
-    );
-    const popover = screen.getByTestId("chart-popover");
+    const dayTargets = screen.getAllByRole("button", {
+      name: "Show details for Jul 11",
+    });
+    expect(dayTargets).toHaveLength(3);
+
+    fireEvent.mouseEnter(dayTargets[0]!);
+    let popover = screen.getByTestId("chart-popover");
     expect(within(popover).getByText("2026-07-11")).toBeTruthy();
+    expect(within(popover).getByText("API")).toBeTruthy();
+    expect(within(popover).getByText("Browser")).toBeTruthy();
+    expect(within(popover).queryByText("Passed")).toBeNull();
+    expect(within(popover).queryByText("Scheduled")).toBeNull();
+    fireEvent.mouseLeave(dayTargets[0]!);
+
+    fireEvent.mouseEnter(dayTargets[1]!);
+    popover = screen.getByTestId("chart-popover");
     expect(within(popover).getByText("Scheduled")).toBeTruthy();
-    expect(within(popover).getByText("Sessions")).toBeTruthy();
+    expect(within(popover).getByText("Test sessions")).toBeTruthy();
+    expect(within(popover).queryByText("API")).toBeNull();
+    fireEvent.mouseLeave(dayTargets[1]!);
+
+    fireEvent.mouseEnter(dayTargets[2]!);
+    popover = screen.getByTestId("chart-popover");
+    expect(within(popover).getByText("Passed")).toBeTruthy();
+    expect(within(popover).getByText("Failed")).toBeTruthy();
+    expect(within(popover).queryByText("Browser")).toBeNull();
+
+    const sourcesHeading = screen.getByRole("heading", {
+      name: "Where tests come from",
+    });
+    const reliabilityHeading = screen.getByRole("heading", {
+      name: "Test reliability",
+    });
+    expect(
+      sourcesHeading.compareDocumentPosition(reliabilityHeading) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });

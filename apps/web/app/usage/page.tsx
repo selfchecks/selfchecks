@@ -6,15 +6,13 @@ import { ServiceMark } from "@/components/service-mark";
 import { getDashboardSettingsData } from "@/lib/settings-data";
 import { getUsageData } from "@/lib/usage-data";
 
-import { TestResultsChart, UsageChart } from "./usage-chart";
+import { TestResultsChart, TestSourcesChart, UsageChart } from "./usage-chart";
 
 export const dynamic = "force-dynamic";
 
 export default async function UsagePage() {
   const data = await getUsageData("default");
   const settings = await getDashboardSettingsData(data.projectSlug);
-  const scheduledShare = getShare(data.totals.scheduled, data.totals.total);
-  const sessionsShare = getShare(data.totals.testSessions, data.totals.total);
 
   return (
     <main className="min-h-screen bg-[#0d1117] text-slate-200">
@@ -80,6 +78,24 @@ export default async function UsagePage() {
             </div>
           </section>
 
+          <section className="rounded-md border border-slate-800 bg-[#111821] p-4 sm:p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="font-semibold text-slate-100">Where tests come from</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Scheduled dashboard checks compared with tests run in test sessions.
+                </p>
+              </div>
+              <div className="flex items-center gap-4 text-xs text-slate-400">
+                <Legend color="bg-emerald-400" label="Scheduled" />
+                <Legend color="bg-amber-400" label="Test sessions" />
+              </div>
+            </div>
+            <div className="mt-4">
+              <TestSourcesChart days={data.days} />
+            </div>
+          </section>
+
           <section>
             <div className="mb-4">
               <h2 className="text-xl font-semibold text-slate-100">Test reliability</h2>
@@ -113,43 +129,6 @@ export default async function UsagePage() {
               <div className="mt-4">
                 <TestResultsChart days={data.days} />
               </div>
-            </div>
-          </section>
-
-          <section className="rounded-md border border-slate-800 bg-[#111821] p-4 sm:p-5">
-            <h2 className="font-semibold text-slate-100">Where tests come from</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              Scheduled dashboard checks compared with tests run in test sessions.
-            </p>
-            <div
-              aria-label={`Scheduled ${scheduledShare}%, test sessions ${sessionsShare}%`}
-              className="mt-5 flex h-3 overflow-hidden rounded-full bg-slate-800"
-              role="img"
-            >
-              <div
-                className="bg-emerald-400"
-                style={{ width: `${scheduledShare}%` }}
-                title={`Scheduled: ${data.totals.scheduled}`}
-              />
-              <div
-                className="bg-amber-400"
-                style={{ width: `${sessionsShare}%` }}
-                title={`Test sessions: ${data.totals.testSessions}`}
-              />
-            </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <SourceShare
-                color="bg-emerald-400"
-                count={data.totals.scheduled}
-                label="Scheduled checks"
-                share={scheduledShare}
-              />
-              <SourceShare
-                color="bg-amber-400"
-                count={data.totals.testSessions}
-                label="Test sessions"
-                share={sessionsShare}
-              />
             </div>
           </section>
         </section>
@@ -316,33 +295,4 @@ function Legend({ color, label }: { color: string; label: string }) {
       {label}
     </span>
   );
-}
-
-function SourceShare({
-  color,
-  count,
-  label,
-  share,
-}: {
-  color: string;
-  count: number;
-  label: string;
-  share: number;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-4 rounded-md bg-slate-900/60 px-4 py-3">
-      <div className="flex items-center gap-3">
-        <span className={`h-3 w-3 rounded-full ${color}`} />
-        <span className="text-sm text-slate-300">{label}</span>
-      </div>
-      <div className="text-right tabular-nums">
-        <span className="font-semibold text-slate-100">{share}%</span>
-        <span className="ml-2 text-xs text-slate-500">{count} tests</span>
-      </div>
-    </div>
-  );
-}
-
-function getShare(value: number, total: number) {
-  return total === 0 ? 0 : Math.round((value / total) * 100);
 }
