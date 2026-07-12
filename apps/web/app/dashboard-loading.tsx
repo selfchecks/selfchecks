@@ -42,14 +42,7 @@ export function DashboardPageSkeleton({
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {activeView === "dashboard" ? (
-              <button
-                className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
-                disabled
-                type="button"
-              >
-                <Zap className="h-4 w-4" />
-                Run all checks
-              </button>
+              <SkeletonLine className="h-10 w-44 shrink-0 border border-slate-700 bg-[#111821]" />
             ) : null}
           </div>
         </header>
@@ -193,14 +186,7 @@ function DashboardSkeleton() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <SkeletonLine className="h-9 w-9" />
-            <button
-              className="inline-flex h-9 items-center gap-2 rounded-md bg-blue-600 px-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
-              disabled
-              type="button"
-            >
-              <Zap className="h-4 w-4" />
-              Restart all failed checks
-            </button>
+            <SkeletonLine className="h-9 w-56 border border-slate-700 bg-[#111821]" />
           </div>
         </div>
       </section>

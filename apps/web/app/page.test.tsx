@@ -343,16 +343,21 @@ describe("DashboardPage", () => {
   });
 
   it("renders the dashboard skeleton while the snapshot is loading", () => {
-    render(<DashboardPageSkeleton />);
+    const { container } = render(<DashboardPageSkeleton />);
+    const skeletonPlaceholders = Array.from(
+      container.querySelectorAll("[aria-hidden='true']"),
+    );
 
     expect(screen.getByLabelText("Loading dashboard data")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Run all checks" })).toBeNull();
     expect(
-      screen.getByRole("button", { name: "Run all checks" }).hasAttribute("disabled"),
+      screen.queryByRole("button", { name: "Restart all failed checks" }),
+    ).toBeNull();
+    expect(
+      skeletonPlaceholders.some((node) => String(node.className).includes("h-10 w-44")),
     ).toBe(true);
     expect(
-      screen
-        .getByRole("button", { name: "Restart all failed checks" })
-        .hasAttribute("disabled"),
+      skeletonPlaceholders.some((node) => String(node.className).includes("h-9 w-56")),
     ).toBe(true);
     expect(
       screen
