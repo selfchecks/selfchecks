@@ -351,11 +351,17 @@ describe("DashboardPage", () => {
     ).toBe(true);
     expect(
       screen
+        .getByRole("button", { name: "Restart all failed checks" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    expect(
+      screen
         .getByRole("button", { name: "Open account menu" })
         .hasAttribute("disabled"),
     ).toBe(true);
     expect(screen.getByRole("status", { name: "Running 0, queued 0" })).toBeTruthy();
     expect(screen.getByLabelText("Open queue: running 0, queued 0")).toBeTruthy();
+    expect(screen.getByText("Usage")).toBeTruthy();
     expect(screen.getByText("Firewatch")).toBeTruthy();
     expect(screen.getByText("PASSING")).toBeTruthy();
     expect(screen.getByText("Last results")).toBeTruthy();
