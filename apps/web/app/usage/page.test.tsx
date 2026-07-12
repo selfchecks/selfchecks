@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -29,6 +29,8 @@ describe("UsagePage", () => {
           failed: 1,
           label: "Jul 11",
           passed: 3,
+          scheduled: 3,
+          testSessions: 1,
           total: 4,
         },
       ],
@@ -80,5 +82,13 @@ describe("UsagePage", () => {
     expect(screen.getByRole("link", { name: "Checkout" }).getAttribute("href")).toBe(
       "/checks/check_1",
     );
+
+    fireEvent.mouseEnter(
+      screen.getAllByRole("button", { name: "Show details for Jul 11" })[0]!,
+    );
+    const popover = screen.getByTestId("chart-popover");
+    expect(within(popover).getByText("2026-07-11")).toBeTruthy();
+    expect(within(popover).getByText("Scheduled")).toBeTruthy();
+    expect(within(popover).getByText("Sessions")).toBeTruthy();
   });
 });

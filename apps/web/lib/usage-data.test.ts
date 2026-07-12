@@ -26,7 +26,14 @@ describe("usage data", () => {
   afterEach(() => vi.resetAllMocks());
 
   it("groups completed API and browser tests by day and source", async () => {
-    mocks.projectFindUnique.mockResolvedValue({ id: "project_1", slug: "default" });
+    mocks.projectFindUnique.mockResolvedValue({
+      checks: [
+        { id: "check_1", key: "health-api", name: "Health API", type: "API" },
+        { id: "check_2", key: "checkout", name: "Checkout", type: "BROWSER" },
+      ],
+      id: "project_1",
+      slug: "default",
+    });
     mocks.checkRunFindMany.mockResolvedValue([
       {
         check: { id: "check_1", name: "Health API", type: "API" },
@@ -67,6 +74,8 @@ describe("usage data", () => {
       failed: 1,
       label: "Jul 11",
       passed: 1,
+      scheduled: 1,
+      testSessions: 1,
       total: 2,
     });
     expect(data.totals).toEqual({
@@ -81,7 +90,7 @@ describe("usage data", () => {
     });
     expect(data.unstableTests).toEqual([
       {
-        checkId: undefined,
+        checkId: "check_2",
         failed: 1,
         failureRate: 100,
         name: "Checkout",

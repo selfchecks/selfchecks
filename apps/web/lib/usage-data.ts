@@ -13,6 +13,8 @@ export type UsageDay = {
   failed: number;
   label: string;
   passed: number;
+  scheduled: number;
+  testSessions: number;
   total: number;
 };
 
@@ -53,6 +55,13 @@ type UsageRun = {
   testSessionId: string | null;
 };
 
+type UsageCheck = {
+  id: string;
+  key: string;
+  name: string;
+  type: CheckType;
+};
+
 export async function getUsageData(
   projectSlug: string,
   now = new Date(),
@@ -62,12 +71,20 @@ export async function getUsageData(
   try {
     const project =
       (await prisma.project.findUnique({
-        select: { id: true, slug: true },
+        select: {
+          checks: { select: { id: true, key: true, name: true, type: true } },
+          id: true,
+          slug: true,
+        },
         where: { slug: projectSlug },
       })) ??
       (await prisma.project.findFirst({
         orderBy: { createdAt: "desc" },
-        select: { id: true, slug: true },
+        select: {
+          checks: { select: { id: true, key: true, name: true, type: true } },
+          id: true,
+          slug: true,
+        },
       }));
 
     const resolvedProjectSlug = project?.slug ?? projectSlug;
@@ -94,16 +111,23 @@ export async function getUsageData(
       },
     });
 
-    return buildUsageData(resolvedProjectSlug, runs, now, timeZone);
+    return buildUsageData(
+      resolvedProjectSlug,
+      runs,
+      project?.checks ?? [],
+      now,
+      timeZone,
+    );
   } catch (error) {
     console.warn("Unable to load usage data.", error);
-    return buildUsageData(projectSlug, [], now, timeZone);
+    return buildUsageData(projectSlug, [], [], now, timeZone);
   }
 }
 
 function buildUsageData(
   projectSlug: string,
   runs: UsageRun[],
+  activeChecks: UsageCheck[],
   now: Date,
   timeZone: string,
 ): UsageData {
@@ -118,6 +142,8 @@ function buildUsageData(
         failed: 0,
         label: formatDateLabel(date),
         passed: 0,
+        scheduled: 0,
+        testSessions: 0,
         total: 0,
       },
     ]),
@@ -126,6 +152,7 @@ function buildUsageData(
     string,
     Omit<UnstableTest, "failureRate" | "type"> & { type: CheckType }
   >();
+  const activeChecksByKey = new Map(activeChecks.map((check) => [check.key, check]));
   let scheduled = 0;
   let testSessions = 0;
 
@@ -133,7 +160,10 @@ function buildUsageData(
     if (!run.finishedAt) continue;
 
     const day = daysByDate.get(formatDateKey(run.finishedAt, timeZone));
-    const type = run.checkSnapshotType ?? run.check?.type;
+    const activeCheck =
+      run.check ??
+      (run.checkSnapshotKey ? activeChecksByKey.get(run.checkSnapshotKey) : undefined);
+    const type = run.checkSnapshotType ?? activeCheck?.type;
 
     if (!day || !type) continue;
 
@@ -143,11 +173,11 @@ function buildUsageData(
     else day.failed += 1;
     day.total += 1;
 
-    const testKey = run.check?.id ?? run.checkSnapshotKey ?? run.checkSnapshotName;
-    const testName = run.check?.name ?? run.checkSnapshotName ?? run.checkSnapshotKey;
+    const testKey = activeCheck?.id ?? run.checkSnapshotKey ?? run.checkSnapshotName;
+    const testName = activeCheck?.name ?? run.checkSnapshotName ?? run.checkSnapshotKey;
     if (testKey && testName) {
       const test = tests.get(testKey) ?? {
-        checkId: run.check?.id,
+        checkId: activeCheck?.id,
         failed: 0,
         name: testName,
         passed: 0,
@@ -160,8 +190,13 @@ function buildUsageData(
       tests.set(testKey, test);
     }
 
-    if (run.testSessionId) testSessions += 1;
-    else scheduled += 1;
+    if (run.testSessionId) {
+      day.testSessions += 1;
+      testSessions += 1;
+    } else {
+      day.scheduled += 1;
+      scheduled += 1;
+    }
   }
 
   const days = dateKeys.map((date) => daysByDate.get(date)!);
