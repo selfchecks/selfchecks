@@ -385,9 +385,16 @@ function PopoverPair({
   right: { color: string; label: string; value: number };
 }) {
   return (
-    <div className="grid grid-cols-2 gap-3 border-t border-slate-700/70 pt-1.5 text-slate-400">
+    <div
+      className="space-y-1.5 border-t border-slate-700/70 pt-1.5 text-slate-400"
+      role="list"
+    >
       {[left, right].map((item) => (
-        <div className="flex min-w-0 items-center gap-1.5" key={item.label}>
+        <div
+          className="flex min-w-0 items-center gap-1.5"
+          key={item.label}
+          role="listitem"
+        >
           <span className={`h-2 w-2 shrink-0 rounded-sm ${item.color}`} />
           <span className="min-w-0 flex-1 truncate">{item.label}</span>
           <span className="font-semibold text-slate-100">{item.value}</span>

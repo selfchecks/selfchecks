@@ -97,7 +97,25 @@ export default async function UsagePage() {
           </section>
 
           <section>
-            <div className="mb-4">
+            <div className="rounded-md border border-slate-800 bg-[#111821] p-4 sm:p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="font-semibold text-slate-100">Results by day</h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Failed includes failed, timed out and cancelled tests.
+                  </p>
+                </div>
+                <div className="flex items-center gap-4 text-xs text-slate-400">
+                  <Legend color="bg-emerald-400" label="Passed" />
+                  <Legend color="bg-red-400" label="Failed" />
+                </div>
+              </div>
+              <div className="mt-4">
+                <TestResultsChart days={data.days} />
+              </div>
+            </div>
+
+            <div className="mb-4 mt-5">
               <h2 className="text-xl font-semibold text-slate-100">Test reliability</h2>
               <p className="mt-1 text-sm text-slate-500">
                 Success rate and the checks contributing most to failures.
@@ -111,24 +129,6 @@ export default async function UsagePage() {
                 rate={data.totals.successRate}
               />
               <UnstableTests tests={data.unstableTests} />
-            </div>
-
-            <div className="mt-4 rounded-md border border-slate-800 bg-[#111821] p-4 sm:p-5">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h3 className="font-semibold text-slate-100">Results by day</h3>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Failed includes failed, timed out and cancelled tests.
-                  </p>
-                </div>
-                <div className="flex items-center gap-4 text-xs text-slate-400">
-                  <Legend color="bg-emerald-400" label="Passed" />
-                  <Legend color="bg-red-400" label="Failed" />
-                </div>
-              </div>
-              <div className="mt-4">
-                <TestResultsChart days={data.days} />
-              </div>
             </div>
           </section>
         </section>

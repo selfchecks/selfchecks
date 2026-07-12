@@ -96,6 +96,7 @@ describe("UsagePage", () => {
     expect(within(popover).getByText("2026-07-11")).toBeTruthy();
     expect(within(popover).getByText("API")).toBeTruthy();
     expect(within(popover).getByText("Browser")).toBeTruthy();
+    expect(within(popover).getAllByRole("listitem")).toHaveLength(2);
     expect(within(popover).queryByText("Passed")).toBeNull();
     expect(within(popover).queryByText("Scheduled")).toBeNull();
     fireEvent.mouseLeave(dayTargets[0]!);
@@ -119,8 +120,15 @@ describe("UsagePage", () => {
     const reliabilityHeading = screen.getByRole("heading", {
       name: "Test reliability",
     });
+    const resultsHeading = screen.getByRole("heading", {
+      name: "Results by day",
+    });
     expect(
       sourcesHeading.compareDocumentPosition(reliabilityHeading) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      resultsHeading.compareDocumentPosition(reliabilityHeading) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
