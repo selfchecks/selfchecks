@@ -50,6 +50,7 @@ describe("test sessions route", () => {
     expect(mocks.getTestSessionsData).toHaveBeenCalledWith("account", {
       page: 2,
       pageSize: 10,
+      project: "account",
       query: "release",
       sessionName: "Release v1.2.3",
     });

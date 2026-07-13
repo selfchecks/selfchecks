@@ -153,11 +153,22 @@ async function createQueuedSession(
   env: Array<{ name: string; value: string }>,
 ) {
   return prisma.$transaction(async (tx) => {
+    const project = await tx.project.upsert({
+      create: {
+        name: metadata.projectSlug,
+        slug: metadata.projectSlug,
+      },
+      update: {},
+      where: {
+        slug: metadata.projectSlug,
+      },
+    });
     const session = await tx.testSession.create({
       data: {
         commitSha: metadata.commitSha,
         kind: "TEST",
         name: metadata.testSessionName,
+        projectId: project.id,
         ...(metadata.jobUrl ? { jobUrl: metadata.jobUrl } : {}),
         ...(metadata.pipelineUrl ? { pipelineUrl: metadata.pipelineUrl } : {}),
         ...(metadata.ref ? { ref: metadata.ref } : {}),
@@ -183,6 +194,7 @@ async function createQueuedSession(
           checkSnapshotRequest: check.request as Prisma.InputJsonValue,
           checkSnapshotTags: check.tags,
           checkSnapshotType: check.type.toUpperCase() as "API" | "BROWSER",
+          projectId: project.id,
           runSource: "CLI",
           status: "QUEUED",
           testSessionId: session.id,

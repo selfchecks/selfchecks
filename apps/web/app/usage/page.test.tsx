@@ -89,7 +89,7 @@ describe("UsagePage", () => {
     const dayTargets = screen.getAllByRole("button", {
       name: "Show details for Jul 11",
     });
-    expect(dayTargets).toHaveLength(3);
+    expect(dayTargets).toHaveLength(4);
 
     fireEvent.mouseEnter(dayTargets[0]!);
     let popover = screen.getByTestId("chart-popover");

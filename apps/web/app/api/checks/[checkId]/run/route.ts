@@ -90,6 +90,7 @@ export async function POST(_request: Request, context: RouteContext) {
       },
       project: {
         select: {
+          id: true,
           slug: true,
         },
       },
@@ -118,6 +119,7 @@ export async function POST(_request: Request, context: RouteContext) {
   const run = await prisma.checkRun.create({
     data: {
       checkId: check.id,
+      projectId: check.project.id,
       runSource: "MANUAL",
       status: "QUEUED",
     },

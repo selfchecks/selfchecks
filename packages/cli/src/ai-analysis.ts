@@ -35,6 +35,7 @@ const MAX_SOURCE_CHARS = 24_000;
 const MAX_LOG_CHARS = 18_000;
 const MAX_ARTIFACT_TEXT_CHARS = 8_000;
 const MAX_RESULT_CHARS = 12_000;
+const GLOBAL_SETTINGS_PROJECT_SLUG = "default";
 
 export async function analyzeFailedCheck({
   check,
@@ -77,7 +78,7 @@ export async function analyzeFailedCheck({
   }
 }
 
-async function readAiSettings(projectSlug: string): Promise<AiSettings | undefined> {
+async function readAiSettings(_projectSlug: string): Promise<AiSettings | undefined> {
   const project = await prisma.project.findUnique({
     select: {
       aiSettings: {
@@ -90,7 +91,7 @@ async function readAiSettings(projectSlug: string): Promise<AiSettings | undefin
       },
     },
     where: {
-      slug: projectSlug,
+      slug: GLOBAL_SETTINGS_PROJECT_SLUG,
     },
   });
   const settings = project?.aiSettings;

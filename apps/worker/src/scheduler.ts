@@ -24,6 +24,7 @@ type ScheduledCheck = {
   } | null;
   frequencyMinutes: number | null;
   id: string;
+  projectId: string;
   key: string;
   project: {
     slug: string;
@@ -248,6 +249,7 @@ export async function scheduleDueChecks({
     const run = await prisma.checkRun.create({
       data: {
         checkId: check.id,
+        projectId: check.projectId,
         runSource: "SCHEDULE",
         status: "QUEUED",
       },

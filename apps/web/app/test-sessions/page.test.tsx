@@ -94,7 +94,7 @@ describe("TestSessionsPage", () => {
     expect(mocks.getDashboardSettingsData).toHaveBeenCalledWith("default");
     expect(screen.getByRole("heading", { name: "Test sessions" })).toBeTruthy();
     expect(screen.getAllByText("11-11 of 11 test sessions").length).toBe(2);
-    expect(screen.getByText("Project default")).toBeTruthy();
+    expect(screen.getAllByText("All projects").length).toBeGreaterThan(0);
     expect(
       (
         screen.getByRole("searchbox", {
@@ -137,6 +137,7 @@ describe("TestSessionsPage", () => {
     ).toEqual([
       "Session",
       "Status",
+      "Project",
       "Total",
       "Passed",
       "Failed",

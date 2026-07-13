@@ -1,17 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  checkFindMany: vi.fn(),
   checkRunFindMany: vi.fn(),
-  projectFindFirst: vi.fn(),
-  projectFindUnique: vi.fn(),
+  projectFindMany: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
+    check: { findMany: mocks.checkFindMany },
     checkRun: { findMany: mocks.checkRunFindMany },
     project: {
-      findFirst: mocks.projectFindFirst,
-      findUnique: mocks.projectFindUnique,
+      findMany: mocks.projectFindMany,
     },
   },
 }));
@@ -26,23 +26,42 @@ describe("usage data", () => {
   afterEach(() => vi.resetAllMocks());
 
   it("groups completed API and browser tests by day and source", async () => {
-    mocks.projectFindUnique.mockResolvedValue({
-      checks: [
-        { id: "check_1", key: "health-api", name: "Health API", type: "API" },
-        { id: "check_2", key: "checkout", name: "Checkout", type: "BROWSER" },
-      ],
-      id: "project_1",
-      slug: "default",
-    });
+    mocks.projectFindMany.mockResolvedValue([
+      { id: "project_1", name: "Account", slug: "account" },
+    ]);
+    mocks.checkFindMany.mockResolvedValue([
+      {
+        id: "check_1",
+        key: "health-api",
+        name: "Health API",
+        projectId: "project_1",
+        project: { slug: "account" },
+        type: "API",
+      },
+      {
+        id: "check_2",
+        key: "checkout",
+        name: "Checkout",
+        projectId: "project_1",
+        project: { slug: "account" },
+        type: "BROWSER",
+      },
+    ]);
     mocks.checkRunFindMany.mockResolvedValue([
       {
-        check: { id: "check_1", name: "Health API", type: "API" },
+        check: {
+          id: "check_1",
+          name: "Health API",
+          projectId: "project_1",
+          type: "API",
+        },
         checkSnapshotKey: "health-api",
         checkSnapshotName: "Health API",
         checkSnapshotType: null,
         finishedAt: new Date("2026-07-11T08:00:00.000Z"),
         status: "PASSED",
         testSessionId: null,
+        project: { id: "project_1", name: "Account", slug: "account" },
       },
       {
         check: null,
@@ -52,15 +71,22 @@ describe("usage data", () => {
         finishedAt: new Date("2026-07-11T09:00:00.000Z"),
         status: "FAILED",
         testSessionId: "session_1",
+        project: { id: "project_1", name: "Account", slug: "account" },
       },
       {
-        check: { id: "check_1", name: "Health API", type: "API" },
+        check: {
+          id: "check_1",
+          name: "Health API",
+          projectId: "project_1",
+          type: "API",
+        },
         checkSnapshotKey: "health-api",
         checkSnapshotName: "Health API",
         checkSnapshotType: null,
         finishedAt: new Date("2026-07-10T20:00:00.000Z"),
         status: "TIMED_OUT",
         testSessionId: "session_1",
+        project: { id: "project_1", name: "Account", slug: "account" },
       },
     ]);
 
@@ -74,6 +100,7 @@ describe("usage data", () => {
       failed: 1,
       label: "Jul 11",
       passed: 1,
+      projects: { project_1: 2 },
       scheduled: 1,
       testSessions: 1,
       total: 2,
@@ -95,6 +122,7 @@ describe("usage data", () => {
         failureRate: 100,
         name: "Checkout",
         passed: 0,
+        projectSlug: "account",
         total: 1,
         type: "browser",
       },
@@ -104,6 +132,7 @@ describe("usage data", () => {
         failureRate: 50,
         name: "Health API",
         passed: 1,
+        projectSlug: "account",
         total: 2,
         type: "api",
       },

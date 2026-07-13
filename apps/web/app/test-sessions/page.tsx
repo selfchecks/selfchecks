@@ -20,6 +20,7 @@ export default async function TestSessionsPage({
   const data = await getTestSessionsData("default", {
     page: readNumberParam(params.page),
     pageSize: readNumberParam(params.pageSize),
+    project: readStringParam(params.project),
     query: readStringParam(params.q),
     sessionName: readStringParam(params.session),
   });
@@ -47,9 +48,7 @@ export default async function TestSessionsPage({
                 Test sessions
               </span>
             </div>
-            <div className="hidden text-sm text-slate-500 sm:block">
-              Project {data.projectSlug}
-            </div>
+            <div className="hidden text-sm text-slate-500 sm:block">All projects</div>
           </div>
         </header>
 

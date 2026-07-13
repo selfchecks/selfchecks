@@ -1,7 +1,14 @@
 "use client";
 
 import { type ChangeEvent, type KeyboardEvent, useEffect, useState } from "react";
-import { Filter, Link2, Search, SlidersHorizontal, X } from "lucide-react";
+import {
+  Filter,
+  FolderKanban,
+  Link2,
+  Search,
+  SlidersHorizontal,
+  X,
+} from "lucide-react";
 import Link from "next/link";
 
 import type { TestSessionRow, TestSessionsData } from "@/lib/dashboard-data";
@@ -52,14 +59,20 @@ export function TestSessionsClient({ initialData }: { initialData: TestSessionsD
         </p>
       </div>
 
-      <TestSessionsFilters filters={data.filters} />
+      <TestSessionsFilters filters={data.filters} projects={data.projects ?? []} />
       <TestSessionsTable filters={data.filters} sessions={data.sessions} />
       <TestSessionsPagination data={data} />
     </>
   );
 }
 
-function TestSessionsFilters({ filters }: { filters: TestSessionsData["filters"] }) {
+function TestSessionsFilters({
+  filters,
+  projects = [],
+}: {
+  filters: TestSessionsData["filters"];
+  projects?: TestSessionsData["projects"];
+}) {
   function submitForm(form: HTMLFormElement | null) {
     form?.requestSubmit();
   }
@@ -86,7 +99,7 @@ function TestSessionsFilters({ filters }: { filters: TestSessionsData["filters"]
       {filters.sessionName ? (
         <input name="session" type="hidden" value={filters.sessionName} />
       ) : null}
-      <div className="grid gap-3 lg:grid-cols-[minmax(18rem,1fr)_8rem]">
+      <div className="grid gap-3 lg:grid-cols-[minmax(18rem,1fr)_14rem_8rem]">
         <label className="relative min-w-0" htmlFor="test-sessions-search">
           <span className="sr-only">Search test sessions</span>
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
@@ -99,6 +112,26 @@ function TestSessionsFilters({ filters }: { filters: TestSessionsData["filters"]
             placeholder="Search by session, URL or check"
             type="search"
           />
+        </label>
+
+        <label className="relative min-w-0" htmlFor="test-sessions-project">
+          <span className="sr-only">Project</span>
+          <FolderKanban className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+          <select
+            aria-label="Project"
+            className="h-10 w-full appearance-none rounded-md border border-slate-700 bg-[#0f151d] pl-10 pr-3 text-sm font-medium text-slate-200 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+            defaultValue={filters.project ?? "all"}
+            id="test-sessions-project"
+            name="project"
+            onChange={submitOnSelectChange}
+          >
+            <option value="all">All projects</option>
+            {projects.map((project) => (
+              <option key={project.slug} value={project.slug}>
+                {project.name}
+              </option>
+            ))}
+          </select>
         </label>
 
         <label className="relative min-w-0" htmlFor="test-sessions-page-size">
@@ -159,6 +192,7 @@ function TestSessionsTable({
             <tr>
               <th className="px-4 py-3">Session</th>
               <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Project</th>
               <th className="px-4 py-3">Total</th>
               <th className="px-4 py-3">Passed</th>
               <th className="px-4 py-3">Failed</th>
@@ -179,7 +213,7 @@ function TestSessionsTable({
               ))
             ) : (
               <tr>
-                <td className="px-4 py-8 text-center text-slate-500" colSpan={9}>
+                <td className="px-4 py-8 text-center text-slate-500" colSpan={10}>
                   No test sessions match the current filters.
                 </td>
               </tr>
@@ -233,6 +267,7 @@ function TestSessionTableRow({
       <td className="px-4 py-3">
         <RunStateBadge runState={session.runState} status={session.status} />
       </td>
+      <td className="px-4 py-3 text-slate-300">{session.projectSlug ?? "default"}</td>
       <td className="px-4 py-3">
         <span className="font-semibold text-slate-300">{session.summary.total}</span>
       </td>
@@ -337,6 +372,11 @@ function buildTestSessionsHref(
   const sessionName = overrides.sessionName ?? filters.sessionName;
 
   setSearchParam(params, "q", filters.query);
+  setSearchParam(
+    params,
+    "project",
+    !filters.project || filters.project === "all" ? "" : filters.project,
+  );
   setSearchParam(params, "session", sessionName);
   setSearchParam(
     params,
@@ -370,6 +410,11 @@ async function fetchTestSessionsData(
   const params = new URLSearchParams();
 
   setSearchParam(params, "q", filters.query);
+  setSearchParam(
+    params,
+    "project",
+    !filters.project || filters.project === "all" ? "" : filters.project,
+  );
   setSearchParam(params, "session", filters.sessionName);
   setSearchParam(params, "page", String(filters.page));
   setSearchParam(params, "pageSize", String(filters.pageSize));

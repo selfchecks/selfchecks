@@ -14,7 +14,8 @@ const mocks = vi.hoisted(() => ({
   checkRunCreate: vi.fn(),
   checkRunFindFirst: vi.fn(),
   checkRunUpdate: vi.fn(),
-  projectFindUnique: vi.fn(),
+  projectFindUnique: vi.fn().mockResolvedValue({ id: "project_1" }),
+  projectUpsert: vi.fn().mockResolvedValue({ id: "project_1" }),
   spawn: vi.fn(),
   testSessionCreate: vi.fn(),
   testSessionFindUnique: vi.fn(),
@@ -45,6 +46,7 @@ vi.mock("@selfchecks/db", () => ({
     },
     project: {
       findUnique: mocks.projectFindUnique,
+      upsert: mocks.projectUpsert,
     },
     testSession: {
       create: mocks.testSessionCreate,
@@ -600,6 +602,7 @@ describe("runChecks", () => {
         commitSha: undefined,
         kind: "TEST",
         name: undefined,
+        projectId: "project_1",
         source: undefined,
         status: "RUNNING",
         targetUrl: "https://example.test",
@@ -683,7 +686,10 @@ describe("runChecks", () => {
     });
 
     expect(mocks.checkFindMany).not.toHaveBeenCalled();
-    expect(mocks.projectFindUnique).not.toHaveBeenCalled();
+    expect(mocks.projectFindUnique).toHaveBeenCalledWith({
+      select: { id: true },
+      where: { slug: "default" },
+    });
     expect(mocks.testSessionCreate).toHaveBeenCalledWith({
       data: {
         commitSha: "abc123def456",
@@ -691,6 +697,7 @@ describe("runChecks", () => {
         kind: "TEST",
         name: "Release v1.2.3",
         pipelineUrl: "https://gitlab.example.test/pipelines/123",
+        projectId: "project_1",
         ref: "v1.2.3",
         repository: "developers/frontend/account",
         source: undefined,
@@ -1061,6 +1068,7 @@ describe("runChecks", () => {
         commitSha: undefined,
         kind: "TRIGGER",
         name: "Deploy v1.2.3",
+        projectId: "project_1",
         source: "/repo",
         status: "RUNNING",
         targetUrl: undefined,

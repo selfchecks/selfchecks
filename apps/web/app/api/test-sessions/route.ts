@@ -13,6 +13,7 @@ export async function GET(request: Request) {
     const data = await getTestSessionsData(projectSlug, {
       page: readNumberParam(url.searchParams.get("page")),
       pageSize: readNumberParam(url.searchParams.get("pageSize")),
+      project: url.searchParams.get("project") ?? undefined,
       query: url.searchParams.get("q") ?? undefined,
       sessionName: url.searchParams.get("session") ?? undefined,
     });

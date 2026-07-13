@@ -1,4 +1,4 @@
-import type { CheckRunStatus, CheckType, Prisma } from "@prisma/client";
+import type { CheckRunStatus, CheckType } from "@prisma/client";
 
 import { prisma } from "./prisma";
 import { getRuntimeTimeZone } from "./runtime-config";
@@ -13,6 +13,7 @@ export type UsageDay = {
   failed: number;
   label: string;
   passed: number;
+  projects: Record<string, number>;
   scheduled: number;
   testSessions: number;
   total: number;
@@ -24,6 +25,7 @@ export type UnstableTest = {
   failureRate: number;
   name: string;
   passed: number;
+  projectSlug: string;
   total: number;
   type: Lowercase<CheckType>;
 };
@@ -31,6 +33,7 @@ export type UnstableTest = {
 export type UsageData = {
   days: UsageDay[];
   projectSlug: string;
+  projects: UsageProject[];
   rangeDays: number;
   unstableTests: UnstableTest[];
   totals: {
@@ -45,94 +48,110 @@ export type UsageData = {
   };
 };
 
+export type UsageProject = {
+  color: string;
+  id: string;
+  name: string;
+  slug: string;
+  total: number;
+};
+
 type UsageRun = {
-  check: { id: string; name: string; type: CheckType } | null;
+  check: {
+    id: string;
+    name: string;
+    projectId: string;
+    type: CheckType;
+  } | null;
   checkSnapshotKey: string | null;
   checkSnapshotName: string | null;
   checkSnapshotType: CheckType | null;
   finishedAt: Date | null;
   status: CheckRunStatus;
   testSessionId: string | null;
+  project: {
+    id: string;
+    name: string;
+    slug: string;
+  };
 };
 
 type UsageCheck = {
   id: string;
   key: string;
   name: string;
+  projectId: string;
+  projectSlug: string;
   type: CheckType;
 };
 
 export async function getUsageData(
-  projectSlug: string,
+  _projectSlug = "default",
   now = new Date(),
 ): Promise<UsageData> {
   const timeZone = getRuntimeTimeZone();
 
   try {
-    const project =
-      (await prisma.project.findUnique({
+    const [projects, activeChecks, runs] = await Promise.all([
+      prisma.project.findMany({
+        orderBy: { name: "asc" },
+        select: { id: true, name: true, slug: true },
+      }),
+      prisma.check.findMany({
         select: {
-          checks: { select: { id: true, key: true, name: true, type: true } },
           id: true,
-          slug: true,
+          key: true,
+          name: true,
+          projectId: true,
+          project: { select: { slug: true } },
+          type: true,
         },
-        where: { slug: projectSlug },
-      })) ??
-      (await prisma.project.findFirst({
-        orderBy: { createdAt: "desc" },
+      }),
+      prisma.checkRun.findMany({
         select: {
-          checks: { select: { id: true, key: true, name: true, type: true } },
-          id: true,
-          slug: true,
+          check: { select: { id: true, name: true, projectId: true, type: true } },
+          checkSnapshotKey: true,
+          checkSnapshotName: true,
+          checkSnapshotType: true,
+          finishedAt: true,
+          status: true,
+          testSessionId: true,
+          project: { select: { id: true, name: true, slug: true } },
         },
-      }));
-
-    const resolvedProjectSlug = project?.slug ?? projectSlug;
-    const projectFilters: Prisma.CheckRunWhereInput[] = [
-      ...(project ? [{ check: { projectId: project.id } }] : []),
-      { checkSnapshotProjectSlug: resolvedProjectSlug },
-    ];
-    const runs = await prisma.checkRun.findMany({
-      select: {
-        check: { select: { id: true, name: true, type: true } },
-        checkSnapshotKey: true,
-        checkSnapshotName: true,
-        checkSnapshotType: true,
-        finishedAt: true,
-        status: true,
-        testSessionId: true,
-      },
-      where: {
-        finishedAt: {
-          gte: new Date(now.getTime() - (USAGE_RANGE_DAYS + 1) * 86_400_000),
+        where: {
+          finishedAt: {
+            gte: new Date(now.getTime() - (USAGE_RANGE_DAYS + 1) * 86_400_000),
+          },
+          status: { in: [...completedStatuses] },
         },
-        OR: projectFilters,
-        status: { in: [...completedStatuses] },
-      },
-    });
+      }),
+    ]);
 
     return buildUsageData(
-      resolvedProjectSlug,
       runs,
-      project?.checks ?? [],
+      activeChecks.map((check) => ({
+        ...check,
+        projectSlug: check.project.slug,
+      })),
+      projects,
       now,
       timeZone,
     );
   } catch (error) {
     console.warn("Unable to load usage data.", error);
-    return buildUsageData(projectSlug, [], [], now, timeZone);
+    return buildUsageData([], [], [], now, timeZone);
   }
 }
 
 function buildUsageData(
-  projectSlug: string,
   runs: UsageRun[],
   activeChecks: UsageCheck[],
+  projects: Array<{ id: string; name: string; slug: string }>,
   now: Date,
   timeZone: string,
 ): UsageData {
   const dateKeys = getRecentDateKeys(now, timeZone, USAGE_RANGE_DAYS);
-  const daysByDate = new Map(
+  const daysByDate = new Map<string, UsageDay>(
     dateKeys.map((date) => [
       date,
       {
@@ -142,6 +161,7 @@ function buildUsageData(
         failed: 0,
         label: formatDateLabel(date),
         passed: 0,
+        projects: {},
         scheduled: 0,
         testSessions: 0,
         total: 0,
@@ -152,7 +172,9 @@ function buildUsageData(
     string,
     Omit<UnstableTest, "failureRate" | "type"> & { type: CheckType }
   >();
-  const activeChecksByKey = new Map(activeChecks.map((check) => [check.key, check]));
+  const activeChecksByKey = new Map(
+    activeChecks.map((check) => [`${check.projectId}:${check.key}`, check]),
+  );
   let scheduled = 0;
   let testSessions = 0;
 
@@ -162,7 +184,9 @@ function buildUsageData(
     const day = daysByDate.get(formatDateKey(run.finishedAt, timeZone));
     const activeCheck =
       run.check ??
-      (run.checkSnapshotKey ? activeChecksByKey.get(run.checkSnapshotKey) : undefined);
+      (run.checkSnapshotKey
+        ? activeChecksByKey.get(`${run.project.id}:${run.checkSnapshotKey}`)
+        : undefined);
     const type = run.checkSnapshotType ?? activeCheck?.type;
 
     if (!day || !type) continue;
@@ -172,8 +196,13 @@ function buildUsageData(
     if (run.status === "PASSED") day.passed += 1;
     else day.failed += 1;
     day.total += 1;
+    day.projects[run.project.id] = (day.projects[run.project.id] ?? 0) + 1;
 
-    const testKey = activeCheck?.id ?? run.checkSnapshotKey ?? run.checkSnapshotName;
+    const testKey =
+      activeCheck?.id ??
+      (run.checkSnapshotKey
+        ? `${run.project.id}:${run.checkSnapshotKey}`
+        : run.checkSnapshotName);
     const testName = activeCheck?.name ?? run.checkSnapshotName ?? run.checkSnapshotKey;
     if (testKey && testName) {
       const test = tests.get(testKey) ?? {
@@ -181,6 +210,7 @@ function buildUsageData(
         failed: 0,
         name: testName,
         passed: 0,
+        projectSlug: run.project.slug,
         total: 0,
         type,
       };
@@ -222,7 +252,12 @@ function buildUsageData(
 
   return {
     days,
-    projectSlug,
+    projectSlug: "all",
+    projects: projects.map((project, index) => ({
+      ...project,
+      color: getProjectColor(index),
+      total: days.reduce((sum, day) => sum + (day.projects[project.id] ?? 0), 0),
+    })),
     rangeDays: USAGE_RANGE_DAYS,
     unstableTests,
     totals: {
@@ -236,6 +271,21 @@ function buildUsageData(
       total,
     },
   };
+}
+
+function getProjectColor(index: number): string {
+  const colors = [
+    "#38bdf8",
+    "#a78bfa",
+    "#34d399",
+    "#fbbf24",
+    "#fb7185",
+    "#22d3ee",
+    "#f472b6",
+    "#a3e635",
+  ];
+
+  return colors[index % colors.length]!;
 }
 
 function getPercentage(value: number, total: number) {

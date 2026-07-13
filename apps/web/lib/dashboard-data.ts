@@ -69,6 +69,7 @@ export type TestSessionRow = {
   jobUrl?: string;
   name?: string;
   pipelineUrl?: string;
+  projectSlug?: string;
   ref?: string;
   repository?: string;
   runState: DashboardRunState;
@@ -83,6 +84,7 @@ export type TestSessionsData = {
   filters: {
     page: number;
     pageSize: number;
+    project?: string;
     query: string;
     sessionName: string;
   };
@@ -97,12 +99,14 @@ export type TestSessionsData = {
     totalPages: number;
   };
   projectSlug: string;
+  projects?: ProjectFilterOption[];
   sessions: TestSessionRow[];
 };
 
 export type TestSessionsDataOptions = {
   page?: number;
   pageSize?: number;
+  project?: string;
   query?: string;
   sessionName?: string;
 };
@@ -163,6 +167,7 @@ export type JournalRunTypeFilter = "all" | DashboardCheckRow["type"];
 export type JournalDataOptions = {
   page?: number;
   pageSize?: number;
+  project?: string;
   query?: string;
   range?: JournalRangeFilter;
   status?: JournalRunStatusFilter;
@@ -178,6 +183,7 @@ export type JournalRunRow = DashboardRunRow & {
   checkType: DashboardCheckRow["type"];
   createdAtLabel: string;
   groupName: string;
+  projectSlug?: string;
   runHref: string;
   schedule: string;
   sessionName?: string;
@@ -187,6 +193,7 @@ export type JournalData = {
   filters: {
     page: number;
     pageSize: number;
+    project?: string;
     query: string;
     range: JournalRangeFilter;
     status: JournalRunStatusFilter;
@@ -203,7 +210,13 @@ export type JournalData = {
     totalPages: number;
   };
   projectSlug: string;
+  projects?: ProjectFilterOption[];
   runs: JournalRunRow[];
+};
+
+export type ProjectFilterOption = {
+  name: string;
+  slug: string;
 };
 
 export type CheckDetailData = {
@@ -333,6 +346,10 @@ type CheckWithRuns = {
   id: string;
   key: string;
   name: string;
+  project?: {
+    name?: string;
+    slug: string;
+  };
   request: unknown;
   runs: MappableRun[];
   tags: string[];
@@ -365,6 +382,9 @@ type TestSessionWithRuns = {
   jobUrl: string | null;
   name: string | null;
   pipelineUrl: string | null;
+  project: {
+    slug: string;
+  };
   ref: string | null;
   repository: string | null;
   runs: TestSessionRunWithCheck[];
@@ -392,6 +412,9 @@ type JournalRunWithCheck = MappableRun & {
     id: string;
     key: string;
     name: string;
+    project?: {
+      slug: string;
+    };
     tags: string[];
     type: string;
   };
@@ -424,6 +447,9 @@ type ActiveQueueRunWithCheck = MappableRun & {
     source: string | null;
   } | null;
   testSessionId: string | null;
+  project: {
+    slug: string;
+  };
 };
 
 const JOURNAL_DEFAULT_PAGE_SIZE = 20;
@@ -433,46 +459,22 @@ const TEST_SESSIONS_MAX_PAGE_SIZE = 100;
 const DASHBOARD_ACTIVE_RUN_STATUSES = ["QUEUED", "RUNNING"] as const;
 
 export async function getDashboardData(
-  projectSlug: string,
+  _projectSlug = "default",
   options: DashboardDataOptions = {},
 ): Promise<DashboardData> {
   const timeZone = getRuntimeTimeZone();
 
   try {
-    const project =
-      (await prisma.project.findUnique({
-        select: {
-          id: true,
-          slug: true,
-        },
-        where: {
-          slug: projectSlug,
-        },
-      })) ??
-      (await prisma.project.findFirst({
-        orderBy: {
-          createdAt: "desc",
-        },
-        select: {
-          id: true,
-          slug: true,
-        },
-      }));
-
-    if (!project) {
-      return createEmptyDashboard(projectSlug);
-    }
-
     const [checks, queue] = await Promise.all([
-      fetchChecks(project.id),
-      fetchActiveQueue(project.id, project.slug, timeZone),
+      fetchChecks(),
+      fetchActiveQueue(timeZone),
     ]);
     const groups = buildGroups(checks, timeZone);
 
     return {
       firewatch: buildFirewatch(checks, timeZone),
       groups,
-      projectSlug: project.slug,
+      projectSlug: "default",
       queue,
       summary: applyQueueCounts(summarizeGroups(groups), queue),
     };
@@ -483,52 +485,28 @@ export async function getDashboardData(
       throw error;
     }
 
-    return createEmptyDashboard(projectSlug);
+    return createEmptyDashboard("default");
   }
 }
 
 export async function getDashboardActivityData(
-  projectSlug: string,
+  _projectSlug = "default",
 ): Promise<DashboardActivityData> {
-  const project = await findProjectForDashboard(projectSlug);
-
-  if (!project) {
-    return {
-      projectSlug,
-      queued: 0,
-      running: 0,
-    };
-  }
-
-  const projectRunsWhere: Prisma.CheckRunWhereInput = {
-    OR: [
-      {
-        check: {
-          projectId: project.id,
-        },
-      },
-      {
-        checkSnapshotProjectSlug: project.slug,
-      },
-    ],
-  };
   const [queued, running] = await Promise.all([
     prisma.checkRun.count({
       where: {
-        ...projectRunsWhere,
         status: "QUEUED",
       },
     }),
     prisma.checkRun.count({
       where: {
-        ...projectRunsWhere,
         status: "RUNNING",
       },
     }),
   ]);
 
   return {
-    projectSlug: project.slug,
+    projectSlug: "default",
     queued,
     running,
   };
@@ -782,38 +760,21 @@ export async function getRunDetailData(
 }
 
 export async function getJournalData(
-  projectSlug: string,
+  _projectSlug: string,
   options: JournalDataOptions = {},
 ): Promise<JournalData> {
   const filters = normalizeJournalFilters(options);
   const timeZone = getRuntimeTimeZone();
 
   try {
-    const project =
-      (await prisma.project.findUnique({
-        select: {
-          id: true,
-          slug: true,
-        },
-        where: {
-          slug: projectSlug,
-        },
-      })) ??
-      (await prisma.project.findFirst({
-        orderBy: {
-          createdAt: "desc",
-        },
-        select: {
-          id: true,
-          slug: true,
-        },
-      }));
-
-    if (!project) {
-      return createEmptyJournal(projectSlug, filters);
-    }
-
-    const where = buildJournalWhere(project.id, filters);
+    const projects = await listProjectFilterOptions();
+    const selectedProject = projects.find(
+      (project) => project.slug === filters.project,
+    );
+    const where = buildJournalWhere(
+      filters.project === "all" ? undefined : (selectedProject?.slug ?? "__missing__"),
+      filters,
+    );
     const total = await prisma.checkRun.count({ where });
     const totalPages = Math.max(1, Math.ceil(total / filters.pageSize));
     const page = Math.min(filters.page, totalPages);
@@ -828,6 +789,11 @@ export async function getJournalData(
         check: {
           include: {
             group: true,
+            project: {
+              select: {
+                slug: true,
+              },
+            },
           },
         },
         testSession: {
@@ -861,40 +827,32 @@ export async function getJournalData(
         total,
         totalPages,
       },
-      projectSlug: project.slug,
+      projectSlug: "all",
+      projects,
       runs: journalRuns.map((run) => mapJournalRun(run, timeZone)),
     };
   } catch (error) {
     console.warn("Unable to load journal data.", error);
-    return createEmptyJournal(projectSlug, filters);
+    return createEmptyJournal(filters, []);
   }
 }
 
 export async function getTestSessionsData(
-  projectSlug: string,
+  _projectSlug: string,
   options: TestSessionsDataOptions = {},
 ): Promise<TestSessionsData> {
   const filters = normalizeTestSessionsFilters(options);
   const timeZone = getRuntimeTimeZone();
 
   try {
-    const project = await findProjectForDashboard(projectSlug);
-    const resolvedProjectSlug = project?.slug ?? projectSlug;
-    const projectRunFilters: Prisma.CheckRunWhereInput[] = [
-      ...(project
-        ? [
-            {
-              check: {
-                projectId: project.id,
-              },
-            },
-          ]
-        : []),
-      {
-        checkSnapshotProjectSlug: resolvedProjectSlug,
-      },
-    ];
-    const where = buildTestSessionsWhere(projectRunFilters, filters);
+    const projects = await listProjectFilterOptions();
+    const selectedProject = projects.find(
+      (project) => project.slug === filters.project,
+    );
+    const where = buildTestSessionsWhere(
+      filters.project === "all" ? undefined : (selectedProject?.slug ?? "__missing__"),
+      filters,
+    );
     const total = await prisma.testSession.count({ where });
     const totalPages = Math.max(1, Math.ceil(total / filters.pageSize));
     const page = Math.min(filters.page, totalPages);
@@ -902,6 +860,11 @@ export async function getTestSessionsData(
 
     const sessions = await prisma.testSession.findMany({
       include: {
+        project: {
+          select: {
+            slug: true,
+          },
+        },
         runs: {
           include: {
             artifacts: {
@@ -917,9 +880,6 @@ export async function getTestSessionsData(
           },
           orderBy: {
             createdAt: "desc",
-          },
-          where: {
-            OR: projectRunFilters,
           },
         },
       },
@@ -946,7 +906,8 @@ export async function getTestSessionsData(
         total,
         totalPages,
       },
-      projectSlug: resolvedProjectSlug,
+      projectSlug: "all",
+      projects,
       sessions: sessions.map((session) =>
         mapTestSession(session as TestSessionWithRuns, timeZone),
       ),
@@ -966,7 +927,8 @@ export async function getTestSessionsData(
         total: 0,
         totalPages: 1,
       },
-      projectSlug,
+      projectSlug: "all",
+      projects: [],
       sessions: [],
     };
   }
@@ -980,6 +942,11 @@ export async function getTestSessionData(
   try {
     const session = await prisma.testSession.findFirst({
       include: {
+        project: {
+          select: {
+            slug: true,
+          },
+        },
         runs: {
           include: {
             artifacts: {
@@ -1015,10 +982,10 @@ export async function getTestSessionData(
 
     const mappedSession = mapTestSession(session as TestSessionWithRuns, timeZone);
     const runs = session.runs as TestSessionRunWithCheck[];
-    const firstCheck = runs[0] ? getRunCheckSnapshot(runs[0]) : undefined;
-
     return {
-      projectSlug: firstCheck?.projectSlug ?? "default",
+      projectSlug:
+        session.project?.slug ??
+        (runs[0] ? getRunCheckSnapshot(runs[0]).projectSlug : "default"),
       session: {
         ...mappedSession,
         checks: mapTestSessionChecks(runs, session.id),
@@ -1039,6 +1006,11 @@ export async function getTestSessionCheckData(
   try {
     const session = await prisma.testSession.findFirst({
       include: {
+        project: {
+          select: {
+            slug: true,
+          },
+        },
         runs: {
           include: {
             artifacts: {
@@ -1144,6 +1116,7 @@ function normalizeJournalFilters(options: JournalDataOptions): JournalData["filt
   return {
     page: clampInteger(options.page, 1, 1, Number.MAX_SAFE_INTEGER),
     pageSize,
+    project: options.project?.trim() || "all",
     query: options.query?.trim() ?? "",
     range: normalizeJournalRange(options.range),
     status: normalizeJournalStatus(options.status),
@@ -1164,6 +1137,7 @@ function normalizeTestSessionsFilters(
   return {
     page: clampInteger(options.page, 1, 1, Number.MAX_SAFE_INTEGER),
     pageSize,
+    project: options.project?.trim() || "all",
     query: options.query?.trim() ?? "",
     sessionName: options.sessionName?.trim() ?? "",
   };
@@ -1211,13 +1185,13 @@ function clampInteger(
 }
 
 function buildJournalWhere(
-  projectId: string,
+  projectSlug: string | undefined,
   filters: JournalData["filters"],
 ): CheckRunWhere {
   const where: CheckRunWhere = {
+    ...(projectSlug ? { project: { slug: projectSlug } } : {}),
     check: {
       enabled: true,
-      projectId,
       ...(filters.type === "all"
         ? {}
         : { type: filters.type.toUpperCase() as "API" | "BROWSER" }),
@@ -1281,16 +1255,12 @@ function buildJournalWhere(
 }
 
 function buildTestSessionsWhere(
-  projectRunFilters: Prisma.CheckRunWhereInput[],
+  projectSlug: string | undefined,
   filters: TestSessionsData["filters"],
 ): Prisma.TestSessionWhereInput {
   const where: Prisma.TestSessionWhereInput = {
     kind: "TEST",
-    runs: {
-      some: {
-        OR: projectRunFilters,
-      },
-    },
+    ...(projectSlug ? { project: { slug: projectSlug } } : {}),
   };
   const query = filters.query.trim();
   const sessionName = filters.sessionName.trim();
@@ -1429,27 +1399,16 @@ function getJournalRangeCutoff(range: JournalRangeFilter): Date | undefined {
   return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 }
 
-async function findProjectForDashboard(projectSlug: string) {
-  return (
-    (await prisma.project.findUnique({
-      select: {
-        id: true,
-        slug: true,
-      },
-      where: {
-        slug: projectSlug,
-      },
-    })) ??
-    (await prisma.project.findFirst({
-      orderBy: {
-        createdAt: "desc",
-      },
-      select: {
-        id: true,
-        slug: true,
-      },
-    }))
-  );
+async function listProjectFilterOptions(): Promise<ProjectFilterOption[]> {
+  return prisma.project.findMany({
+    orderBy: {
+      name: "asc",
+    },
+    select: {
+      name: true,
+      slug: true,
+    },
+  });
 }
 
 function buildDashboardVisibleRunWhere(): Prisma.CheckRunWhereInput {
@@ -1495,6 +1454,9 @@ function mapTestSession(
     ...(session.jobUrl ? { jobUrl: session.jobUrl } : {}),
     name: session.name ?? undefined,
     ...(session.pipelineUrl ? { pipelineUrl: session.pipelineUrl } : {}),
+    projectSlug:
+      session.project?.slug ??
+      (runs[0] ? getRunCheckSnapshot(runs[0]).projectSlug : "default"),
     ...(session.ref ? { ref: session.ref } : {}),
     ...(session.repository ? { repository: session.repository } : {}),
     runState: mapRunState(status),
@@ -1732,6 +1694,7 @@ function mapJournalRun(run: JournalRunWithCheck, timeZone: string): JournalRunRo
     checkType: run.check.type.toLowerCase() as DashboardCheckRow["type"],
     createdAtLabel: formatRunTimestamp(run.createdAt, timeZone),
     groupName: run.check.group?.name ?? "Ungrouped",
+    projectSlug: run.check.project?.slug ?? run.checkSnapshotProjectSlug ?? "default",
     runHref: `/checks/${encodeURIComponent(run.check.id)}/runs/${encodeURIComponent(
       run.id,
     )}`,
@@ -1743,10 +1706,16 @@ function mapJournalRun(run: JournalRunWithCheck, timeZone: string): JournalRunRo
   };
 }
 
-async function fetchChecks(projectId: string) {
+async function fetchChecks() {
   return prisma.check.findMany({
     include: {
       group: true,
+      project: {
+        select: {
+          name: true,
+          slug: true,
+        },
+      },
       runs: {
         include: {
           artifacts: {
@@ -1774,16 +1743,11 @@ async function fetchChecks(projectId: string) {
     ],
     where: {
       enabled: true,
-      projectId,
     },
   });
 }
 
-async function fetchActiveQueue(
-  projectId: string,
-  projectSlug: string,
-  timeZone: string,
-): Promise<DashboardQueueRow[]> {
+async function fetchActiveQueue(timeZone: string): Promise<DashboardQueueRow[]> {
   const runs = await prisma.checkRun.findMany({
     include: {
       artifacts: {
@@ -1809,21 +1773,16 @@ async function fetchActiveQueue(
           source: true,
         },
       },
+      project: {
+        select: {
+          slug: true,
+        },
+      },
     },
     orderBy: {
       createdAt: "asc",
     },
     where: {
-      OR: [
-        {
-          check: {
-            projectId,
-          },
-        },
-        {
-          checkSnapshotProjectSlug: projectSlug,
-        },
-      ],
       status: {
         in: [...DASHBOARD_ACTIVE_RUN_STATUSES],
       },
@@ -1850,6 +1809,11 @@ function mapQueueRun(
     createdAt: run.createdAt.toISOString(),
     createdAtLabel: formatRunTimestamp(run.createdAt, timeZone),
     groupName: check.groupName,
+    projectSlug:
+      run.project?.slug ??
+      run.check?.project.slug ??
+      run.checkSnapshotProjectSlug ??
+      "default",
     id: run.id,
     runState: mapActiveRunState(run.status),
     source,
@@ -1942,10 +1906,13 @@ function buildGroups(checks: CheckWithRuns[], timeZone: string): DashboardGroupR
 
   for (const check of checks) {
     const groupName = check.group?.name ?? "Ungrouped";
-    grouped.set(groupName, [...(grouped.get(groupName) ?? []), check]);
+    const groupKey = `${check.project?.slug ?? "default"}:${groupName}`;
+    grouped.set(groupKey, [...(grouped.get(groupKey) ?? []), check]);
   }
 
-  return [...grouped.entries()].map(([name, groupChecks], index) => {
+  return [...grouped.values()].map((groupChecks, index) => {
+    const firstCheck = groupChecks[0]!;
+    const name = firstCheck.group?.name ?? "Ungrouped";
     const children = groupChecks.map((check) => mapCheck(check, timeZone));
 
     return {
@@ -1953,6 +1920,8 @@ function buildGroups(checks: CheckWithRuns[], timeZone: string): DashboardGroupR
       children,
       expanded: index === 0,
       name,
+      projectName: firstCheck.project?.name ?? firstCheck.project?.slug ?? "default",
+      projectSlug: firstCheck.project?.slug ?? "default",
       status: summarizeStatus(children.map((check) => check.status)),
       updated: formatLatestUpdate(groupChecks, timeZone),
     };
@@ -3060,8 +3029,8 @@ function createEmptyDashboard(projectSlug: string): DashboardData {
 }
 
 function createEmptyJournal(
-  projectSlug: string,
   filters: JournalData["filters"],
+  projects: ProjectFilterOption[],
 ): JournalData {
   return {
     filters,
@@ -3075,7 +3044,8 @@ function createEmptyJournal(
       total: 0,
       totalPages: 1,
     },
-    projectSlug,
+    projectSlug: "all",
+    projects,
     runs: [],
   };
 }

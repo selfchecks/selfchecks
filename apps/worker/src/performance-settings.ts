@@ -5,6 +5,8 @@ import {
 } from "@selfchecks/core";
 import { prisma } from "@selfchecks/db";
 
+const GLOBAL_SETTINGS_PROJECT_SLUG = "default";
+
 export type ReadPerformanceRuntimeSettingsOptions = {
   fallback?: PerformanceSettingsData;
   logger?: Pick<Console, "warn">;
@@ -14,7 +16,7 @@ export type ReadPerformanceRuntimeSettingsOptions = {
 export async function readPerformanceRuntimeSettings({
   fallback = defaultPerformanceSettings,
   logger,
-  projectSlug = "default",
+  projectSlug: _projectSlug,
 }: ReadPerformanceRuntimeSettingsOptions = {}): Promise<PerformanceSettingsData> {
   try {
     const project =
@@ -32,7 +34,7 @@ export async function readPerformanceRuntimeSettings({
           },
         },
         where: {
-          slug: projectSlug,
+          slug: GLOBAL_SETTINGS_PROJECT_SLUG,
         },
       })) ??
       (await prisma.project.findFirst({

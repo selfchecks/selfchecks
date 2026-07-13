@@ -300,7 +300,9 @@ export default function DashboardClient({
   const [dateRange, setDateRange] = useState<DateRange>("24h");
   const [firewatchOpen, setFirewatchOpen] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(groups.map((group) => [group.name, Boolean(group.expanded)])),
+    Object.fromEntries(
+      groups.map((group) => [getGroupKey(group), Boolean(group.expanded)]),
+    ),
   );
   const [notice, setNotice] = useState("");
   const [queueingAllChecks, setQueueingAllChecks] = useState(false);
@@ -474,7 +476,7 @@ export default function DashboardClient({
             ...group,
             children: filteredChildren,
             checks: `${filteredChildren.length} checks`,
-            expanded: expandedGroups[group.name] ?? false,
+            expanded: expandedGroups[getGroupKey(group)] ?? false,
           });
           continue;
         }
@@ -482,7 +484,7 @@ export default function DashboardClient({
         if (groupMatches) {
           nextGroups.push({
             ...group,
-            expanded: expandedGroups[group.name] ?? false,
+            expanded: expandedGroups[getGroupKey(group)] ?? false,
           });
         }
 
@@ -492,7 +494,7 @@ export default function DashboardClient({
       if (groupMatches) {
         nextGroups.push({
           ...group,
-          expanded: expandedGroups[group.name] ?? false,
+          expanded: expandedGroups[getGroupKey(group)] ?? false,
         });
       }
     }
@@ -504,7 +506,9 @@ export default function DashboardClient({
     setActiveView("dashboard");
     setDateRange("24h");
     setExpandedGroups(
-      Object.fromEntries(groups.map((group) => [group.name, Boolean(group.expanded)])),
+      Object.fromEntries(
+        groups.map((group) => [getGroupKey(group), Boolean(group.expanded)]),
+      ),
     );
     setNotice("Dashboard filters reset.");
     setQuery("");
@@ -834,7 +838,17 @@ function doesGroupMatchSearch(group: GroupRow, query: string) {
     return true;
   }
 
-  return group.name.toLowerCase().includes(query.trim().toLowerCase());
+  const normalizedQuery = query.trim().toLowerCase();
+
+  return (
+    group.name.toLowerCase().includes(normalizedQuery) ||
+    (group.projectName ?? "default").toLowerCase().includes(normalizedQuery) ||
+    (group.projectSlug ?? "default").toLowerCase().includes(normalizedQuery)
+  );
+}
+
+function getGroupKey(group: GroupRow): string {
+  return `${group.projectSlug ?? "default"}:${group.name}`;
 }
 
 function doesCheckMatchFilters(
@@ -1053,6 +1067,7 @@ function addOptimisticQueuedRows(
         createdAt,
         createdAtLabel: "Queued",
         groupName: group.name,
+        projectSlug: group.projectSlug ?? "default",
         id: `queued:${check.id}`,
         runState: "queued",
         source: "manual",
@@ -1341,9 +1356,10 @@ function QueueScreen({ queue }: { queue: QueueRow[] }) {
           <table className="w-full min-w-[920px] table-fixed text-left text-sm">
             <thead className="bg-[#121820] text-xs font-semibold uppercase text-slate-500">
               <tr>
-                <th className="w-[42%] px-4 py-3">Name</th>
+                <th className="w-[34%] px-4 py-3">Name</th>
+                <th className="w-[14%] px-4 py-3">Project</th>
                 <th className="w-[10%] px-4 py-3">Type</th>
-                <th className="w-[32%] px-4 py-3">Branch</th>
+                <th className="w-[26%] px-4 py-3">Branch</th>
                 <th className="w-[16%] px-4 py-3">Source</th>
               </tr>
             </thead>
@@ -1352,7 +1368,7 @@ function QueueScreen({ queue }: { queue: QueueRow[] }) {
                 sortedQueue.map((row) => <QueueTableRow key={row.id} row={row} />)
               ) : (
                 <tr>
-                  <td className="px-4 py-8 text-center text-slate-500" colSpan={4}>
+                  <td className="px-4 py-8 text-center text-slate-500" colSpan={5}>
                     No running or queued tests.
                   </td>
                 </tr>
@@ -1391,6 +1407,7 @@ function QueueTableRow({ row }: { row: QueueRow }) {
           </div>
         </div>
       </td>
+      <td className="px-4 py-3 text-slate-300">{row.projectSlug}</td>
       <td className="px-4 py-3">
         <CheckTypeBadge type={row.type} />
       </td>
@@ -1797,7 +1814,7 @@ function SettingsScreen({
           <h2 className="mt-1 text-2xl font-semibold text-slate-100">Administration</h2>
         </div>
         <div className="rounded-md border border-slate-700 bg-[#111821] px-3 py-2 text-sm text-slate-300">
-          Project: {settings.projectSlug}
+          Scope: all projects
         </div>
       </div>
 
@@ -2746,7 +2763,7 @@ function ChecksTable({
               <GroupBlock
                 activeActionMenu={activeActionMenu}
                 group={group}
-                key={group.name}
+                key={getGroupKey(group)}
                 onActionMenuToggle={onActionMenuToggle}
                 onCheckToggle={onCheckToggle}
                 onGroupToggle={onGroupToggle}
@@ -2785,8 +2802,10 @@ function GroupBlock({
   onNotice: (notice: string) => void;
   onRunCheckNow: (check: CheckRow) => void;
 }) {
-  const actionKey = `group:${group.name}`;
-  const toggleLabel = `${group.expanded ? "Collapse" : "Expand"} ${group.name}`;
+  const groupKey = getGroupKey(group);
+  const actionKey = `group:${groupKey}`;
+  const projectName = group.projectName ?? group.projectSlug;
+  const toggleLabel = `${group.expanded ? "Collapse" : "Expand"} ${projectName ? `${projectName} ` : ""}${group.name}`;
 
   return (
     <>
@@ -2798,11 +2817,11 @@ function GroupBlock({
           "hover:bg-[#202832] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/50",
           group.expanded ? "bg-[#202832]" : "bg-[#11161d]",
         )}
-        onClick={() => onGroupToggle(group.name)}
+        onClick={() => onGroupToggle(groupKey)}
         onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
-            onGroupToggle(group.name);
+            onGroupToggle(groupKey);
           }
         }}
         role="button"
@@ -2819,6 +2838,9 @@ function GroupBlock({
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-semibold text-slate-200">{group.name}</span>
+                <span className="rounded border border-slate-700 bg-slate-900 px-1.5 py-0.5 text-xs font-medium text-slate-400">
+                  {group.projectName ?? group.projectSlug ?? "default"}
+                </span>
                 <span className="text-sm text-slate-400">{group.checks}</span>
                 <span className="text-sm text-slate-500">{group.updated}</span>
               </div>
@@ -2852,7 +2874,7 @@ function GroupBlock({
               name={group.name}
               onClose={() => onActionMenuToggle(actionKey)}
               onNotice={onNotice}
-              onOpen={() => onGroupToggle(group.name)}
+              onOpen={() => onGroupToggle(groupKey)}
             />
           ) : null}
         </td>

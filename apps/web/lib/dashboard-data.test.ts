@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   checkRunFindMany: vi.fn(),
   checkRunUpdateMany: vi.fn(),
   projectFindFirst: vi.fn(),
+  projectFindMany: vi.fn(),
   projectFindUnique: vi.fn(),
   testSessionCount: vi.fn(),
   testSessionFindFirst: vi.fn(),
@@ -28,6 +29,7 @@ vi.mock("@/lib/prisma", () => ({
     },
     project: {
       findFirst: mocks.projectFindFirst,
+      findMany: mocks.projectFindMany,
       findUnique: mocks.projectFindUnique,
     },
     testSession: {
@@ -104,6 +106,7 @@ describe("dashboard data", () => {
     mocks.checkRunCount.mockResolvedValue(0);
     mocks.checkRunFindMany.mockResolvedValue([]);
     mocks.checkRunUpdateMany.mockResolvedValue({ count: 0 });
+    mocks.projectFindMany.mockResolvedValue([{ name: "default", slug: "default" }]);
     mocks.testSessionCount.mockResolvedValue(0);
     mocks.testSessionFindMany.mockResolvedValue([]);
   });
@@ -128,31 +131,11 @@ describe("dashboard data", () => {
     });
     expect(mocks.checkRunCount).toHaveBeenNthCalledWith(1, {
       where: {
-        OR: [
-          {
-            check: {
-              projectId: "project_1",
-            },
-          },
-          {
-            checkSnapshotProjectSlug: "default",
-          },
-        ],
         status: "QUEUED",
       },
     });
     expect(mocks.checkRunCount).toHaveBeenNthCalledWith(2, {
       where: {
-        OR: [
-          {
-            check: {
-              projectId: "project_1",
-            },
-          },
-          {
-            checkSnapshotProjectSlug: "default",
-          },
-        ],
         status: "RUNNING",
       },
     });
@@ -1371,7 +1354,6 @@ describe("dashboard data", () => {
       where: expect.objectContaining({
         check: expect.objectContaining({
           enabled: true,
-          projectId: "project_1",
           type: "API",
         }),
         createdAt: {
@@ -1516,20 +1498,6 @@ describe("dashboard data", () => {
           },
         ],
         kind: "TEST",
-        runs: {
-          some: {
-            OR: [
-              {
-                check: {
-                  projectId: "project_1",
-                },
-              },
-              {
-                checkSnapshotProjectSlug: "default",
-              },
-            ],
-          },
-        },
       }),
     });
     expect(mocks.testSessionFindMany).toHaveBeenCalledWith(
@@ -1549,26 +1517,13 @@ describe("dashboard data", () => {
             },
           ],
           kind: "TEST",
-          runs: {
-            some: {
-              OR: [
-                {
-                  check: {
-                    projectId: "project_1",
-                  },
-                },
-                {
-                  checkSnapshotProjectSlug: "default",
-                },
-              ],
-            },
-          },
         },
       }),
     );
     expect(data.filters).toEqual({
       page: 2,
       pageSize: 1,
+      project: "all",
       query: "signin",
       sessionName: "Release v1.2.3",
     });
@@ -1643,15 +1598,6 @@ describe("dashboard data", () => {
       expect.objectContaining({
         where: {
           kind: "TEST",
-          runs: {
-            some: {
-              OR: [
-                {
-                  checkSnapshotProjectSlug: "default",
-                },
-              ],
-            },
-          },
         },
       }),
     );
@@ -1672,7 +1618,7 @@ describe("dashboard data", () => {
         total: 1,
         totalPages: 1,
       },
-      projectSlug: "default",
+      projectSlug: "all",
       sessions: [
         {
           duration: "1 h 5 min",

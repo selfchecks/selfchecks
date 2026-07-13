@@ -220,6 +220,81 @@ export function TestSourcesChart({ days }: { days: UsageData["days"] }) {
   );
 }
 
+export function ProjectUsageChart({
+  days,
+  projects,
+}: {
+  days: UsageData["days"];
+  projects: UsageData["projects"];
+}) {
+  const [activeIndex, setActiveIndex] = useState<number>();
+  const plotHeight = CHART_HEIGHT - PADDING.top - PADDING.bottom;
+  const plotWidth = CHART_WIDTH - PADDING.left - PADDING.right;
+  const yMax = getRoundedMax(Math.max(1, ...days.map((day) => day.total)));
+  const groupWidth = plotWidth / days.length;
+  const barWidth = Math.max(5, Math.min(18, groupWidth * 0.64));
+  const ticks = Array.from({ length: 5 }, (_, index) => (yMax / 4) * index);
+
+  return (
+    <ChartContainer
+      activeIndex={activeIndex}
+      days={days}
+      getSeries={(day) =>
+        projects.map((project) => ({
+          color: project.color,
+          label: project.name,
+          value: day.projects[project.id] ?? 0,
+        }))
+      }
+    >
+      <svg
+        aria-label="Completed tests by project and day"
+        className="block w-full"
+        role="img"
+        viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
+      >
+        <ChartGrid plotHeight={plotHeight} ticks={ticks} yMax={yMax} />
+        {days.map((day, index) => {
+          const center = PADDING.left + groupWidth * (index + 0.5);
+          const bottom = PADDING.top + plotHeight;
+          let stackedHeight = 0;
+          const showLabel = index === 0 || index === days.length - 1 || index % 5 === 4;
+
+          return (
+            <ChartDayTarget
+              center={center}
+              day={day}
+              groupWidth={groupWidth}
+              index={index}
+              key={day.date}
+              onActiveChange={setActiveIndex}
+              plotHeight={plotHeight}
+            >
+              {projects.map((project) => {
+                const height = ((day.projects[project.id] ?? 0) / yMax) * plotHeight;
+                const y = bottom - stackedHeight - height;
+                stackedHeight += height;
+
+                return (
+                  <rect
+                    fill={project.color}
+                    height={height}
+                    key={project.id}
+                    width={barWidth}
+                    x={center - barWidth / 2}
+                    y={y}
+                  />
+                );
+              })}
+              {showLabel ? <ChartDateLabel center={center} label={day.label} /> : null}
+            </ChartDayTarget>
+          );
+        })}
+      </svg>
+    </ChartContainer>
+  );
+}
+
 function ChartContainer({
   activeIndex,
   children,
@@ -229,7 +304,7 @@ function ChartContainer({
   activeIndex?: number;
   children: React.ReactNode;
   days: UsageDay[];
-  getSeries: (day: UsageDay) => [PopoverSeries, PopoverSeries];
+  getSeries: (day: UsageDay) => PopoverSeries[];
 }) {
   const activeDay = activeIndex === undefined ? undefined : days[activeIndex];
 
@@ -341,7 +416,7 @@ function ChartPopover({
 }: {
   day: UsageDay;
   index: number;
-  series: [PopoverSeries, PopoverSeries];
+  series: PopoverSeries[];
   totalDays: number;
 }) {
   const alignment =
@@ -362,7 +437,7 @@ function ChartPopover({
       <div className="mt-0.5 text-slate-500">{day.date}</div>
       <div className="mt-3 space-y-1.5 tabular-nums">
         <PopoverRow label="Total" value={day.total} />
-        <PopoverPair left={series[0]} right={series[1]} />
+        <PopoverSeriesList series={series} />
       </div>
     </div>
   );
@@ -377,25 +452,24 @@ function PopoverRow({ label, value }: { label: string; value: number }) {
   );
 }
 
-function PopoverPair({
-  left,
-  right,
-}: {
-  left: { color: string; label: string; value: number };
-  right: { color: string; label: string; value: number };
-}) {
+function PopoverSeriesList({ series }: { series: PopoverSeries[] }) {
   return (
     <div
       className="space-y-1.5 border-t border-slate-700/70 pt-1.5 text-slate-400"
       role="list"
     >
-      {[left, right].map((item) => (
+      {series.map((item) => (
         <div
           className="flex min-w-0 items-center gap-1.5"
           key={item.label}
           role="listitem"
         >
-          <span className={`h-2 w-2 shrink-0 rounded-sm ${item.color}`} />
+          <span
+            className={`h-2 w-2 shrink-0 rounded-sm ${item.color.startsWith("#") ? "" : item.color}`}
+            style={
+              item.color.startsWith("#") ? { backgroundColor: item.color } : undefined
+            }
+          />
           <span className="min-w-0 flex-1 truncate">{item.label}</span>
           <span className="font-semibold text-slate-100">{item.value}</span>
         </div>

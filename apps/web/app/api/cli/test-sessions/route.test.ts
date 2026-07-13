@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   queueAdd: vi.fn(),
   queueClose: vi.fn(),
   queueConstructor: vi.fn(),
+  projectUpsert: vi.fn(),
   testSessionCreate: vi.fn(),
   transaction: vi.fn(),
 }));
@@ -107,9 +108,11 @@ describe("CLI test session upload route", () => {
     });
     mocks.testSessionCreate.mockResolvedValue({ id: "session_1" });
     mocks.checkRunCreate.mockResolvedValue({ id: "run_1" });
+    mocks.projectUpsert.mockResolvedValue({ id: "project_1" });
     mocks.transaction.mockImplementation((callback) =>
       callback({
         checkRun: { create: mocks.checkRunCreate },
+        project: { upsert: mocks.projectUpsert },
         testSession: { create: mocks.testSessionCreate },
       }),
     );

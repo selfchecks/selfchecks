@@ -4,6 +4,7 @@ import { type ChangeEvent, type KeyboardEvent } from "react";
 import {
   CalendarDays,
   CircleAlert,
+  FolderKanban,
   Search,
   SlidersHorizontal,
   Zap,
@@ -42,7 +43,13 @@ const typeOptions: Array<{ label: string; value: JournalRunTypeFilter }> = [
 
 const pageSizeOptions = [10, 20, 50, 100];
 
-export function JournalFilters({ filters }: { filters: JournalData["filters"] }) {
+export function JournalFilters({
+  filters,
+  projects = [],
+}: {
+  filters: JournalData["filters"];
+  projects?: JournalData["projects"];
+}) {
   function submitForm(form: HTMLFormElement | null) {
     form?.requestSubmit();
   }
@@ -66,7 +73,7 @@ export function JournalFilters({ filters }: { filters: JournalData["filters"] })
       className="rounded-md border border-slate-800 bg-[#111821] p-4"
       method="get"
     >
-      <div className="grid gap-3 lg:grid-cols-[minmax(18rem,1fr)_12rem_12rem_12rem_8rem]">
+      <div className="grid gap-3 lg:grid-cols-[minmax(18rem,1fr)_12rem_12rem_12rem_12rem_8rem]">
         <label className="relative min-w-0" htmlFor="journal-search">
           <span className="sr-only">Search runs</span>
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
@@ -80,6 +87,21 @@ export function JournalFilters({ filters }: { filters: JournalData["filters"] })
             type="search"
           />
         </label>
+
+        <SelectFilter
+          icon={FolderKanban}
+          label="Project"
+          name="project"
+          onChange={submitOnSelectChange}
+          options={[
+            { label: "All projects", value: "all" },
+            ...projects.map((project) => ({
+              label: project.name,
+              value: project.slug,
+            })),
+          ]}
+          value={filters.project ?? "all"}
+        />
 
         <SelectFilter
           icon={CircleAlert}

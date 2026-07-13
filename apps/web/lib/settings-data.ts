@@ -204,15 +204,16 @@ type RuntimeSecretInput = {
 };
 
 const DEFAULT_ENVIRONMENT_NAME = "default";
+const GLOBAL_SETTINGS_PROJECT_SLUG = "default";
 const BINDING_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 export async function getDashboardSettingsData(
-  projectSlug = "default",
+  _projectSlug = GLOBAL_SETTINGS_PROJECT_SLUG,
 ): Promise<DashboardSettingsData> {
   const runtimeConfig = readRuntimeConfig();
 
   try {
-    const project = await findSettingsProject(projectSlug);
+    const project = await findSettingsProject(GLOBAL_SETTINGS_PROJECT_SLUG);
 
     return {
       ai: project ? await readAiSettings(project.id) : createDefaultAiSettings(),
@@ -224,7 +225,7 @@ export async function getDashboardSettingsData(
       performance: project
         ? await readPerformanceSettings(project.id)
         : createDefaultPerformanceSettings(),
-      projectSlug: project?.slug ?? projectSlug,
+      projectSlug: GLOBAL_SETTINGS_PROJECT_SLUG,
     };
   } catch (error) {
     console.warn("Unable to load settings data.", error);
@@ -235,7 +236,7 @@ export async function getDashboardSettingsData(
       basic: mapBasicSettings(runtimeConfig),
       environment: createEmptyRuntimeEnvironmentSettings(),
       performance: createDefaultPerformanceSettings(),
-      projectSlug,
+      projectSlug: GLOBAL_SETTINGS_PROJECT_SLUG,
     };
   }
 }
@@ -310,7 +311,7 @@ export async function updateBasicSettings(input: BasicSettingsInput) {
 }
 
 export async function updateAiSettings(input: AiSettingsInput) {
-  const projectSlug = readOptionalString(input.projectSlug) || "default";
+  const projectSlug = GLOBAL_SETTINGS_PROJECT_SLUG;
   const project = await prisma.project.upsert({
     create: {
       name: projectSlug,
@@ -371,7 +372,7 @@ export async function updateAiSettings(input: AiSettingsInput) {
 }
 
 export async function updateRuntimeEnvironmentSettings(input: RuntimeSettingsInput) {
-  const projectSlug = readOptionalString(input.projectSlug) || "default";
+  const projectSlug = GLOBAL_SETTINGS_PROJECT_SLUG;
   const environmentName =
     readOptionalString(input.environmentName) || DEFAULT_ENVIRONMENT_NAME;
   const variables = normalizeVariables(input.variables);
@@ -460,7 +461,7 @@ export async function updateRuntimeEnvironmentSettings(input: RuntimeSettingsInp
 }
 
 export async function updatePerformanceSettings(input: PerformanceSettingsInput) {
-  const projectSlug = readOptionalString(input.projectSlug) || "default";
+  const projectSlug = GLOBAL_SETTINGS_PROJECT_SLUG;
   const performanceSettings = {
     artifactRetentionDays: readRequiredIntegerInRange(
       input.artifactRetentionDays,

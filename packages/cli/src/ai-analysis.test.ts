@@ -98,7 +98,7 @@ describe("AI failure analysis", () => {
       options: {
         checkKeys: ["header-search"],
         env: [],
-        projectSlug: "default",
+        projectSlug: "account",
         record: true,
         reporter: "line",
         rootDir,
@@ -130,6 +130,13 @@ describe("AI failure analysis", () => {
           Authorization: "Bearer test-api-key",
         }),
         method: "POST",
+      }),
+    );
+    expect(mocks.projectFindUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          slug: "default",
+        },
       }),
     );
     const requestBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {

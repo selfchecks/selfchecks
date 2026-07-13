@@ -152,6 +152,8 @@ export type DashboardGroupRow = {
   children?: DashboardCheckRow[];
   expanded?: boolean;
   name: string;
+  projectName?: string;
+  projectSlug?: string;
   status: DashboardStatus;
   updated: string;
 };
@@ -174,6 +176,7 @@ export type DashboardQueueRow = {
   createdAt: string;
   createdAtLabel: string;
   groupName: string;
+  projectSlug?: string;
   id: string;
   runState: Extract<DashboardRunState, "queued" | "running">;
   source: DashboardQueueSource;

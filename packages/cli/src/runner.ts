@@ -389,6 +389,17 @@ async function resolveRunSession(options: RunChecksOptions): Promise<TestSession
       throw new Error(`Test session ${options.existingTestSessionId} was not found.`);
     }
 
+    const project = await prisma.project.findUnique({
+      select: { id: true },
+      where: { slug: options.projectSlug },
+    });
+
+    if (!project || (session.projectId && session.projectId !== project.id)) {
+      throw new Error(
+        `Test session ${options.existingTestSessionId} does not belong to project ${options.projectSlug}.`,
+      );
+    }
+
     return prisma.testSession.update({
       data: {
         status: "RUNNING",
@@ -400,12 +411,23 @@ async function resolveRunSession(options: RunChecksOptions): Promise<TestSession
   }
 
   const isTestSession = options.runMode === "test";
+  const project = await prisma.project.upsert({
+    create: {
+      name: options.projectSlug,
+      slug: options.projectSlug,
+    },
+    update: {},
+    where: {
+      slug: options.projectSlug,
+    },
+  });
 
   return prisma.testSession.create({
     data: {
       kind: isTestSession ? "TEST" : "TRIGGER",
       commitSha: options.testSessionCommitSha,
       name: options.testSessionName,
+      projectId: project.id,
       ...(options.testSessionJobUrl ? { jobUrl: options.testSessionJobUrl } : {}),
       ...(options.testSessionPipelineUrl
         ? { pipelineUrl: options.testSessionPipelineUrl }
@@ -570,11 +592,14 @@ async function upsertStartedRun(
   const runSource = options.runSource ?? "CLI";
 
   if (!existingRunId) {
+    const projectId =
+      session?.projectId ?? (await resolveRunProjectId(options.projectSlug));
     const data: Prisma.CheckRunUncheckedCreateInput = {
       attempt: retryMetadata.attempt,
       ...(check.id ? { checkId: check.id } : {}),
       ...snapshot,
       maxAttempts: retryMetadata.maxAttempts,
+      projectId,
       retryGroupId: retryMetadata.retryGroupId,
       runSource,
       startedAt,
@@ -637,6 +662,7 @@ async function createQueuedRetryRun(
     ...(check.id ? { checkId: check.id } : {}),
     ...snapshot,
     maxAttempts: retryMetadata.maxAttempts,
+    projectId: session.projectId,
     retryGroupId: retryMetadata.retryGroupId,
     runSource: options.runSource ?? "CLI",
     status: "QUEUED",
@@ -646,6 +672,19 @@ async function createQueuedRetryRun(
   return prisma.checkRun.create({
     data,
   });
+}
+
+async function resolveRunProjectId(projectSlug: string): Promise<string> {
+  const project = await prisma.project.findUnique({
+    select: { id: true },
+    where: { slug: projectSlug },
+  });
+
+  if (!project) {
+    throw new Error(`Project ${projectSlug} was not found.`);
+  }
+
+  return project.id;
 }
 
 type RetryPlan = {

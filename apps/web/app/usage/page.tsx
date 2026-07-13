@@ -6,7 +6,12 @@ import { ServiceMark } from "@/components/service-mark";
 import { getDashboardSettingsData } from "@/lib/settings-data";
 import { getUsageData } from "@/lib/usage-data";
 
-import { TestResultsChart, TestSourcesChart, UsageChart } from "./usage-chart";
+import {
+  ProjectUsageChart,
+  TestResultsChart,
+  TestSourcesChart,
+  UsageChart,
+} from "./usage-chart";
 
 export const dynamic = "force-dynamic";
 
@@ -35,9 +40,6 @@ export default async function UsagePage() {
                 <ChartNoAxesColumnIncreasing className="h-4 w-4 shrink-0" />
                 Usage
               </span>
-            </div>
-            <div className="hidden text-sm text-slate-500 sm:block">
-              Project {data.projectSlug}
             </div>
           </div>
         </header>
@@ -112,6 +114,33 @@ export default async function UsagePage() {
               </div>
               <div className="mt-4">
                 <TestResultsChart days={data.days} />
+              </div>
+            </div>
+
+            <div className="mt-5 rounded-md border border-slate-800 bg-[#111821] p-4 sm:p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="font-semibold text-slate-100">
+                    Completed tests by project
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Daily completed tests split across all projects.
+                  </p>
+                </div>
+                <div className="flex max-w-3xl flex-wrap items-center justify-end gap-4 text-xs text-slate-400">
+                  {(data.projects ?? []).map((project) => (
+                    <span className="inline-flex items-center gap-1.5" key={project.id}>
+                      <span
+                        className="h-2.5 w-2.5 rounded-sm"
+                        style={{ backgroundColor: project.color }}
+                      />
+                      {project.name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className="mt-4">
+                <ProjectUsageChart days={data.days} projects={data.projects ?? []} />
               </div>
             </div>
 
@@ -248,7 +277,8 @@ function UnstableTests({
                   </div>
                 )}
                 <div className="mt-1 text-xs uppercase text-slate-500">
-                  {test.type} · {test.failed} failed of {test.total}
+                  {test.projectSlug} · {test.type} · {test.failed} failed of{" "}
+                  {test.total}
                 </div>
               </div>
               <span className="rounded-md bg-red-500/10 px-2 py-1 text-sm font-semibold tabular-nums text-red-300">

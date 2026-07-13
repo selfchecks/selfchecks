@@ -44,6 +44,7 @@ export default async function JournalPage({ searchParams }: JournalPageProps) {
   const journal = await getJournalData("default", {
     page: readNumberParam(params.page),
     pageSize: readNumberParam(params.pageSize),
+    project: readStringParam(params.project),
     query: readStringParam(params.q),
     range: readStringParam(params.range) as JournalRangeFilter | undefined,
     status: readStringParam(params.status) as JournalRunStatusFilter | undefined,
@@ -73,9 +74,7 @@ export default async function JournalPage({ searchParams }: JournalPageProps) {
                 Journal
               </span>
             </div>
-            <div className="hidden text-sm text-slate-500 sm:block">
-              Project {journal.projectSlug}
-            </div>
+            <div className="hidden text-sm text-slate-500 sm:block">All projects</div>
           </div>
         </header>
 
@@ -87,7 +86,7 @@ export default async function JournalPage({ searchParams }: JournalPageProps) {
             </p>
           </div>
 
-          <JournalFilters filters={journal.filters} />
+          <JournalFilters filters={journal.filters} projects={journal.projects ?? []} />
           <JournalTable runs={journal.runs} />
           <JournalPagination journal={journal} />
         </section>
@@ -106,6 +105,7 @@ function JournalTable({ runs }: { runs: JournalRunRow[] }) {
               <th className="px-4 py-3">Run</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Check</th>
+              <th className="px-4 py-3">Project</th>
               <th className="px-4 py-3">Type</th>
               <th className="px-4 py-3">Schedule</th>
               <th className="px-4 py-3">Duration</th>
@@ -117,7 +117,7 @@ function JournalTable({ runs }: { runs: JournalRunRow[] }) {
               runs.map((run) => <JournalRunRowView key={run.id} run={run} />)
             ) : (
               <tr>
-                <td className="px-4 py-8 text-center text-slate-500" colSpan={7}>
+                <td className="px-4 py-8 text-center text-slate-500" colSpan={8}>
                   No runs match the current filters.
                 </td>
               </tr>
@@ -141,6 +141,7 @@ function JournalRunRowView({ run }: { run: JournalRunRow }) {
           <span className="mt-1 truncate text-xs text-slate-500">{run.id}</span>
         </Link>
       </td>
+      <td className="px-4 py-3 text-slate-300">{run.projectSlug ?? "default"}</td>
       <td className="px-4 py-3">
         <RunStateBadge runState={run.runState} status={run.status} />
       </td>
@@ -319,6 +320,11 @@ function buildJournalHref(journal: JournalData, overrides: { page: number }) {
   const { filters } = journal;
 
   setSearchParam(params, "q", filters.query);
+  setSearchParam(
+    params,
+    "project",
+    !filters.project || filters.project === "all" ? "" : filters.project,
+  );
   setSearchParam(params, "status", filters.status === "all" ? "" : filters.status);
   setSearchParam(params, "type", filters.type === "all" ? "" : filters.type);
   setSearchParam(params, "range", filters.range === "7d" ? "" : filters.range);

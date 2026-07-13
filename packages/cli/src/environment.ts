@@ -15,17 +15,14 @@ export type SecretStoreEnv = {
 };
 
 const DEFAULT_ENVIRONMENT_NAME = "default";
+const GLOBAL_SETTINGS_PROJECT_SLUG = "default";
 const CIPHER_PREFIX = "v1";
 const CIPHER_ALGORITHM = "aes-256-gcm";
 
-export async function getRunEnvironment(projectSlug: string): Promise<EnvVar[]> {
+export async function getRunEnvironment(_projectSlug?: string): Promise<EnvVar[]> {
   const project = await prisma.project.findUnique({
-    select: {
-      id: true,
-    },
-    where: {
-      slug: projectSlug,
-    },
+    select: { id: true },
+    where: { slug: GLOBAL_SETTINGS_PROJECT_SLUG },
   });
 
   if (!project) {
