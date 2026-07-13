@@ -4,6 +4,7 @@ import {
   ChartNoAxesColumnIncreasing,
   CheckCircle2,
   FlaskConical,
+  Folder,
   History,
   Home,
   ListChecks,
@@ -198,6 +199,7 @@ function DashboardSkeleton() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <SkeletonFilter icon={Folder} widthClassName="w-44" />
           <SkeletonFilter icon={CalendarDays} widthClassName="w-40" />
           <SkeletonFilter icon={CheckCircle2} widthClassName="w-36" />
           <SkeletonFilter icon={Zap} widthClassName="w-44" />

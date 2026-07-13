@@ -75,6 +75,7 @@ type TagFilter = "all" | "api" | "regress";
 type TypeFilter = "all" | "api" | "browser";
 type DateRange = "24h" | "7d" | "all";
 type TraceFilter = "all" | "with-traces";
+type ProjectFilter = string;
 type DashboardSnapshot = {
   firewatch: DashboardFirewatch;
   groups: GroupRow[];
@@ -305,15 +306,38 @@ export default function DashboardClient({
     ),
   );
   const [notice, setNotice] = useState("");
+  const [projectFilter, setProjectFilter] = useState<ProjectFilter>("all");
   const [queueingAllChecks, setQueueingAllChecks] = useState(false);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [tagFilter, setTagFilter] = useState<TagFilter>("all");
   const [traceOnly, setTraceOnly] = useState(false);
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+  const projectFilterOptions = useMemo<Array<FilterOption<ProjectFilter>>>(() => {
+    const projects = new Map<string, string>();
+
+    for (const group of groups) {
+      const slug = group.projectSlug ?? "default";
+      projects.set(slug, group.projectName ?? slug);
+    }
+
+    return [
+      { label: "All projects", value: "all" },
+      ...[...projects.entries()]
+        .sort((left, right) => left[1].localeCompare(right[1]))
+        .map(([value, label]) => ({ label, value })),
+    ];
+  }, [groups]);
+  const projectGroups = useMemo(
+    () =>
+      projectFilter === "all"
+        ? groups
+        : groups.filter((group) => (group.projectSlug ?? "default") === projectFilter),
+    [groups, projectFilter],
+  );
   const allChecks = useMemo(
-    () => groups.flatMap((group) => group.children ?? []),
-    [groups],
+    () => projectGroups.flatMap((group) => group.children ?? []),
+    [projectGroups],
   );
   const allRunnableChecks = useMemo(
     () => allChecks.filter((check) => !isCheckActive(check)),
@@ -332,6 +356,22 @@ export default function DashboardClient({
     () => allChecks.filter((check) => check.status === "failing"),
     [allChecks],
   );
+  const visibleFirewatch = useMemo(() => {
+    if (projectFilter === "all") {
+      return firewatch;
+    }
+
+    const checkIds = new Set(allChecks.map((check) => check.id));
+
+    return {
+      ...firewatch,
+      rows: firewatch.rows.filter((row) => checkIds.has(row.checkId)),
+    };
+  }, [allChecks, firewatch, projectFilter]);
+  const visibleSummary = useMemo(
+    () => (projectFilter === "all" ? summary : summarizeDashboardGroups(projectGroups)),
+    [projectFilter, projectGroups, summary],
+  );
   const summaryCards = useMemo(
     () =>
       [
@@ -339,19 +379,19 @@ export default function DashboardClient({
           label: "PASSING",
           status: "passing",
           tone: "border-emerald-950/80 bg-emerald-950/75 text-emerald-400 shadow-emerald-950/20",
-          value: String(summary.passing),
+          value: String(visibleSummary.passing),
         },
         {
           label: "DEGRADED",
           status: "degraded",
           tone: "border-orange-950/80 bg-orange-950/75 text-orange-400 shadow-orange-950/20",
-          value: String(summary.degraded),
+          value: String(visibleSummary.degraded),
         },
         {
           label: "FAILING",
           status: "failing",
           tone: "border-red-950/80 bg-red-950/75 text-red-400 shadow-red-950/20",
-          value: String(summary.failing),
+          value: String(visibleSummary.failing),
         },
       ] satisfies Array<{
         label: string;
@@ -359,7 +399,7 @@ export default function DashboardClient({
         tone: string;
         value: string;
       }>,
-    [summary],
+    [visibleSummary],
   );
 
   useEffect(() => {
@@ -454,7 +494,7 @@ export default function DashboardClient({
   const filteredGroups = useMemo<GroupRow[]>(() => {
     const nextGroups: GroupRow[] = [];
 
-    for (const group of groups) {
+    for (const group of projectGroups) {
       const filteredChildren = group.children?.filter((check) =>
         doesCheckMatchFilters(check, {
           query,
@@ -500,7 +540,15 @@ export default function DashboardClient({
     }
 
     return nextGroups;
-  }, [expandedGroups, groups, query, statusFilter, tagFilter, traceOnly, typeFilter]);
+  }, [
+    expandedGroups,
+    projectGroups,
+    query,
+    statusFilter,
+    tagFilter,
+    traceOnly,
+    typeFilter,
+  ]);
 
   function resetDashboard() {
     setActiveView("dashboard");
@@ -511,6 +559,7 @@ export default function DashboardClient({
       ),
     );
     setNotice("Dashboard filters reset.");
+    setProjectFilter("all");
     setQuery("");
     setStatusFilter("all");
     setTagFilter("all");
@@ -723,7 +772,7 @@ export default function DashboardClient({
 
               <FirewatchPanel
                 failedChecksCount={failedChecks.length}
-                firewatch={firewatch}
+                firewatch={visibleFirewatch}
                 onOpenChange={setFirewatchOpen}
                 onOpenCheck={toggleCheck}
                 onRunFailedChecks={() => void runAllFailedChecks()}
@@ -749,6 +798,14 @@ export default function DashboardClient({
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
+                  <FilterDropdown
+                    active={projectFilter !== "all"}
+                    className="w-44"
+                    icon={Folder}
+                    onChange={setProjectFilter}
+                    options={projectFilterOptions}
+                    value={projectFilter}
+                  />
                   <FilterDropdown
                     active={dateRange !== "24h"}
                     className="w-40"

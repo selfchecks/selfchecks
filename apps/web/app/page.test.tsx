@@ -330,6 +330,7 @@ describe("DashboardPage", () => {
     ).toBeNull();
     expect(screen.getByRole("searchbox", { name: "Search checks" })).toBeTruthy();
     expect(screen.queryByRole("combobox")).toBeNull();
+    expect(screen.getByRole("button", { name: "All projects" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Last 24 hours" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Status" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Check type" })).toBeTruthy();
@@ -381,6 +382,60 @@ describe("DashboardPage", () => {
     expect(screen.getByText("Last results")).toBeTruthy();
     expect(screen.getByText("AVA")).toBeTruthy();
     expect(screen.getByText("P95")).toBeTruthy();
+  });
+
+  it("filters dashboard checks and status counters by project", async () => {
+    const user = userEvent.setup();
+    const accountCheck = createCheck({ name: "account-health", status: "passing" });
+    const storybookCheck = createCheck({
+      name: "storybook-navigation",
+      status: "failing",
+    });
+    const groups: DashboardGroupRow[] = [
+      {
+        checks: "1 checks",
+        children: [accountCheck],
+        expanded: true,
+        name: "API / Account",
+        projectName: "account",
+        projectSlug: "account",
+        status: "passing",
+        updated: "about 1 hour ago",
+      },
+      {
+        checks: "1 checks",
+        children: [storybookCheck],
+        expanded: true,
+        name: "Storybook / Navigation.visual.check.ts",
+        projectName: "storybook",
+        projectSlug: "storybook",
+        status: "failing",
+        updated: "about 2 hours ago",
+      },
+    ];
+
+    render(
+      <DashboardClient
+        initialFirewatch={emptyFirewatch}
+        initialGroups={groups}
+        initialSettings={fixtureSettings}
+        initialSummary={{
+          degraded: 0,
+          failing: 1,
+          passing: 1,
+          queued: 0,
+          running: 0,
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "All projects" }));
+    await user.click(screen.getByRole("option", { name: "storybook" }));
+
+    expect(screen.queryByText("account-health")).toBeNull();
+    expect(screen.getByText("storybook-navigation")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /PASSING 0/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /FAILING 1/ })).toBeTruthy();
   });
 
   it("renders Firewatch rows and queues checks from the block", async () => {
