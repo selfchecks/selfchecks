@@ -11,7 +11,10 @@ describe("test session components", () => {
   it("renders run state badges with human-readable labels", () => {
     render(<RunStateBadge runState="timed_out" status="failing" />);
 
-    expect(screen.getByText("Timed out")).toBeTruthy();
+    const badge = screen.getByText("Timed out");
+
+    expect(badge.className).toContain("whitespace-nowrap");
+    expect(badge.className).toContain("shrink-0");
   });
 
   it("renders summary counters", () => {

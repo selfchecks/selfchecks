@@ -1580,7 +1580,7 @@ function RunStateBadge({
   return (
     <span
       className={cn(
-        "inline-flex h-8 items-center gap-2 rounded-md border px-2 text-xs font-semibold",
+        "inline-flex h-8 shrink-0 items-center gap-2 whitespace-nowrap rounded-md border px-2 text-xs font-semibold",
         status === "passing" && "border-emerald-700/60 text-emerald-300",
         status === "degraded" && "border-amber-700/60 text-amber-300",
         status === "failing" && "border-red-700/60 text-red-300",
