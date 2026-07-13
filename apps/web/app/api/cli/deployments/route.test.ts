@@ -47,12 +47,10 @@ describe("CLI deployment route", () => {
     );
     formData.set("file-0", new Blob([file]), "health.check.ts");
 
-    const response = await POST(
-      {
-        formData: async () => formData,
-        headers: new Headers({ Authorization: "Bearer api-token" }),
-      } as Request,
-    );
+    const response = await POST({
+      formData: async () => formData,
+      headers: new Headers({ Authorization: "Bearer api-token" }),
+    } as Request);
     const body = await response.json();
 
     expect(response.status).toBe(202);

@@ -67,10 +67,7 @@ export async function POST(request: Request) {
         { jobId: triggerId },
       );
     } catch {
-      return NextResponse.json(
-        { error: "Unable to queue trigger." },
-        { status: 503 },
-      );
+      return NextResponse.json({ error: "Unable to queue trigger." }, { status: 503 });
     } finally {
       await queue.close();
     }
