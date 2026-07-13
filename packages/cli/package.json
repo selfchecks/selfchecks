@@ -20,6 +20,10 @@
     "./environment": {
       "import": "./dist/environment.js",
       "types": "./dist/environment.d.ts"
+    },
+    "./storage": {
+      "import": "./dist/storage.js",
+      "types": "./dist/storage.d.ts"
     }
   },
   "scripts": {

@@ -58,10 +58,14 @@ function createRequest(token = "api-token") {
     JSON.stringify({
       checkKeys: [],
       checkTypes: ["browser"],
+      commitSha: "abc123def456",
       env: [{ name: "ENVIRONMENT_URL", value: "https://preview.example.test" }],
+      jobUrl: "https://gitlab.example.test/jobs/456",
+      pipelineUrl: "https://gitlab.example.test/pipelines/123",
       projectSlug: "account",
+      ref: "release/1.2.3",
       reporter: "github",
-      source: "account | release/1.2.3 | abc123",
+      repository: "sendsay-ru/frontend/account",
       tagSets: [],
       testSessionName: "Release 1.2.3",
     }),
@@ -132,9 +136,14 @@ describe("CLI test session upload route", () => {
     ).resolves.toBe("export const check = true;\n");
     expect(mocks.testSessionCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({
+        commitSha: "abc123def456",
+        jobUrl: "https://gitlab.example.test/jobs/456",
         kind: "TEST",
         name: "Release 1.2.3",
-        source: "account | release/1.2.3 | abc123",
+        pipelineUrl: "https://gitlab.example.test/pipelines/123",
+        ref: "release/1.2.3",
+        repository: "sendsay-ru/frontend/account",
+        source: undefined,
         status: "QUEUED",
         targetUrl: "https://preview.example.test",
       }),

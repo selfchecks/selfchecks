@@ -45,10 +45,11 @@ selfchecks test --tags app,smoke,pr --tags transport,smoke,pr -e ENVIRONMENT_URL
 selfchecks trigger --reporter=github --retries=1 --record --test-session-name="Deploy v1.2.3"
 ```
 
-When `SELFCHECKS_URL` and `SELFCHECKS_API_TOKEN` are set, `selfchecks test`
-packages the selected project root, uploads it as an isolated test session, and
-waits for the remote worker result. The bundle excludes local secrets,
-dependencies, reports, and previous test artifacts and is limited to 40 MB.
+When `SELFCHECKS_URL` and `SELFCHECKS_API_TOKEN` are set, all three commands use
+the authenticated HTTP API. Deploy and test package the selected project root,
+upload it to the server, and wait for the remote worker result; trigger queues
+the latest deployed checks. Bundles exclude local secrets, dependencies,
+reports, and previous test artifacts and are limited to 40 MB.
 
 The CLI can also be exposed through a `checkly` alias later if we want smaller
 CI diffs, but the implementation should stay ours.
@@ -336,6 +337,8 @@ Configure these GitHub Actions repository variables:
 - `NEXTAUTH_URL`: public dashboard URL after DNS is ready.
 - `SELFCHECKS_CHECKS_ROOT`: optional source root override available inside the
   web and worker containers.
+- `SELFCHECKS_DEPLOYMENTS_DIR`: uploaded deployment storage, defaults to
+  `/app/runtime/deployments`.
 - `SELFCHECKS_QUEUE_NAME`: optional queue name, defaults to `selfchecks-checks`.
 - `SELFCHECKS_QUEUED_RUN_TIMEOUT_MINUTES`: optional timeout for queued runs,
   defaults to `30`.

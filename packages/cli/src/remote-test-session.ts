@@ -12,8 +12,12 @@ export type RemoteTestSessionOptions = {
   checkTypes: CheckDefinition["type"][];
   commitSha?: string;
   env: EnvVar[];
+  jobUrl?: string;
+  pipelineUrl?: string;
   projectSlug: string;
+  ref?: string;
   reporter: string;
+  repository?: string;
   retries?: number;
   rootDir: string;
   source?: string;
@@ -57,24 +61,46 @@ const IGNORED_FILES = new Set(["checkly-github-report.md"]);
 export async function runRemoteTestSession(
   options: RemoteTestSessionOptions,
 ): Promise<RunChecksSummary> {
-  const files = await collectBundleFiles(options.rootDir);
+  const formData = await createRemoteBundleFormData(options.rootDir, {
+    checkKeys: options.checkKeys,
+    checkTypes: options.checkTypes,
+    commitSha: options.commitSha,
+    env: options.env,
+    jobUrl: options.jobUrl,
+    pipelineUrl: options.pipelineUrl,
+    projectSlug: options.projectSlug,
+    ref: options.ref,
+    reporter: options.reporter,
+    repository: options.repository,
+    retries: options.retries,
+    source: options.source,
+    tagSets: options.tagSets,
+    testSessionName: options.testSessionName,
+  });
+
+  const apiUrl = normalizeApiUrl(options.apiUrl);
+  const response = await fetch(`${apiUrl}/api/cli/test-sessions`, {
+    body: formData,
+    headers: createAuthorizationHeaders(options.apiToken),
+    method: "POST",
+  });
+  const session = await readJsonResponse<RemoteSessionResponse>(response);
+
+  if (!response.ok) {
+    throw new Error(readApiError(session, "Unable to create remote test session."));
+  }
+
+  return pollTestSession(apiUrl, options.apiToken, session);
+}
+
+export async function createRemoteBundleFormData(
+  rootDir: string,
+  metadata: Record<string, unknown>,
+): Promise<FormData> {
+  const files = await collectBundleFiles(rootDir);
   const formData = new FormData();
 
-  formData.set(
-    "metadata",
-    JSON.stringify({
-      checkKeys: options.checkKeys,
-      checkTypes: options.checkTypes,
-      commitSha: options.commitSha,
-      env: options.env,
-      projectSlug: options.projectSlug,
-      reporter: options.reporter,
-      retries: options.retries,
-      source: options.source,
-      tagSets: options.tagSets,
-      testSessionName: options.testSessionName,
-    }),
-  );
+  formData.set("metadata", JSON.stringify(metadata));
   formData.set(
     "manifest",
     JSON.stringify(
@@ -91,19 +117,7 @@ export async function runRemoteTestSession(
     formData.set(`file-${index}`, new Blob([content]), path.posix.basename(file.path));
   });
 
-  const apiUrl = normalizeApiUrl(options.apiUrl);
-  const response = await fetch(`${apiUrl}/api/cli/test-sessions`, {
-    body: formData,
-    headers: createAuthorizationHeaders(options.apiToken),
-    method: "POST",
-  });
-  const session = await readJsonResponse<RemoteSessionResponse>(response);
-
-  if (!response.ok) {
-    throw new Error(readApiError(session, "Unable to create remote test session."));
-  }
-
-  return pollTestSession(apiUrl, options.apiToken, session);
+  return formData;
 }
 
 export async function collectBundleFiles(rootDir: string): Promise<BundleFile[]> {
@@ -221,13 +235,13 @@ function transformRuntimeFile(relativePath: string, content: Buffer): Uint8Array
   return content;
 }
 
-function createAuthorizationHeaders(apiToken: string) {
+export function createAuthorizationHeaders(apiToken: string) {
   return {
     Authorization: `Bearer ${apiToken}`,
   };
 }
 
-function normalizeApiUrl(value: string): string {
+export function normalizeApiUrl(value: string): string {
   const url = new URL(value);
 
   if (!/^https?:$/.test(url.protocol)) {
@@ -237,7 +251,7 @@ function normalizeApiUrl(value: string): string {
   return url.toString().replace(/\/$/, "");
 }
 
-async function readJsonResponse<T>(response: Response): Promise<T> {
+export async function readJsonResponse<T>(response: Response): Promise<T> {
   const body = await response.text();
 
   if (!body) {
@@ -253,7 +267,7 @@ async function readJsonResponse<T>(response: Response): Promise<T> {
   }
 }
 
-function readApiError(value: unknown, fallback: string): string {
+export function readApiError(value: unknown, fallback: string): string {
   if (
     value &&
     typeof value === "object" &&

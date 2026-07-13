@@ -357,6 +357,51 @@ describe("createSelfchecksProgram", () => {
     );
   });
 
+  it("uploads deployments when remote API credentials are configured", async () => {
+    const rootDir = await createTempProject();
+    const deployChecks = vi.fn();
+    const deployRemotely = vi.fn(async () => ({
+      checks: [],
+      created: 1,
+      projectSlug: "account",
+      removed: 0,
+      updated: 0,
+      warnings: [],
+    }));
+    const migrateDatabase = vi.fn();
+    const program = createSelfchecksProgram({
+      deployChecks,
+      deployRemotely,
+      migrateDatabase,
+      write: () => undefined,
+    });
+
+    await program.parseAsync([
+      "node",
+      "selfchecks",
+      "deploy",
+      "--api-url",
+      "https://checks.example.test",
+      "--api-token",
+      "secret",
+      "--force",
+      "--project",
+      "account",
+      "--root",
+      rootDir,
+    ]);
+
+    expect(deployRemotely).toHaveBeenCalledWith({
+      allowRemovals: true,
+      apiToken: "secret",
+      apiUrl: "https://checks.example.test",
+      projectSlug: "account",
+      rootDir,
+    });
+    expect(deployChecks).not.toHaveBeenCalled();
+    expect(migrateDatabase).not.toHaveBeenCalled();
+  });
+
   it("emits normalized test selectors and environment variables", async () => {
     const rootDir = await createTempChecklyProject();
 
@@ -491,6 +536,16 @@ describe("createSelfchecksProgram", () => {
       rootDir,
       "--test-session-name",
       "Release 1.2.3",
+      "--repository",
+      "sendsay-ru/frontend/account",
+      "--ref",
+      "release/1.2.3",
+      "--commit-sha",
+      "abc123def456",
+      "--pipeline-url",
+      "https://gitlab.example.test/pipelines/123",
+      "--job-url",
+      "https://gitlab.example.test/jobs/456",
     ]);
 
     expect(runChecksLocally).not.toHaveBeenCalled();
@@ -499,6 +554,11 @@ describe("createSelfchecksProgram", () => {
         apiToken: "api-token",
         apiUrl: "https://checks.example.test",
         checkTypes: ["browser"],
+        commitSha: "abc123def456",
+        jobUrl: "https://gitlab.example.test/jobs/456",
+        pipelineUrl: "https://gitlab.example.test/pipelines/123",
+        ref: "release/1.2.3",
+        repository: "sendsay-ru/frontend/account",
         rootDir,
         testSessionName: "Release 1.2.3",
       }),
@@ -569,5 +629,53 @@ describe("createSelfchecksProgram", () => {
         runMode: "monitoring",
       }),
     );
+  });
+
+  it("queues triggers when remote API credentials are configured", async () => {
+    const runChecksLocally = vi.fn();
+    const triggerRemotely = vi.fn(async () => ({
+      durationMs: 10,
+      failed: 0,
+      passed: 1,
+      results: [],
+      sessionId: "session_1",
+      skipped: 0,
+      total: 1,
+    }));
+    const program = createSelfchecksProgram({
+      runChecksLocally,
+      triggerRemotely,
+      write: () => undefined,
+    });
+
+    await program.parseAsync([
+      "node",
+      "selfchecks",
+      "trigger",
+      "--api-url",
+      "https://checks.example.test",
+      "--api-token",
+      "secret",
+      "--project",
+      "account",
+      "--ref",
+      "stable",
+      "--commit-sha",
+      "abc123",
+      "-e",
+      "BASE_URL=https://example.test",
+    ]);
+
+    expect(triggerRemotely).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiToken: "secret",
+        apiUrl: "https://checks.example.test",
+        commitSha: "abc123",
+        env: [{ name: "BASE_URL", value: "https://example.test" }],
+        projectSlug: "account",
+        ref: "stable",
+      }),
+    );
+    expect(runChecksLocally).not.toHaveBeenCalled();
   });
 });

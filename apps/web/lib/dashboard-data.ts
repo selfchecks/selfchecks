@@ -60,12 +60,17 @@ export type TestSessionRunCountSummary = {
 };
 
 export type TestSessionRow = {
+  commitSha?: string;
   createdAt: string;
   createdAtLabel: string;
   duration: string;
   href: string;
   id: string;
+  jobUrl?: string;
   name?: string;
+  pipelineUrl?: string;
+  ref?: string;
+  repository?: string;
   runState: DashboardRunState;
   source?: string;
   status: DashboardStatus;
@@ -354,9 +359,14 @@ type TestSessionRunWithCheck = MappableRun & {
   checkId: string | null;
 };
 type TestSessionWithRuns = {
+  commitSha: string | null;
   createdAt: Date;
   id: string;
+  jobUrl: string | null;
   name: string | null;
+  pipelineUrl: string | null;
+  ref: string | null;
+  repository: string | null;
   runs: TestSessionRunWithCheck[];
   source: string | null;
   status: string;
@@ -410,6 +420,7 @@ type ActiveQueueRunWithCheck = MappableRun & {
   testSession: {
     id: string;
     kind: "TEST" | "TRIGGER";
+    ref: string | null;
     source: string | null;
   } | null;
   testSessionId: string | null;
@@ -1475,12 +1486,17 @@ function mapTestSession(
   const status = resolveTestSessionStatus(session.status, latestRuns);
 
   return {
+    ...(session.commitSha ? { commitSha: session.commitSha } : {}),
     createdAt: session.createdAt.toISOString(),
     createdAtLabel: formatRunTimestamp(session.createdAt, timeZone),
     duration: formatTestSessionDuration(runs),
     href: `/test-sessions/${encodeURIComponent(session.id)}`,
     id: session.id,
+    ...(session.jobUrl ? { jobUrl: session.jobUrl } : {}),
     name: session.name ?? undefined,
+    ...(session.pipelineUrl ? { pipelineUrl: session.pipelineUrl } : {}),
+    ...(session.ref ? { ref: session.ref } : {}),
+    ...(session.repository ? { repository: session.repository } : {}),
     runState: mapRunState(status),
     source: session.source ?? undefined,
     status: mapRunStatus(status),
@@ -1789,6 +1805,7 @@ async function fetchActiveQueue(
         select: {
           id: true,
           kind: true,
+          ref: true,
           source: true,
         },
       },
@@ -1867,6 +1884,12 @@ function mapActiveRunState(status: string): DashboardQueueRow["runState"] {
 }
 
 function getQueueBranch(run: ActiveQueueRunWithCheck): string {
+  const ref = run.testSession?.ref?.trim();
+
+  if (ref) {
+    return ref;
+  }
+
   const source = run.testSession?.source?.trim();
 
   if (!source) {

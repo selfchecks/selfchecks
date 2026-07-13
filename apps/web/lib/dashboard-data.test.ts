@@ -1028,7 +1028,8 @@ describe("dashboard data", () => {
         testSession: {
           id: "session_1",
           kind: "TEST",
-          source: "developers/frontend/account | release/3.192.42 | abc123",
+          ref: "release/3.192.42",
+          source: null,
         },
         testSessionId: "session_1",
       },

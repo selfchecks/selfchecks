@@ -134,15 +134,19 @@ model Check {
 }
 
 model TestSession {
-  id        String          @id @default(cuid())
-  kind      TestSessionKind @default(TRIGGER)
-  name      String?
-  source    String?
-  targetUrl String?
-  commitSha String?
-  status    CheckRunStatus  @default(QUEUED)
-  createdAt DateTime        @default(now())
-  runs      CheckRun[]
+  id          String          @id @default(cuid())
+  kind        TestSessionKind @default(TRIGGER)
+  name        String?
+  source      String?
+  repository  String?
+  ref         String?
+  commitSha   String?
+  pipelineUrl String?
+  jobUrl      String?
+  targetUrl   String?
+  status      CheckRunStatus  @default(QUEUED)
+  createdAt   DateTime        @default(now())
+  runs        CheckRun[]
 
   @@index([kind, createdAt])
 }

@@ -24,8 +24,12 @@ type TestSessionMetadata = {
   checkTypes: CheckDefinition["type"][];
   commitSha?: string;
   env: Array<{ name: string; value: string }>;
+  jobUrl?: string;
+  pipelineUrl?: string;
   projectSlug: string;
+  ref?: string;
   reporter: string;
+  repository?: string;
   retries?: number;
   source?: string;
   tagSets: string[][];
@@ -154,6 +158,10 @@ async function createQueuedSession(
         commitSha: metadata.commitSha,
         kind: "TEST",
         name: metadata.testSessionName,
+        ...(metadata.jobUrl ? { jobUrl: metadata.jobUrl } : {}),
+        ...(metadata.pipelineUrl ? { pipelineUrl: metadata.pipelineUrl } : {}),
+        ...(metadata.ref ? { ref: metadata.ref } : {}),
+        ...(metadata.repository ? { repository: metadata.repository } : {}),
         source: metadata.source,
         status: "QUEUED",
         targetUrl: resolveTargetUrl(env),
@@ -313,8 +321,12 @@ function parseMetadata(value: FormDataEntryValue | null): TestSessionMetadata {
     checkTypes: readCheckTypes(metadata.checkTypes),
     commitSha: readOptionalString(metadata.commitSha),
     env: readEnv(metadata.env),
+    jobUrl: readOptionalString(metadata.jobUrl),
+    pipelineUrl: readOptionalString(metadata.pipelineUrl),
     projectSlug: metadata.projectSlug.trim(),
+    ref: readOptionalString(metadata.ref),
     reporter: readOptionalString(metadata.reporter) ?? "list",
+    repository: readOptionalString(metadata.repository),
     retries: readOptionalRetries(metadata.retries),
     source: readOptionalString(metadata.source),
     tagSets: Array.isArray(metadata.tagSets)

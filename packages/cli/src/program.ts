@@ -9,10 +9,12 @@ import {
 } from "@selfchecks/core";
 
 import { applyDatabaseMigrations } from "./migrations.js";
+import { runRemoteDeploy, type RemoteDeployOptions } from "./remote-deploy.js";
 import {
   runRemoteTestSession,
   type RemoteTestSessionOptions,
 } from "./remote-test-session.js";
+import { runRemoteTrigger, type RemoteTriggerOptions } from "./remote-trigger.js";
 import { runChecks, type EnvVar, type RunChecksSummary } from "./runner.js";
 import { persistDeploySummary } from "./storage.js";
 
@@ -60,9 +62,13 @@ export type CliCommandOutput =
 
 export type CreateSelfchecksProgramOptions = {
   deployChecks?: typeof persistDeploySummary;
+  deployRemotely?: (
+    options: RemoteDeployOptions,
+  ) => Promise<DeployCommandOutput["summary"]>;
   migrateDatabase?: typeof applyDatabaseMigrations;
   runChecksLocally?: typeof runChecks;
   runChecksRemotely?: (options: RemoteTestSessionOptions) => Promise<RunChecksSummary>;
+  triggerRemotely?: (options: RemoteTriggerOptions) => Promise<RunChecksSummary>;
   write?: (value: CliCommandOutput) => void;
 };
 
@@ -161,9 +167,11 @@ export function createSelfchecksProgram(
       process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
     });
   const deployChecks = options.deployChecks ?? persistDeploySummary;
+  const deployRemotely = options.deployRemotely ?? runRemoteDeploy;
   const migrateDatabase = options.migrateDatabase ?? applyDatabaseMigrations;
   const runChecksLocally = options.runChecksLocally ?? runChecks;
   const runChecksRemotely = options.runChecksRemotely ?? runRemoteTestSession;
+  const triggerRemotely = options.triggerRemotely ?? runRemoteTrigger;
 
   const program = new Command();
 
@@ -180,25 +188,51 @@ export function createSelfchecksProgram(
     .option("--project <slug>", "Project slug", "default")
     .option("--root <path>", "Repository root")
     .option("--dry-run", "Parse definitions and print the deploy diff only")
+    .option("--api-url <url>", "Selfchecks API URL", process.env.SELFCHECKS_URL)
+    .option(
+      "--api-token <token>",
+      "Selfchecks API token",
+      process.env.SELFCHECKS_API_TOKEN,
+    )
     .action(async (commandOptions: Record<string, string | boolean | undefined>) => {
       const projectSlug = String(commandOptions.project ?? "default");
       const rootDir = resolveDeployRootDir(commandOptions);
-      const parsedSummary = await importCheckDefinitions({
-        projectSlug,
-        rootDir,
-      });
-      const summary = commandOptions.dryRun
-        ? parsedSummary
-        : await (async () => {
-            await migrateDatabase();
+      const hasRemoteConfig = assertRemoteConfig(
+        commandOptions.apiUrl,
+        commandOptions.apiToken,
+        "deploy",
+      );
+      const summary = await (async () => {
+        if (commandOptions.dryRun) {
+          return importCheckDefinitions({ projectSlug, rootDir });
+        }
 
-            return deployChecks({
-              allowRemovals: Boolean(commandOptions.force),
-              projectSlug,
-              rootDir,
-              summary: parsedSummary,
-            });
-          })();
+        if (hasRemoteConfig) {
+          return deployRemotely({
+            allowRemovals: Boolean(commandOptions.force),
+            apiToken: String(commandOptions.apiToken),
+            apiUrl: String(commandOptions.apiUrl),
+            projectSlug,
+            rootDir,
+          });
+        }
+
+        const parsedSummary = await importCheckDefinitions({
+          projectSlug,
+          rootDir,
+        });
+
+        return (async () => {
+          await migrateDatabase();
+
+          return deployChecks({
+            allowRemovals: Boolean(commandOptions.force),
+            projectSlug,
+            rootDir,
+            summary: parsedSummary,
+          });
+        })();
+      })();
 
       write({
         command: "deploy",
@@ -225,6 +259,11 @@ export function createSelfchecksProgram(
     .option("--retries <count>", "Override configured failed-check retries")
     .option("--root <path>", "Repository root", process.cwd())
     .option("--test-session-name <name>", "Display name for the test session")
+    .option("--repository <path>", "CI repository path", process.env.CI_PROJECT_PATH)
+    .option("--ref <ref>", "CI branch or tag", resolveCiRef())
+    .option("--commit-sha <sha>", "CI commit SHA", process.env.CI_COMMIT_SHA)
+    .option("--pipeline-url <url>", "CI pipeline URL", process.env.CI_PIPELINE_URL)
+    .option("--job-url <url>", "CI job URL", process.env.CI_JOB_URL)
     .option("--api-url <url>", "Selfchecks API URL", process.env.SELFCHECKS_URL)
     .option(
       "--api-token <token>",
@@ -237,9 +276,14 @@ export function createSelfchecksProgram(
         apiUrl?: string;
         check: string[];
         env: string[];
+        commitSha?: string;
+        jobUrl?: string;
+        pipelineUrl?: string;
         project: string;
+        ref?: string;
         record?: boolean;
         reporter: string;
+        repository?: string;
         retries?: string;
         root: string;
         tags: string[];
@@ -257,15 +301,11 @@ export function createSelfchecksProgram(
         const retries = commandOptions.retries
           ? parseRetries(commandOptions.retries)
           : undefined;
-        const hasRemoteConfig = Boolean(
-          commandOptions.apiUrl || commandOptions.apiToken,
+        const hasRemoteConfig = assertRemoteConfig(
+          commandOptions.apiUrl,
+          commandOptions.apiToken,
+          "test",
         );
-
-        if (hasRemoteConfig && (!commandOptions.apiUrl || !commandOptions.apiToken)) {
-          throw new Error(
-            "SELFCHECKS_URL and SELFCHECKS_API_TOKEN are both required for remote tests.",
-          );
-        }
 
         const summary = hasRemoteConfig
           ? await runChecksRemotely({
@@ -273,13 +313,16 @@ export function createSelfchecksProgram(
               apiUrl: commandOptions.apiUrl!,
               checkKeys: commandOptions.check,
               checkTypes,
-              commitSha: process.env.CI_COMMIT_SHA,
+              commitSha: commandOptions.commitSha,
               env,
+              jobUrl: commandOptions.jobUrl,
+              pipelineUrl: commandOptions.pipelineUrl,
               projectSlug: commandOptions.project,
+              ref: commandOptions.ref,
               reporter: commandOptions.reporter,
+              repository: commandOptions.repository,
               retries,
               rootDir: commandOptions.root,
-              source: buildCiSource(),
               tagSets,
               testSessionName: commandOptions.testSessionName,
             })
@@ -335,12 +378,30 @@ export function createSelfchecksProgram(
     .option("--retries <count>", "Override configured failed-check retries")
     .option("--root <path>", "Repository root", process.cwd())
     .option("--test-session-name <name>", "Display name for the created test session")
+    .option("--repository <path>", "CI repository path", process.env.CI_PROJECT_PATH)
+    .option("--ref <ref>", "CI branch or tag", resolveCiRef())
+    .option("--commit-sha <sha>", "CI commit SHA", process.env.CI_COMMIT_SHA)
+    .option("--pipeline-url <url>", "CI pipeline URL", process.env.CI_PIPELINE_URL)
+    .option("--job-url <url>", "CI job URL", process.env.CI_JOB_URL)
+    .option("--api-url <url>", "Selfchecks API URL", process.env.SELFCHECKS_URL)
+    .option(
+      "--api-token <token>",
+      "Selfchecks API token",
+      process.env.SELFCHECKS_API_TOKEN,
+    )
     .action(
       async (commandOptions: {
+        apiToken?: string;
+        apiUrl?: string;
+        commitSha?: string;
         env: string[];
+        jobUrl?: string;
+        pipelineUrl?: string;
         project: string;
+        ref?: string;
         record?: boolean;
         reporter: string;
+        repository?: string;
         retries?: string;
         root: string;
         testSessionName?: string;
@@ -349,18 +410,46 @@ export function createSelfchecksProgram(
           typeof commandOptions.retries === "string"
             ? parseRetries(commandOptions.retries)
             : undefined;
-        const env = commandOptions.env.map(parseEnv);
-        const summary = await runChecksLocally({
-          env,
-          projectSlug: commandOptions.project,
-          record: Boolean(commandOptions.record),
-          reporter: commandOptions.reporter,
-          retries,
-          rootDir: commandOptions.root,
-          runMode: "monitoring",
-          tagSets: [],
-          testSessionName: commandOptions.testSessionName,
-        });
+        const env = [
+          ...parseEnvJson(process.env.SELFCHECKS_ENV_JSON),
+          ...commandOptions.env.map(parseEnv),
+        ];
+        const hasRemoteConfig = assertRemoteConfig(
+          commandOptions.apiUrl,
+          commandOptions.apiToken,
+          "trigger",
+        );
+        const summary = hasRemoteConfig
+          ? await triggerRemotely({
+              apiToken: commandOptions.apiToken!,
+              apiUrl: commandOptions.apiUrl!,
+              commitSha: commandOptions.commitSha,
+              env,
+              jobUrl: commandOptions.jobUrl,
+              pipelineUrl: commandOptions.pipelineUrl,
+              projectSlug: commandOptions.project,
+              ref: commandOptions.ref,
+              reporter: commandOptions.reporter,
+              repository: commandOptions.repository,
+              retries,
+              testSessionName: commandOptions.testSessionName,
+            })
+          : await runChecksLocally({
+              env,
+              projectSlug: commandOptions.project,
+              record: Boolean(commandOptions.record),
+              reporter: commandOptions.reporter,
+              retries,
+              rootDir: commandOptions.root,
+              runMode: "monitoring",
+              tagSets: [],
+              testSessionCommitSha: commandOptions.commitSha,
+              testSessionJobUrl: commandOptions.jobUrl,
+              testSessionName: commandOptions.testSessionName,
+              testSessionPipelineUrl: commandOptions.pipelineUrl,
+              testSessionRef: commandOptions.ref,
+              testSessionRepository: commandOptions.repository,
+            });
 
         write({
           command: "trigger",
@@ -373,25 +462,32 @@ export function createSelfchecksProgram(
           summary,
           testSessionName: commandOptions.testSessionName,
         });
+
+        if (summary.failed > 0) {
+          process.exitCode = 1;
+        }
       },
     );
 
   return program;
 }
 
-function buildCiSource(): string | undefined {
-  const ref =
-    process.env.CI_COMMIT_TAG ||
-    process.env.CI_COMMIT_REF_NAME ||
-    process.env.CI_COMMIT_SHORT_SHA ||
-    process.env.CI_COMMIT_SHA;
-  const parts = [
-    process.env.CI_PROJECT_PATH,
-    ref,
-    process.env.CI_COMMIT_SHORT_SHA,
-    process.env.CI_PIPELINE_URL ? `pipeline ${process.env.CI_PIPELINE_URL}` : undefined,
-    process.env.CI_JOB_URL ? `job ${process.env.CI_JOB_URL}` : undefined,
-  ].filter((value): value is string => Boolean(value));
+function resolveCiRef(): string | undefined {
+  return process.env.CI_COMMIT_TAG || process.env.CI_COMMIT_REF_NAME;
+}
 
-  return parts.length > 0 ? parts.join(" | ") : undefined;
+function assertRemoteConfig(
+  apiUrl: string | boolean | undefined,
+  apiToken: string | boolean | undefined,
+  command: "deploy" | "test" | "trigger",
+): boolean {
+  const hasRemoteConfig = Boolean(apiUrl || apiToken);
+
+  if (hasRemoteConfig && (!apiUrl || !apiToken)) {
+    throw new Error(
+      `SELFCHECKS_URL and SELFCHECKS_API_TOKEN are both required for remote ${command}.`,
+    );
+  }
+
+  return hasRemoteConfig;
 }

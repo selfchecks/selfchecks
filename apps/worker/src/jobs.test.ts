@@ -8,9 +8,12 @@ const mocks = vi.hoisted(() => ({
   checkRunFindUnique: vi.fn(),
   checkRunUpdateMany: vi.fn(),
   checkRunUpdate: vi.fn(),
+  importCheckDefinitions: vi.fn(),
+  persistDeploySummary: vi.fn(),
   queueAddBulk: vi.fn(),
   readPerformanceRuntimeSettings: vi.fn(),
   runCheckById: vi.fn(),
+  runChecks: vi.fn(),
   runTestSessionCheck: vi.fn(),
   spawn: vi.fn(),
   testSessionUpdate: vi.fn(),
@@ -33,9 +36,23 @@ vi.mock("node:child_process", () => ({
 
 vi.mock("@selfchecks/cli/runner", () => ({
   runCheckById: mocks.runCheckById,
+  runChecks: mocks.runChecks,
   runTestSessionCheck: mocks.runTestSessionCheck,
   TestSessionTimeoutError: mocks.TestSessionTimeoutError,
 }));
+
+vi.mock("@selfchecks/cli/storage", () => ({
+  persistDeploySummary: mocks.persistDeploySummary,
+}));
+
+vi.mock("@selfchecks/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@selfchecks/core")>();
+
+  return {
+    ...actual,
+    importCheckDefinitions: mocks.importCheckDefinitions,
+  };
+});
 
 vi.mock("./performance-settings.js", () => ({
   readPerformanceRuntimeSettings: mocks.readPerformanceRuntimeSettings,
@@ -60,8 +77,10 @@ vi.mock("@selfchecks/db", () => ({
 
 import {
   handleCheckJob,
+  handleDeploymentJob,
   handleTestSessionCheckJob,
   handleTestSessionJob,
+  handleTriggerJob,
 } from "./jobs.js";
 
 describe("handleCheckJob", () => {
@@ -156,6 +175,101 @@ describe("handleCheckJob", () => {
         id: "run_1",
       },
     });
+  });
+
+  it("installs and persists an uploaded deployment", async () => {
+    const summary = {
+      checks: [
+        {
+          enabled: true,
+          key: "health",
+          name: "Health",
+          request: {
+            assertions: [],
+            headers: {},
+            method: "GET",
+            url: "https://example.test/health",
+          },
+          tags: [],
+          type: "api" as const,
+        },
+      ],
+      created: 1,
+      projectSlug: "account",
+      removed: 0,
+      updated: 0,
+      warnings: [],
+    };
+    mocks.importCheckDefinitions.mockResolvedValue(summary);
+    mocks.persistDeploySummary.mockResolvedValue(summary);
+    mocks.spawn.mockImplementation(() => {
+      const child = new EventEmitter();
+      setImmediate(() => child.emit("close", 0));
+      return child;
+    });
+
+    await expect(
+      handleDeploymentJob({
+        data: {
+          allowRemovals: true,
+          kind: "deployment",
+          projectSlug: "account",
+          rootDir: "/runtime/deployments/deployment_1",
+        },
+      }),
+    ).resolves.toEqual(summary);
+
+    expect(mocks.spawn).toHaveBeenCalledWith(
+      "npm",
+      ["install", "--omit=dev", "--no-audit", "--no-fund"],
+      expect.objectContaining({ cwd: "/runtime/deployments/deployment_1" }),
+    );
+    expect(mocks.persistDeploySummary).toHaveBeenCalledWith(
+      expect.objectContaining({
+        allowRemovals: true,
+        projectSlug: "account",
+        source: "/runtime/deployments/deployment_1",
+      }),
+    );
+  });
+
+  it("runs a remote trigger through the shared runner", async () => {
+    const summary = {
+      durationMs: 10,
+      failed: 0,
+      passed: 1,
+      results: [],
+      sessionId: "session_1",
+      skipped: 0,
+      total: 1,
+    };
+    mocks.runChecks.mockResolvedValue(summary);
+
+    await expect(
+      handleTriggerJob({
+        data: {
+          commitSha: "abc123",
+          env: [],
+          kind: "trigger",
+          projectSlug: "account",
+          ref: "stable",
+          reporter: "github",
+          rootDir: "/runtime/deployments/deployment_1",
+          testSessionName: "Nightly stable",
+        },
+      }),
+    ).resolves.toEqual(summary);
+
+    expect(mocks.runChecks).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectSlug: "account",
+        record: true,
+        rootDir: "/runtime/deployments/deployment_1",
+        runMode: "monitoring",
+        testSessionCommitSha: "abc123",
+        testSessionRef: "stable",
+      }),
+    );
   });
 
   it("installs an uploaded workspace and queues every check independently", async () => {

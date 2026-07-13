@@ -4,15 +4,20 @@ import { type Job, type Queue } from "bullmq";
 
 import {
   runCheckById,
+  runChecks,
   runTestSessionCheck,
   TestSessionTimeoutError,
   type CheckRunSource,
   type EnvVar,
+  type RunChecksSummary,
 } from "@selfchecks/cli/runner";
+import { persistDeploySummary } from "@selfchecks/cli/storage";
 import {
+  importCheckDefinitions,
   summarizeTerminalRunStatuses,
   type CheckDefinition,
   type CheckType,
+  type DeploySummary,
 } from "@selfchecks/core";
 import { prisma } from "@selfchecks/db";
 
@@ -28,6 +33,28 @@ export type RunCheckJob = {
   runId?: string;
   runSource?: CheckRunSource;
   type: CheckType;
+};
+
+export type DeploymentJob = {
+  allowRemovals: boolean;
+  kind: "deployment";
+  projectSlug: string;
+  rootDir: string;
+};
+
+export type TriggerJob = {
+  commitSha?: string;
+  env: EnvVar[];
+  jobUrl?: string;
+  kind: "trigger";
+  pipelineUrl?: string;
+  projectSlug: string;
+  ref?: string;
+  reporter: string;
+  repository?: string;
+  retries?: number;
+  rootDir: string;
+  testSessionName?: string;
 };
 
 export type TestSessionJob = {
@@ -57,7 +84,12 @@ export type TestSessionCheckJob = {
   testSessionDeadline: TestSessionDeadline;
 };
 
-export type CheckJob = RunCheckJob | TestSessionCheckJob | TestSessionJob;
+export type CheckJob =
+  | DeploymentJob
+  | RunCheckJob
+  | TestSessionCheckJob
+  | TestSessionJob
+  | TriggerJob;
 
 export type CheckJobQueue = Pick<Queue<CheckJob>, "addBulk">;
 
@@ -116,7 +148,15 @@ export async function handleCheckJob(
 export async function handleSelfchecksJob(
   job: Pick<Job<CheckJob>, "data">,
   queue: CheckJobQueue,
-): Promise<CheckJobResult | TestSessionJobResult> {
+): Promise<CheckJobResult | DeploySummary | RunChecksSummary | TestSessionJobResult> {
+  if ("kind" in job.data && job.data.kind === "deployment") {
+    return handleDeploymentJob(job as Pick<Job<DeploymentJob>, "data">);
+  }
+
+  if ("kind" in job.data && job.data.kind === "trigger") {
+    return handleTriggerJob(job as Pick<Job<TriggerJob>, "data">);
+  }
+
   if ("kind" in job.data && job.data.kind === "test-session") {
     return handleTestSessionJob(job as Pick<Job<TestSessionJob>, "data">, queue);
   }
@@ -126,6 +166,56 @@ export async function handleSelfchecksJob(
   }
 
   return handleCheckJob(job as Pick<Job<RunCheckJob>, "data">);
+}
+
+export async function handleDeploymentJob(
+  job: Pick<Job<DeploymentJob>, "data">,
+): Promise<DeploySummary> {
+  const { data } = job;
+  const summary = await importCheckDefinitions({
+    projectSlug: data.projectSlug,
+    rootDir: data.rootDir,
+  });
+
+  if (summary.checks.length === 0) {
+    throw new Error(`No selfchecks definitions were imported from ${data.rootDir}.`);
+  }
+
+  const deadline = await createSessionDeadline(data.projectSlug);
+
+  await installRuntimeDependencies(data.rootDir, summary.checks, deadline);
+
+  return persistDeploySummary({
+    allowRemovals: data.allowRemovals,
+    deployedBy: "selfchecks deploy via API",
+    projectSlug: data.projectSlug,
+    rootDir: data.rootDir,
+    source: data.rootDir,
+    summary,
+  });
+}
+
+export async function handleTriggerJob(
+  job: Pick<Job<TriggerJob>, "data">,
+): Promise<RunChecksSummary> {
+  const { data } = job;
+
+  return runChecks({
+    env: data.env,
+    projectSlug: data.projectSlug,
+    record: true,
+    reporter: data.reporter,
+    retries: data.retries,
+    rootDir: data.rootDir,
+    runMode: "monitoring",
+    tagSets: [],
+    testSessionCommitSha: data.commitSha,
+    testSessionJobUrl: data.jobUrl,
+    testSessionName: data.testSessionName,
+    testSessionPipelineUrl: data.pipelineUrl,
+    testSessionRef: data.ref,
+    testSessionRepository: data.repository,
+  });
 }
 
 export async function handleTestSessionJob(
@@ -138,17 +228,10 @@ export async function handleTestSessionJob(
     `Running test session ${data.sessionId} with ${data.checks.length} checks for ${data.projectSlug}`,
   );
 
-  const performanceSettings = await readPerformanceRuntimeSettings({
-    projectSlug: data.projectSlug,
-  });
-  const timeoutMs = performanceSettings.testSessionTimeoutMinutes * 60_000;
-  const deadline = {
-    at: Date.now() + timeoutMs,
-    timeoutMs,
-  };
+  const deadline = await createSessionDeadline(data.projectSlug);
 
   try {
-    await installTestSessionDependencies(data.rootDir, data.checks, deadline);
+    await installRuntimeDependencies(data.rootDir, data.checks, deadline);
     await queue.addBulk(
       data.checks.map((check) => {
         const existingRunId = data.existingRunIds[check.key];
@@ -382,7 +465,19 @@ export async function finalizeTestSession(sessionId: string): Promise<void> {
   });
 }
 
-async function installTestSessionDependencies(
+async function createSessionDeadline(
+  projectSlug: string,
+): Promise<TestSessionDeadline> {
+  const performanceSettings = await readPerformanceRuntimeSettings({ projectSlug });
+  const timeoutMs = performanceSettings.testSessionTimeoutMinutes * 60_000;
+
+  return {
+    at: Date.now() + timeoutMs,
+    timeoutMs,
+  };
+}
+
+async function installRuntimeDependencies(
   rootDir: string,
   checks: CheckDefinition[],
   deadline: TestSessionDeadline,

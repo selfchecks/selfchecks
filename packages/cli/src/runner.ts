@@ -66,7 +66,11 @@ export type RunChecksOptions = {
     timeoutMs: number;
   };
   testSessionCommitSha?: string;
+  testSessionJobUrl?: string;
   testSessionName?: string;
+  testSessionPipelineUrl?: string;
+  testSessionRef?: string;
+  testSessionRepository?: string;
 };
 
 export class TestSessionTimeoutError extends Error {
@@ -402,7 +406,15 @@ async function resolveRunSession(options: RunChecksOptions): Promise<TestSession
       kind: isTestSession ? "TEST" : "TRIGGER",
       commitSha: options.testSessionCommitSha,
       name: options.testSessionName,
-      source: options.source ?? options.rootDir,
+      ...(options.testSessionJobUrl ? { jobUrl: options.testSessionJobUrl } : {}),
+      ...(options.testSessionPipelineUrl
+        ? { pipelineUrl: options.testSessionPipelineUrl }
+        : {}),
+      ...(options.testSessionRef ? { ref: options.testSessionRef } : {}),
+      ...(options.testSessionRepository
+        ? { repository: options.testSessionRepository }
+        : {}),
+      source: options.source ?? (isTestSession ? undefined : options.rootDir),
       status: "RUNNING",
       targetUrl: isTestSession ? resolveTestSessionTargetUrl(options.env) : undefined,
     },

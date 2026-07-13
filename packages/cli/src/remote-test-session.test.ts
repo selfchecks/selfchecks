@@ -113,9 +113,14 @@ describe("remote test sessions", () => {
         apiUrl: "https://checks.example.test/",
         checkKeys: [],
         checkTypes: ["browser"],
+        commitSha: "abc123def456",
         env: [],
+        jobUrl: "https://gitlab.example.test/jobs/456",
+        pipelineUrl: "https://gitlab.example.test/pipelines/123",
         projectSlug: "account",
+        ref: "release/1.2.3",
         reporter: "github",
+        repository: "sendsay-ru/frontend/account",
         rootDir,
         tagSets: [],
       }),
@@ -134,6 +139,15 @@ describe("remote test sessions", () => {
         method: "POST",
       }),
     );
+    const uploadBody = fetchMock.mock.calls[0]?.[1]?.body as FormData;
+
+    expect(JSON.parse(String(uploadBody.get("metadata")))).toMatchObject({
+      commitSha: "abc123def456",
+      jobUrl: "https://gitlab.example.test/jobs/456",
+      pipelineUrl: "https://gitlab.example.test/pipelines/123",
+      ref: "release/1.2.3",
+      repository: "sendsay-ru/frontend/account",
+    });
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
       "https://checks.example.test/api/cli/test-sessions/session_1",

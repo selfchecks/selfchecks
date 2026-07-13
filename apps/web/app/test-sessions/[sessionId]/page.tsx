@@ -28,7 +28,14 @@ export default async function TestSessionPage({ params }: TestSessionPageProps) 
 
   const settings = await getDashboardSettingsData(data.projectSlug);
   const { session } = data;
-  const sourceFields = formatTestSessionSource(session.source);
+  const sourceFields = formatTestSessionSource({
+    commitSha: session.commitSha,
+    jobUrl: session.jobUrl,
+    pipelineUrl: session.pipelineUrl,
+    ref: session.ref,
+    repository: session.repository,
+    source: session.source,
+  });
 
   return (
     <main className="min-h-screen bg-[#0d1117] text-slate-200">
