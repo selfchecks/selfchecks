@@ -161,6 +161,7 @@ model CheckRun {
   maxAttempts              Int             @default(1)
   retryGroupId             String?
   startedAt                DateTime?
+  timeoutAt                DateTime?
   finishedAt               DateTime?
   durationMs               Int?
   errorMessage             String?
@@ -184,6 +185,7 @@ model CheckRun {
   @@index([testSessionId, status, createdAt])
   @@index([retryGroupId, attempt])
   @@index([status, createdAt])
+  @@index([status, timeoutAt])
 }
 
 model Artifact {

@@ -3,7 +3,11 @@ import { unlink } from "node:fs/promises";
 import { type Queue } from "bullmq";
 
 import { getRunEnvironment } from "@selfchecks/cli/environment";
-import { defaultPerformanceSettings, type CheckType } from "@selfchecks/core";
+import {
+  defaultBrowserRunTimeoutMs,
+  defaultPerformanceSettings,
+  type CheckType,
+} from "@selfchecks/core";
 import { prisma, type CheckRunStatus as PrismaCheckRunStatus } from "@selfchecks/db";
 
 import { finalizeTestSession, type CheckJob } from "./jobs.js";
@@ -456,8 +460,62 @@ async function cancelStaleActiveRuns({
 }): Promise<{ queued: number; running: number }> {
   const queuedCutoff = new Date(now.getTime() - queuedRunTimeoutMinutes * 60_000);
   const runningCutoff = new Date(now.getTime() - runningRunTimeoutMinutes * 60_000);
+  const browserRunFallbackCutoff = new Date(now.getTime() - defaultBrowserRunTimeoutMs);
 
   try {
+    const timedOut = await prisma.checkRun.updateMany({
+      data: {
+        errorMessage: "Browser run timed out after its configured deadline.",
+        finishedAt: now,
+        status: "TIMED_OUT",
+      },
+      where: {
+        AND: [
+          {
+            OR: [
+              {
+                checkSnapshotType: "BROWSER",
+              },
+              {
+                check: {
+                  is: {
+                    type: "BROWSER",
+                  },
+                },
+              },
+            ],
+          },
+          {
+            OR: [
+              {
+                timeoutAt: {
+                  lte: now,
+                },
+              },
+              {
+                startedAt: {
+                  lt: browserRunFallbackCutoff,
+                },
+                timeoutAt: null,
+              },
+              {
+                createdAt: {
+                  lt: browserRunFallbackCutoff,
+                },
+                startedAt: null,
+                timeoutAt: null,
+              },
+            ],
+          },
+        ],
+        status: "RUNNING",
+        testSession: {
+          is: {
+            kind: "TEST",
+          },
+        },
+      },
+    });
     const [queued, running] = await Promise.all([
       prisma.checkRun.updateMany({
         data: {
@@ -513,7 +571,7 @@ async function cancelStaleActiveRuns({
 
     return {
       queued: queued.count,
-      running: running.count,
+      running: running.count + timedOut.count,
     };
   } catch (error) {
     logger.warn("Unable to cancel stale scheduled runs.", error);

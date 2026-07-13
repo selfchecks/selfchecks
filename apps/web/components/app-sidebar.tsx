@@ -251,7 +251,6 @@ export function AppSidebar({
               <div className="truncate font-medium text-slate-100">
                 {status.accountLabel}
               </div>
-              <div className="mt-1 text-xs text-slate-500">Signed in locally</div>
               <Link
                 className="mt-3 flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-slate-300 hover:bg-slate-800"
                 href="/settings"

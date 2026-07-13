@@ -394,6 +394,14 @@ describe("runCheckById", () => {
       status: "timed_out",
     });
     expect(kill).toHaveBeenCalledWith("SIGTERM");
+    expect(mocks.checkRunUpdate).toHaveBeenCalledWith({
+      data: {
+        timeoutAt: new Date(Date.now()),
+      },
+      where: {
+        id: runId,
+      },
+    });
     expect(mocks.checkRunUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({

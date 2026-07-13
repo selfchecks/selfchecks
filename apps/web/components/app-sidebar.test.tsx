@@ -57,7 +57,7 @@ describe("AppSidebar", () => {
 
     expect(onHomeClick).toHaveBeenCalledTimes(1);
     expect(screen.getByText("admin@example.com")).toBeTruthy();
-    expect(screen.getByText("Signed in locally")).toBeTruthy();
+    expect(screen.queryByText("Signed in locally")).toBeNull();
     expect(screen.getAllByRole("link", { name: "Settings" })).toHaveLength(2);
     expect(screen.getByRole("link", { name: "Sign out" }).getAttribute("href")).toBe(
       "/api/auth/signout",

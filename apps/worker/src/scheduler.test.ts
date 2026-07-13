@@ -408,6 +408,9 @@ describe("scheduleDueChecks", () => {
     });
     mocks.checkRunUpdateMany
       .mockResolvedValueOnce({
+        count: 1,
+      })
+      .mockResolvedValueOnce({
         count: 2,
       })
       .mockResolvedValueOnce({
@@ -430,7 +433,7 @@ describe("scheduleDueChecks", () => {
     ).resolves.toEqual({
       active: 0,
       cancelledQueued: 2,
-      cancelledRunning: 1,
+      cancelledRunning: 2,
       failed: 0,
       missingRoot: 0,
       notDue: 0,
@@ -440,6 +443,59 @@ describe("scheduleDueChecks", () => {
     });
 
     expect(mocks.checkRunUpdateMany).toHaveBeenNthCalledWith(1, {
+      data: {
+        errorMessage: "Browser run timed out after its configured deadline.",
+        finishedAt: now,
+        status: "TIMED_OUT",
+      },
+      where: {
+        AND: [
+          {
+            OR: [
+              {
+                checkSnapshotType: "BROWSER",
+              },
+              {
+                check: {
+                  is: {
+                    type: "BROWSER",
+                  },
+                },
+              },
+            ],
+          },
+          {
+            OR: [
+              {
+                timeoutAt: {
+                  lte: now,
+                },
+              },
+              {
+                startedAt: {
+                  lt: new Date("2026-06-29T09:50:00.000Z"),
+                },
+                timeoutAt: null,
+              },
+              {
+                createdAt: {
+                  lt: new Date("2026-06-29T09:50:00.000Z"),
+                },
+                startedAt: null,
+                timeoutAt: null,
+              },
+            ],
+          },
+        ],
+        status: "RUNNING",
+        testSession: {
+          is: {
+            kind: "TEST",
+          },
+        },
+      },
+    });
+    expect(mocks.checkRunUpdateMany).toHaveBeenNthCalledWith(2, {
       data: {
         errorMessage: "Run was cancelled after waiting in queue for 40 minutes.",
         finishedAt: now,
@@ -466,7 +522,7 @@ describe("scheduleDueChecks", () => {
         status: "QUEUED",
       },
     });
-    expect(mocks.checkRunUpdateMany).toHaveBeenNthCalledWith(2, {
+    expect(mocks.checkRunUpdateMany).toHaveBeenNthCalledWith(3, {
       data: {
         errorMessage:
           "Run was cancelled after running for 180 minutes without completion.",

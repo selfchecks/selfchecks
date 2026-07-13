@@ -1138,7 +1138,7 @@ describe("DashboardPage", () => {
 
     await user.click(screen.getByRole("button", { name: "Open account menu" }));
     expect(screen.getByText("nikolaev@iprojects.ru")).toBeTruthy();
-    expect(screen.getByText("Signed in locally")).toBeTruthy();
+    expect(screen.queryByText("Signed in locally")).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Last 24 hours" }));
     await user.click(screen.getByRole("option", { name: "Last 7 days" }));

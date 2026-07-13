@@ -906,6 +906,18 @@ async function runBrowserCheck(
           ms: runTimeout.timeoutMs,
           source: runTimeout.source,
         };
+
+  if (run) {
+    await prisma.checkRun.update({
+      data: {
+        timeoutAt: new Date(Date.now() + processTimeout.ms),
+      },
+      where: {
+        id: run.id,
+      },
+    });
+  }
+
   await writeBrowserPerformanceCollector(artifactPaths.performanceCollectorPath);
   const logs = await runProcess({
     args: [
