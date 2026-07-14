@@ -106,13 +106,17 @@ export function AppSidebar({
       }
     }
 
-    const intervalId = window.setInterval(() => {
-      void refreshStatus();
+    let timeoutId = window.setTimeout(function pollStatus() {
+      void refreshStatus().finally(() => {
+        if (!cancelled) {
+          timeoutId = window.setTimeout(pollStatus, SIDEBAR_STATUS_REFRESH_INTERVAL_MS);
+        }
+      });
     }, SIDEBAR_STATUS_REFRESH_INTERVAL_MS);
 
     return () => {
       cancelled = true;
-      window.clearInterval(intervalId);
+      window.clearTimeout(timeoutId);
     };
   }, [projectSlug]);
 

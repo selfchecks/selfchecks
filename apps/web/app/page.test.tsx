@@ -300,6 +300,7 @@ describe("DashboardPage", () => {
   afterEach(() => {
     vi.clearAllMocks();
     vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 
   it("renders the Checkly-like dashboard shell", () => {
@@ -1184,6 +1185,53 @@ describe("DashboardPage", () => {
     expect(screen.getByText("checkout.running")).toBeTruthy();
     expect(screen.getByText("checkout.ready")).toBeTruthy();
     expect(screen.queryByText("No checks match the current filters.")).toBeNull();
+  });
+
+  it("does not overlap dashboard refresh requests", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(
+      (_input: RequestInfo | URL) => new Promise<Response>(() => undefined),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <DashboardClient
+        initialGroups={[
+          {
+            checks: "1 checks",
+            children: [
+              createCheck({
+                name: "checkout.running",
+                runState: "running",
+                status: "degraded",
+                time: "running",
+              }),
+            ],
+            expanded: true,
+            name: "API / Checkout",
+            status: "degraded",
+            updated: "running",
+          },
+        ]}
+        initialSettings={fixtureSettings}
+        initialSummary={{
+          degraded: 0,
+          failing: 0,
+          passing: 0,
+          queued: 0,
+          running: 1,
+        }}
+      />,
+    );
+
+    const dashboardRequestCount = () =>
+      fetchMock.mock.calls.filter(([input]) => input === "/api/dashboard").length;
+
+    expect(dashboardRequestCount()).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(5000);
+
+    expect(dashboardRequestCount()).toBe(1);
   });
 
   it("opens the account menu and updates passive filter selects", async () => {

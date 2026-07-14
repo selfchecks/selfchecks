@@ -479,15 +479,25 @@ export default function DashboardClient({
       }
     }
 
-    const intervalId = window.setInterval(() => {
-      void refreshActiveRuns();
-    }, 1000);
+    let timeoutId: number | undefined;
 
-    void refreshActiveRuns();
+    async function pollActiveRuns() {
+      await refreshActiveRuns();
+
+      if (!cancelled) {
+        timeoutId = window.setTimeout(() => {
+          void pollActiveRuns();
+        }, 1000);
+      }
+    }
+
+    void pollActiveRuns();
 
     return () => {
       cancelled = true;
-      window.clearInterval(intervalId);
+      if (timeoutId !== undefined) {
+        window.clearTimeout(timeoutId);
+      }
     };
   }, [shouldRefreshDashboard]);
 

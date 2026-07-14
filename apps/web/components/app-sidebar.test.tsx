@@ -95,4 +95,18 @@ describe("AppSidebar", () => {
     });
     expect(screen.getByRole("status", { name: "Running 4, queued 3" })).toBeTruthy();
   });
+
+  it("does not overlap status refresh requests", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(() => new Promise<Response>(() => undefined));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AppSidebar />);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });
