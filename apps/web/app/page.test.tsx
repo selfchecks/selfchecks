@@ -543,6 +543,7 @@ describe("DashboardPage", () => {
 
     const drawer = screen.getByRole("dialog", { name: "AI analysis" });
 
+    expect(String(drawer.className)).toContain("md:w-1/2");
     expect(within(drawer).getByText("checkout fails")).toBeTruthy();
     expect(
       within(drawer).getByText(

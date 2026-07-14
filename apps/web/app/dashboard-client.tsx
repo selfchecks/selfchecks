@@ -3246,7 +3246,7 @@ function AiAnalysisDrawer({
       <aside
         aria-labelledby="ai-analysis-title"
         aria-modal="true"
-        className="flex h-full w-full max-w-xl flex-col border-l border-slate-700 bg-[#0d1117] shadow-2xl shadow-black/60"
+        className="flex h-full w-full flex-col border-l border-slate-700 bg-[#0d1117] shadow-2xl shadow-black/60 md:w-1/2"
         role="dialog"
       >
         <header className="flex items-start gap-3 border-b border-slate-800 px-6 py-5">
