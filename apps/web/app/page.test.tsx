@@ -385,6 +385,175 @@ describe("DashboardPage", () => {
     expect(screen.getByText("P95")).toBeTruthy();
   });
 
+  it("renders group status as a proportional donut for every current check state", () => {
+    const groups: DashboardGroupRow[] = [
+      {
+        checks: "5 checks",
+        children: [
+          createCheck({ name: "passing", runState: "passed", status: "passing" }),
+          createCheck({ name: "failing", runState: "failed", status: "failing" }),
+          createCheck({ name: "running", runState: "running", status: "degraded" }),
+          createCheck({ name: "queued", runState: "queued", status: "degraded" }),
+          createCheck({ name: "degraded", runState: "not_run", status: "degraded" }),
+        ],
+        expanded: true,
+        name: "Mixed status group",
+        status: "failing",
+        updated: "just now",
+      },
+    ];
+
+    render(
+      <DashboardClient
+        initialFirewatch={emptyFirewatch}
+        initialGroups={groups}
+        initialSettings={fixtureSettings}
+        initialSummary={{
+          degraded: 1,
+          failing: 1,
+          passing: 1,
+          queued: 1,
+          running: 1,
+        }}
+      />,
+    );
+
+    const donut = screen.getByRole("img", {
+      name: "Group status: 1 passing, 1 failing, 1 running, 1 queued, 1 degraded",
+    });
+
+    expect(donut.querySelector('[data-status="passing"]')).toBeTruthy();
+    expect(donut.querySelector('[data-status="failing"]')).toBeTruthy();
+    expect(donut.querySelector('[data-status="running"]')).toBeTruthy();
+    expect(donut.querySelector('[data-status="queued"]')).toBeTruthy();
+    expect(donut.querySelector('[data-status="degraded"]')).toBeTruthy();
+  });
+
+  it("omits empty donut segments and renders an all-passing group as a green circle", () => {
+    const groups: DashboardGroupRow[] = [
+      {
+        checks: "3 checks",
+        children: [
+          createCheck({ name: "passing", runState: "passed", status: "passing" }),
+          createCheck({ name: "failing", runState: "failed", status: "failing" }),
+          createCheck({ name: "degraded", runState: "not_run", status: "degraded" }),
+        ],
+        name: "No active checks",
+        status: "failing",
+        updated: "just now",
+      },
+      {
+        checks: "3 checks",
+        children: [
+          createCheck({ name: "passing-1", runState: "passed", status: "passing" }),
+          createCheck({ name: "passing-2", runState: "passed", status: "passing" }),
+          createCheck({ name: "passing-3", runState: "passed", status: "passing" }),
+        ],
+        name: "All passing",
+        status: "passing",
+        updated: "just now",
+      },
+    ];
+
+    render(
+      <DashboardClient
+        initialFirewatch={emptyFirewatch}
+        initialGroups={groups}
+        initialSettings={fixtureSettings}
+        initialSummary={{
+          degraded: 1,
+          failing: 1,
+          passing: 4,
+          queued: 0,
+          running: 0,
+        }}
+      />,
+    );
+
+    const noActiveDonut = screen.getByRole("img", {
+      name: "Group status: 1 passing, 1 failing, 1 degraded",
+    });
+
+    expect(noActiveDonut.querySelector('[data-status="running"]')).toBeNull();
+    expect(noActiveDonut.querySelector('[data-status="queued"]')).toBeNull();
+
+    const allPassingDonut = screen.getByRole("img", {
+      name: "Group status: 3 passing",
+    });
+    const allPassingSegments = allPassingDonut.querySelectorAll("[data-status]");
+    const passingSegment = allPassingDonut.querySelector('[data-status="passing"]');
+
+    expect(allPassingSegments).toHaveLength(1);
+    expect(passingSegment?.getAttribute("stroke")).toBe("#10b981");
+    expect(passingSegment?.getAttribute("stroke-dasharray")?.split(" ")[1]).toBe("0");
+  });
+
+  it("animates recent result bars from the bottom with a short stagger", () => {
+    renderDashboard();
+
+    const row = screen.getByRole("link", { name: "Open issue.get" });
+    const bars = row.querySelectorAll(".spark-bar-grow");
+
+    expect(bars).toHaveLength(2);
+    expect((bars[0] as HTMLElement).style.animationDelay).toBe("0ms");
+    expect((bars[1] as HTMLElement).style.animationDelay).toBe("18ms");
+    expect(String(bars[0]?.className)).toContain("origin-bottom");
+  });
+
+  it("opens the latest failed run AI analysis from the check action menu", async () => {
+    const user = userEvent.setup();
+    const failingCheck = createCheck({
+      name: "checkout fails",
+      runState: "failed",
+      status: "failing",
+    });
+    failingCheck.runs[0]!.aiAnalysis = {
+      content: "The checkout request failed because the upstream returned HTTP 503.",
+      model: "openai/gpt-5-mini",
+      responseLanguage: "English",
+      status: "completed",
+    };
+
+    render(
+      <DashboardClient
+        initialFirewatch={emptyFirewatch}
+        initialGroups={[
+          {
+            checks: "1 checks",
+            children: [failingCheck],
+            expanded: true,
+            name: "Checkout",
+            status: "failing",
+            updated: "just now",
+          },
+        ]}
+        initialSettings={fixtureSettings}
+        initialSummary={{
+          degraded: 0,
+          failing: 1,
+          passing: 0,
+          queued: 0,
+          running: 0,
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "checkout fails actions" }));
+    await user.click(screen.getByRole("button", { name: "AI analysis" }));
+
+    const drawer = screen.getByRole("dialog", { name: "AI analysis" });
+
+    expect(within(drawer).getByText("checkout fails")).toBeTruthy();
+    expect(
+      within(drawer).getByText(
+        "The checkout request failed because the upstream returned HTTP 503.",
+      ),
+    ).toBeTruthy();
+
+    await user.click(within(drawer).getByRole("button", { name: "Close AI analysis" }));
+    expect(screen.queryByRole("dialog", { name: "AI analysis" })).toBeNull();
+  });
+
   it("filters dashboard checks and status counters by project", async () => {
     const user = userEvent.setup();
     const accountCheck = createCheck({ name: "account-health", status: "passing" });
@@ -447,6 +616,11 @@ describe("DashboardPage", () => {
       status: "failing",
       time: "about 1 hour ago",
     });
+    failingCheck.runs[0]!.aiAnalysis = {
+      content: "The health endpoint failed because its database dependency timed out.",
+      model: "openai/gpt-5-mini",
+      status: "completed",
+    };
     const groups: DashboardGroupRow[] = [
       {
         checks: "1 checks",
@@ -540,6 +714,22 @@ describe("DashboardPage", () => {
     expect(
       screen.getByText("You have 1 check that started failing in the last 7 days"),
     ).toBeTruthy();
+
+    await user.click(
+      screen.getByRole("button", { name: "AI analysis for bff-health" }),
+    );
+
+    const aiDrawer = screen.getByRole("dialog", { name: "AI analysis" });
+
+    expect(
+      within(aiDrawer).getByText(
+        "The health endpoint failed because its database dependency timed out.",
+      ),
+    ).toBeTruthy();
+
+    await user.click(
+      within(aiDrawer).getByRole("button", { name: "Close AI analysis" }),
+    );
 
     await user.click(screen.getByRole("link", { name: "API / Bff / bff-health" }));
 

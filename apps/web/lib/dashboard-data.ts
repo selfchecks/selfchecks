@@ -2036,6 +2036,7 @@ function mapRun(run: MappableRun, timeZone: string): DashboardRunRow {
   const maxAttempts = getRunMaxAttempts(run);
 
   return {
+    aiAnalysis: formatAiAnalysis(run.result),
     attempt: getRunAttempt(run),
     artifacts: mapRunArtifacts(run),
     createdAt: run.createdAt.toISOString(),

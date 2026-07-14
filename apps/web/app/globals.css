@@ -2,6 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
+@keyframes spark-bar-grow {
+  from {
+    opacity: 0.35;
+    transform: scaleY(0);
+  }
+
+  to {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;
@@ -61,6 +73,10 @@
 }
 
 @layer components {
+  .spark-bar-grow {
+    animation: spark-bar-grow 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
   .settings-range {
     height: 0.5rem;
     appearance: none;
@@ -111,5 +127,11 @@
 
   .settings-range:focus-visible {
     box-shadow: 0 0 0 3px rgb(59 130 246 / 25%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spark-bar-grow {
+    animation: none;
   }
 }

@@ -71,7 +71,18 @@ export type DashboardRunPerformance = {
   };
 };
 
+export type DashboardAiAnalysis = {
+  apiEndpoint?: string;
+  content?: string;
+  createdAt?: string;
+  error?: string;
+  model?: string;
+  responseLanguage?: string;
+  status: "completed" | "failed";
+};
+
 export type DashboardRunRow = {
+  aiAnalysis?: DashboardAiAnalysis;
   attempt: number;
   artifacts: DashboardRunArtifact[];
   createdAt: string;

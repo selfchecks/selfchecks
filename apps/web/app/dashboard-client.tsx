@@ -6,6 +6,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
   forwardRef,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -38,6 +39,7 @@ import {
   Tag,
   Trash2,
   UserRound,
+  X,
   Zap,
   type LucideIcon,
 } from "lucide-react";
@@ -52,6 +54,7 @@ import {
 } from "@selfchecks/core/performance-settings";
 import { cn } from "@/lib/utils";
 import type {
+  DashboardAiAnalysis,
   DashboardCheckRow,
   DashboardFirewatch,
   DashboardFirewatchRow,
@@ -107,6 +110,11 @@ type RuntimeSecretDraft = {
 };
 type RangeFillStyle = CSSProperties & {
   "--settings-range-fill": string;
+};
+type AiAnalysisDrawerState = {
+  analysis?: DashboardAiAnalysis;
+  checkName: string;
+  occurredAt: string;
 };
 
 const AI_CUSTOM_ENDPOINT_VALUE = "__custom__";
@@ -298,6 +306,9 @@ export default function DashboardClient({
   const router = useRouter();
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [activeActionMenu, setActiveActionMenu] = useState<string | null>(null);
+  const [aiAnalysisDrawer, setAiAnalysisDrawer] =
+    useState<AiAnalysisDrawerState | null>(null);
+  const closeAiAnalysisDrawer = useCallback(() => setAiAnalysisDrawer(null), []);
   const [dateRange, setDateRange] = useState<DateRange>("24h");
   const [firewatchOpen, setFirewatchOpen] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(() =>
@@ -660,6 +671,22 @@ export default function DashboardClient({
     await runCheckNow(check);
   }
 
+  function openFirewatchAiAnalysis(row: DashboardFirewatchRow) {
+    const check = findCheckById(row.checkId);
+    const latestRun = check?.runs[0];
+
+    if (!check || !latestRun) {
+      setNotice(`Unable to find the latest run for ${row.name}.`);
+      return;
+    }
+
+    setAiAnalysisDrawer({
+      analysis: latestRun.aiAnalysis,
+      checkName: check.name,
+      occurredAt: latestRun.occurredAt,
+    });
+  }
+
   async function queueChecks(checksToQueue: CheckRow[]) {
     const checksToRun = checksToQueue.filter((check) => !isCheckActive(check));
 
@@ -784,6 +811,7 @@ export default function DashboardClient({
                 failedChecksCount={failedChecks.length}
                 firewatch={visibleFirewatch}
                 onOpenChange={setFirewatchOpen}
+                onOpenAiAnalysis={openFirewatchAiAnalysis}
                 onOpenCheck={toggleCheck}
                 onRunFailedChecks={() => void runAllFailedChecks()}
                 onRunCheck={(row) => void runFirewatchCheck(row)}
@@ -874,6 +902,7 @@ export default function DashboardClient({
                 onCheckToggle={toggleCheck}
                 onGroupToggle={toggleGroup}
                 onNotice={setNotice}
+                onOpenAiAnalysis={setAiAnalysisDrawer}
                 onRunCheckNow={(check) => void runCheckNow(check)}
               />
             </>
@@ -884,6 +913,9 @@ export default function DashboardClient({
           )}
         </section>
       </div>
+      {aiAnalysisDrawer ? (
+        <AiAnalysisDrawer drawer={aiAnalysisDrawer} onClose={closeAiAnalysisDrawer} />
+      ) : null}
     </main>
   );
 }
@@ -1222,6 +1254,7 @@ function FirewatchPanel({
   failedChecksCount,
   firewatch,
   onOpenChange,
+  onOpenAiAnalysis,
   onOpenCheck,
   onRunFailedChecks,
   onRunCheck,
@@ -1230,6 +1263,7 @@ function FirewatchPanel({
   failedChecksCount: number;
   firewatch: DashboardFirewatch;
   onOpenChange: (open: boolean) => void;
+  onOpenAiAnalysis: (row: DashboardFirewatchRow) => void;
   onOpenCheck: (checkId: string) => void;
   onRunFailedChecks: () => void;
   onRunCheck: (row: DashboardFirewatchRow) => void;
@@ -1291,10 +1325,10 @@ function FirewatchPanel({
                 <span>{alertText}</span>
               </div>
               <div className="overflow-x-auto rounded-md border border-slate-700">
-                <table className="w-full min-w-[860px] table-fixed text-left text-sm">
+                <table className="w-full min-w-[980px] table-fixed text-left text-sm">
                   <thead className="border-b border-slate-700 bg-[#121820] text-xs font-semibold uppercase text-slate-400">
                     <tr>
-                      <th className="w-[46%] px-4 py-3">
+                      <th className="w-[40%] px-4 py-3">
                         <span className="inline-flex items-center gap-2">
                           Name
                           <ArrowDownUp className="h-3.5 w-3.5 text-slate-600" />
@@ -1318,7 +1352,7 @@ function FirewatchPanel({
                           <ArrowDownUp className="h-3.5 w-3.5 text-slate-600" />
                         </span>
                       </th>
-                      <th className="w-[16%] px-4 py-3" />
+                      <th className="w-[22%] px-4 py-3" />
                     </tr>
                   </thead>
                   <tbody>
@@ -1360,15 +1394,26 @@ function FirewatchPanel({
                         >
                           {row.lastSeen}
                         </td>
-                        <td className="px-4 py-3 text-right">
-                          <button
-                            className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-sm font-medium text-blue-400 hover:bg-blue-500/10 hover:text-blue-300"
-                            onClick={() => onRunCheck(row)}
-                            type="button"
-                          >
-                            <Zap className="h-4 w-4" />
-                            Schedule now
-                          </button>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              aria-label={`AI analysis for ${row.name}`}
+                              className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-sm font-medium text-cyan-300 hover:bg-cyan-500/10 hover:text-cyan-200"
+                              onClick={() => onOpenAiAnalysis(row)}
+                              type="button"
+                            >
+                              <Bot className="h-4 w-4" />
+                              AI analysis
+                            </button>
+                            <button
+                              className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-sm font-medium text-blue-400 hover:bg-blue-500/10 hover:text-blue-300"
+                              onClick={() => onRunCheck(row)}
+                              type="button"
+                            >
+                              <Zap className="h-4 w-4" />
+                              Schedule now
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -2771,6 +2816,7 @@ function ChecksTable({
   onCheckToggle,
   onGroupToggle,
   onNotice,
+  onOpenAiAnalysis,
   onRunCheckNow,
 }: {
   activeActionMenu: string | null;
@@ -2779,6 +2825,7 @@ function ChecksTable({
   onCheckToggle: (checkId: string) => void;
   onGroupToggle: (groupName: string) => void;
   onNotice: (notice: string) => void;
+  onOpenAiAnalysis: (drawer: AiAnalysisDrawerState) => void;
   onRunCheckNow: (check: CheckRow) => void;
 }) {
   return (
@@ -2832,6 +2879,7 @@ function ChecksTable({
                 onCheckToggle={onCheckToggle}
                 onGroupToggle={onGroupToggle}
                 onNotice={onNotice}
+                onOpenAiAnalysis={onOpenAiAnalysis}
                 onRunCheckNow={onRunCheckNow}
               />
             ))}
@@ -2856,6 +2904,7 @@ function GroupBlock({
   onCheckToggle,
   onGroupToggle,
   onNotice,
+  onOpenAiAnalysis,
   onRunCheckNow,
 }: {
   activeActionMenu: string | null;
@@ -2864,6 +2913,7 @@ function GroupBlock({
   onCheckToggle: (checkId: string) => void;
   onGroupToggle: (groupName: string) => void;
   onNotice: (notice: string) => void;
+  onOpenAiAnalysis: (drawer: AiAnalysisDrawerState) => void;
   onRunCheckNow: (check: CheckRow) => void;
 }) {
   const groupKey = getGroupKey(group);
@@ -2898,7 +2948,7 @@ function GroupBlock({
             ) : (
               <ChevronRight className="h-4 w-4 text-slate-400" />
             )}
-            <GroupStatus status={group.status} />
+            <GroupStatus group={group} />
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-semibold text-slate-200">{group.name}</span>
@@ -2953,6 +3003,7 @@ function GroupBlock({
               onActionMenuToggle={onActionMenuToggle}
               onCheckToggle={onCheckToggle}
               onNotice={onNotice}
+              onOpenAiAnalysis={onOpenAiAnalysis}
               onRunCheckNow={onRunCheckNow}
             />
           ))
@@ -2967,6 +3018,7 @@ function CheckTableRow({
   onActionMenuToggle,
   onCheckToggle,
   onNotice,
+  onOpenAiAnalysis,
   onRunCheckNow,
 }: {
   activeActionMenu: string | null;
@@ -2974,9 +3026,14 @@ function CheckTableRow({
   onActionMenuToggle: (key: string) => void;
   onCheckToggle: (checkId: string) => void;
   onNotice: (notice: string) => void;
+  onOpenAiAnalysis: (drawer: AiAnalysisDrawerState) => void;
   onRunCheckNow: (check: CheckRow) => void;
 }) {
   const actionKey = `check:${check.id}`;
+  const latestRun = check.runs[0];
+  const latestRunFailed = Boolean(
+    latestRun && ["cancelled", "failed", "timed_out"].includes(latestRun.runState),
+  );
   const toggleLabel = `Open ${check.name}`;
 
   return (
@@ -3056,6 +3113,16 @@ function CheckTableRow({
               onClose={() => onActionMenuToggle(actionKey)}
               onNotice={onNotice}
               onOpen={() => onCheckToggle(check.id)}
+              onOpenAiAnalysis={
+                latestRunFailed && latestRun
+                  ? () =>
+                      onOpenAiAnalysis({
+                        analysis: latestRun.aiAnalysis,
+                        checkName: check.name,
+                        occurredAt: latestRun.occurredAt,
+                      })
+                  : undefined
+              }
               onRunNow={() => onRunCheckNow(check)}
             />
           ) : null}
@@ -3070,12 +3137,14 @@ function ActionMenu({
   onClose,
   onNotice,
   onOpen,
+  onOpenAiAnalysis,
   onRunNow,
 }: {
   name: string;
   onClose: () => void;
   onNotice: (notice: string) => void;
   onOpen: () => void;
+  onOpenAiAnalysis?: () => void;
   onRunNow?: () => void;
 }) {
   async function copyName() {
@@ -3108,6 +3177,19 @@ function ActionMenu({
           Run now
         </button>
       ) : null}
+      {onOpenAiAnalysis ? (
+        <button
+          className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-cyan-200 hover:bg-slate-800"
+          onClick={() => {
+            onOpenAiAnalysis();
+            onClose();
+          }}
+          type="button"
+        >
+          <Bot className="h-4 w-4" />
+          AI analysis
+        </button>
+      ) : null}
       <button
         className="block w-full rounded px-3 py-2 text-left text-sm text-slate-300 hover:bg-slate-800"
         onClick={() => void copyName()}
@@ -3119,16 +3201,180 @@ function ActionMenu({
   );
 }
 
-function GroupStatus({ status }: { status: Status }) {
+function AiAnalysisDrawer({
+  drawer,
+  onClose,
+}: {
+  drawer: AiAnalysisDrawerState;
+  onClose: () => void;
+}) {
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const analysis = drawer.analysis;
+  const meta = [analysis?.model, analysis?.responseLanguage, drawer.occurredAt].filter(
+    Boolean,
+  );
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+
+    document.body.style.overflow = "hidden";
+    closeButtonRef.current?.focus();
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [onClose]);
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex justify-end bg-black/65 backdrop-blur-[1px]"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <aside
+        aria-labelledby="ai-analysis-title"
+        aria-modal="true"
+        className="flex h-full w-full max-w-xl flex-col border-l border-slate-700 bg-[#0d1117] shadow-2xl shadow-black/60"
+        role="dialog"
+      >
+        <header className="flex items-start gap-3 border-b border-slate-800 px-6 py-5">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-cyan-950 text-cyan-300">
+            <Bot className="h-5 w-5" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-lg font-semibold text-slate-100" id="ai-analysis-title">
+              AI analysis
+            </h2>
+            <div className="mt-0.5 truncate text-sm text-slate-400">
+              {drawer.checkName}
+            </div>
+          </div>
+          <button
+            aria-label="Close AI analysis"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-slate-400 hover:bg-slate-800 hover:text-slate-100"
+            onClick={onClose}
+            ref={closeButtonRef}
+            type="button"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </header>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="break-all text-xs text-slate-500">{meta.join(" · ")}</div>
+            {analysis ? (
+              <span
+                className={cn(
+                  "rounded px-2 py-1 text-xs font-semibold uppercase",
+                  analysis.status === "completed"
+                    ? "bg-cyan-950 text-cyan-200"
+                    : "bg-amber-950 text-amber-200",
+                )}
+              >
+                {analysis.status}
+              </span>
+            ) : null}
+          </div>
+
+          {analysis?.content ? (
+            <pre className="mt-5 whitespace-pre-wrap break-words rounded-md border border-cyan-950/70 bg-[#111821] p-5 font-sans text-sm leading-6 text-slate-200">
+              {analysis.content}
+            </pre>
+          ) : analysis?.error ? (
+            <div className="mt-5 rounded-md border border-amber-900/70 bg-amber-950/30 p-5 text-sm leading-6 text-amber-100">
+              {analysis.error}
+            </div>
+          ) : (
+            <div className="mt-5 rounded-md border border-slate-800 bg-[#111821] p-5 text-sm leading-6 text-slate-300">
+              AI analysis is unavailable for this run. Check the AI settings and run the
+              test again to generate a failure analysis.
+            </div>
+          )}
+        </div>
+      </aside>
+    </div>,
+    document.body,
+  );
+}
+
+const groupStatusSegments = [
+  { color: "#10b981", key: "passing", label: "passing" },
+  { color: "#ef4444", key: "failing", label: "failing" },
+  { color: "#3b82f6", key: "running", label: "running" },
+  { color: "#facc15", key: "queued", label: "queued" },
+  { color: "#f97316", key: "degraded", label: "degraded" },
+] as const;
+
+function GroupStatus({ group }: { group: GroupRow }) {
+  const counts = groupStatusSegments.map((segment) => ({
+    ...segment,
+    count:
+      group.children?.filter((check) =>
+        segment.key === "running" || segment.key === "queued"
+          ? check.runState === segment.key
+          : check.runState !== "running" &&
+            check.runState !== "queued" &&
+            check.status === segment.key,
+      ).length ?? (segment.key === group.status ? 1 : 0),
+  }));
+  const total = counts.reduce((sum, segment) => sum + segment.count, 0);
+  const radius = 12;
+  const circumference = 2 * Math.PI * radius;
+  const visibleSegments = counts.filter((segment) => segment.count > 0);
+  const gap = visibleSegments.length > 1 ? 1.2 : 0;
+  const label = counts
+    .filter((segment) => segment.count > 0)
+    .map((segment) => `${segment.count} ${segment.label}`)
+    .join(", ");
+  let offset = 0;
+
   return (
-    <span
-      className={cn(
-        "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-[5px]",
-        status === "passing" && "border-emerald-500",
-        status === "degraded" && "border-emerald-500 border-t-amber-400",
-        status === "failing" && "border-red-500",
-      )}
-    />
+    <svg
+      aria-label={`Group status: ${label}`}
+      className="h-8 w-8 shrink-0 -rotate-90"
+      role="img"
+      viewBox="0 0 32 32"
+    >
+      <circle cx="16" cy="16" fill="none" r={radius} stroke="#334155" strokeWidth="5" />
+      {counts.map((segment) => {
+        if (segment.count === 0 || total === 0) {
+          return null;
+        }
+
+        const length = (segment.count / total) * circumference;
+        const dashLength = Math.max(0, length - gap);
+        const dashOffset = -offset;
+        offset += length;
+
+        return (
+          <circle
+            cx="16"
+            cy="16"
+            data-status={segment.key}
+            fill="none"
+            key={segment.key}
+            r={radius}
+            stroke={segment.color}
+            strokeDasharray={`${dashLength} ${circumference - dashLength}`}
+            strokeDashoffset={dashOffset}
+            strokeWidth="5"
+          />
+        );
+      })}
+    </svg>
   );
 }
 
@@ -3200,7 +3446,11 @@ function SparkBars({ bars }: { bars: CheckRow["bars"] }) {
   return (
     <div className="flex h-12 items-end gap-1 overflow-visible py-1">
       {bars.map((bar, index) => (
-        <SparkBar bar={bar} key={`${bar.occurredAt}-${bar.value}-${index}`} />
+        <SparkBar
+          bar={bar}
+          index={index}
+          key={`${bar.occurredAt}-${bar.value}-${index}`}
+        />
       ))}
     </div>
   );
@@ -3215,7 +3465,7 @@ type SparkBarTooltipPosition = {
   top: number;
 };
 
-function SparkBar({ bar }: { bar: SparkBarData }) {
+function SparkBar({ bar, index }: { bar: SparkBarData; index: number }) {
   const anchorRef = useRef<HTMLElement | null>(null);
   const tooltipRef = useRef<HTMLSpanElement | null>(null);
   const [active, setActive] = useState(false);
@@ -3231,10 +3481,13 @@ function SparkBar({ bar }: { bar: SparkBarData }) {
       <span
         aria-hidden="true"
         className={cn(
-          "block w-1 rounded-sm transition",
+          "spark-bar-grow block w-1 origin-bottom rounded-sm transition",
           getRunResultToneClassName(bar.tone),
         )}
-        style={{ height: `${bar.value}px` }}
+        style={{
+          animationDelay: `${Math.min(index, 12) * 18}ms`,
+          height: `${bar.value}px`,
+        }}
       />
       {bar.hasRetries ? (
         <span
