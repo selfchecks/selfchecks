@@ -2918,6 +2918,7 @@ function GroupBlock({
 }) {
   const groupKey = getGroupKey(group);
   const actionKey = `group:${groupKey}`;
+  const actionButtonRef = useRef<HTMLButtonElement>(null);
   const projectName = group.projectName ?? group.projectSlug;
   const toggleLabel = `${group.expanded ? "Collapse" : "Expand"} ${projectName ? `${projectName} ` : ""}${group.name}`;
 
@@ -2979,12 +2980,14 @@ function GroupBlock({
             aria-label={`${group.name} actions`}
             className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-800 hover:text-slate-200"
             onClick={() => onActionMenuToggle(actionKey)}
+            ref={actionButtonRef}
             type="button"
           >
             <MoreVertical className="h-5 w-5" />
           </button>
           {activeActionMenu === actionKey ? (
             <ActionMenu
+              anchor={actionButtonRef.current}
               name={group.name}
               onClose={() => onActionMenuToggle(actionKey)}
               onNotice={onNotice}
@@ -3030,6 +3033,7 @@ function CheckTableRow({
   onRunCheckNow: (check: CheckRow) => void;
 }) {
   const actionKey = `check:${check.id}`;
+  const actionButtonRef = useRef<HTMLButtonElement>(null);
   const latestRun = check.runs[0];
   const latestRunFailed = Boolean(
     latestRun && ["cancelled", "failed", "timed_out"].includes(latestRun.runState),
@@ -3103,12 +3107,14 @@ function CheckTableRow({
             aria-label={`${check.name} actions`}
             className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-800 hover:text-slate-200"
             onClick={() => onActionMenuToggle(actionKey)}
+            ref={actionButtonRef}
             type="button"
           >
             <MoreVertical className="h-5 w-5" />
           </button>
           {activeActionMenu === actionKey ? (
             <ActionMenu
+              anchor={actionButtonRef.current}
               name={check.name}
               onClose={() => onActionMenuToggle(actionKey)}
               onNotice={onNotice}
@@ -3133,6 +3139,7 @@ function CheckTableRow({
 }
 
 function ActionMenu({
+  anchor,
   name,
   onClose,
   onNotice,
@@ -3140,6 +3147,7 @@ function ActionMenu({
   onOpenAiAnalysis,
   onRunNow,
 }: {
+  anchor: HTMLButtonElement | null;
   name: string;
   onClose: () => void;
   onNotice: (notice: string) => void;
@@ -3147,14 +3155,74 @@ function ActionMenu({
   onOpenAiAnalysis?: () => void;
   onRunNow?: () => void;
 }) {
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
+
+  useEffect(() => {
+    if (!anchor) {
+      return;
+    }
+
+    const anchorElement = anchor;
+
+    function updatePosition() {
+      const menu = menuRef.current;
+
+      if (!menu) {
+        return;
+      }
+
+      const viewportPadding = 8;
+      const menuGap = 4;
+      const anchorRect = anchorElement.getBoundingClientRect();
+      const menuWidth = menu.offsetWidth || 160;
+      const menuHeight = menu.offsetHeight || 160;
+      const availableBelow = window.innerHeight - anchorRect.bottom;
+      const availableAbove = anchorRect.top;
+      const placeAbove =
+        availableBelow < menuHeight + menuGap && availableAbove > availableBelow;
+      const left = Math.min(
+        Math.max(viewportPadding, window.innerWidth - menuWidth - viewportPadding),
+        Math.max(viewportPadding, anchorRect.right - menuWidth),
+      );
+      const desiredTop = placeAbove
+        ? anchorRect.top - menuHeight - menuGap
+        : anchorRect.bottom + menuGap;
+      const top = Math.min(
+        Math.max(viewportPadding, window.innerHeight - menuHeight - viewportPadding),
+        Math.max(viewportPadding, desiredTop),
+      );
+
+      setPosition({ left, top });
+    }
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [anchor]);
+
   async function copyName() {
     await navigator.clipboard?.writeText(name);
     onNotice(`Copied ${name}.`);
     onClose();
   }
 
-  return (
-    <div className="absolute right-3 top-10 z-20 w-40 rounded-md border border-slate-700 bg-[#12171f] p-1 shadow-xl shadow-black/30">
+  return createPortal(
+    <div
+      className="fixed z-50 w-40 rounded-md border border-slate-700 bg-[#12171f] p-1 shadow-xl shadow-black/30"
+      data-action-menu-root
+      ref={menuRef}
+      style={{
+        left: position?.left ?? 0,
+        top: position?.top ?? 0,
+        visibility: position ? "visible" : "hidden",
+      }}
+    >
       <button
         className="block w-full rounded px-3 py-2 text-left text-sm text-slate-300 hover:bg-slate-800"
         onClick={() => {
@@ -3197,7 +3265,8 @@ function ActionMenu({
       >
         Copy name
       </button>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

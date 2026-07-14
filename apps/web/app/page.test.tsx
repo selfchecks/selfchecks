@@ -1926,7 +1926,12 @@ describe("DashboardPage", () => {
     renderDashboard();
 
     await user.click(screen.getByRole("button", { name: "issue.get actions" }));
-    expect(screen.getByRole("button", { name: "Open" })).toBeTruthy();
+    const openAction = screen.getByRole("button", { name: "Open" });
+    const actionMenu = openAction.parentElement;
+
+    expect(actionMenu?.parentElement).toBe(document.body);
+    expect(String(actionMenu?.className)).toContain("fixed");
+    expect(openAction.closest("table")).toBeNull();
 
     await user.click(screen.getByRole("searchbox", { name: "Search checks" }));
 
