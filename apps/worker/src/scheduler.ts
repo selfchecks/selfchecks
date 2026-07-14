@@ -44,7 +44,7 @@ export type CheckSchedulerConfig = {
 export type CheckSchedulerOptions = {
   config: CheckSchedulerConfig;
   logger?: Pick<Console, "error" | "log" | "warn">;
-  queue: Pick<Queue<CheckJob>, "add">;
+  queue: Pick<Queue<CheckJob>, "add" | "getJob">;
 };
 
 export type ScheduleDueChecksOptions = CheckSchedulerOptions & {
@@ -66,6 +66,14 @@ export type ScheduleDueChecksSummary = {
 
 const activeRunStatuses = new Set<PrismaCheckRunStatus>(["QUEUED", "RUNNING"]);
 const activeSessionStatuses: PrismaCheckRunStatus[] = ["QUEUED", "RUNNING"];
+const liveQueueJobStates = new Set([
+  "active",
+  "delayed",
+  "prioritized",
+  "waiting",
+  "waiting-children",
+]);
+const QUEUE_RECONCILIATION_GRACE_MS = 60_000;
 const TEST_SESSION_FINALIZATION_GRACE_MS = 60_000;
 
 export class CheckScheduler {
@@ -167,6 +175,7 @@ export async function scheduleDueChecks({
     queuedRunTimeoutMinutes: performanceSettings.queuedRunTimeoutMinutes,
     runningRunTimeoutMinutes: performanceSettings.runningRunTimeoutMinutes,
   });
+  const reconciledRuns = await reconcileQueueBackedRuns({ logger, now, queue });
 
   await reconcileTerminalTestSessions({ logger, now });
 
@@ -210,8 +219,8 @@ export async function scheduleDueChecks({
   });
   const summary: ScheduleDueChecksSummary = {
     active: 0,
-    cancelledQueued: cancelledRuns.queued,
-    cancelledRunning: cancelledRuns.running,
+    cancelledQueued: cancelledRuns.queued + reconciledRuns.queued,
+    cancelledRunning: cancelledRuns.running + reconciledRuns.running,
     failed: 0,
     missingRoot: 0,
     notDue: 0,
@@ -511,11 +520,6 @@ async function cancelStaleActiveRuns({
           },
         ],
         status: "RUNNING",
-        testSession: {
-          is: {
-            kind: "TEST",
-          },
-        },
       },
     });
     const [queued, running] = await Promise.all([
@@ -583,6 +587,126 @@ async function cancelStaleActiveRuns({
       running: 0,
     };
   }
+}
+
+async function reconcileQueueBackedRuns({
+  logger,
+  now,
+  queue,
+}: {
+  logger: Pick<Console, "warn">;
+  now: Date;
+  queue: Pick<Queue<CheckJob>, "getJob">;
+}): Promise<{ queued: number; running: number }> {
+  const reconciled = { queued: 0, running: 0 };
+  const staleBefore = now.getTime() - QUEUE_RECONCILIATION_GRACE_MS;
+
+  try {
+    const runs = await prisma.checkRun.findMany({
+      select: {
+        createdAt: true,
+        id: true,
+        retryGroupId: true,
+        startedAt: true,
+        status: true,
+      },
+      where: {
+        runSource: {
+          in: ["SCHEDULE", "MANUAL"],
+        },
+        status: {
+          in: ["QUEUED", "RUNNING"],
+        },
+      },
+    });
+    const runsByJobId = new Map<string, typeof runs>();
+
+    for (const run of runs) {
+      const jobId = run.retryGroupId ?? run.id;
+      const groupedRuns = runsByJobId.get(jobId) ?? [];
+
+      groupedRuns.push(run);
+      runsByJobId.set(jobId, groupedRuns);
+    }
+
+    const jobStates = new Map(
+      await Promise.all(
+        [...runsByJobId.keys()].map(async (jobId) => {
+          const job = await queue.getJob(jobId);
+
+          return [jobId, await job?.getState()] as const;
+        }),
+      ),
+    );
+    const orphanedRuns = [...runsByJobId].flatMap(([jobId, groupedRuns]) => {
+      const state = jobStates.get(jobId);
+      const currentRunId =
+        state && liveQueueJobStates.has(state)
+          ? [...groupedRuns].sort(compareRunsByActivityDesc)[0]?.id
+          : undefined;
+
+      return groupedRuns.filter(
+        (run) => run.id !== currentRunId && getRunActivityTime(run) < staleBefore,
+      );
+    });
+    const queuedIds = orphanedRuns
+      .filter((run) => run.status === "QUEUED")
+      .map((run) => run.id);
+    const runningIds = orphanedRuns
+      .filter((run) => run.status === "RUNNING")
+      .map((run) => run.id);
+    const data = {
+      errorMessage: "Run was cancelled because its queue job is no longer active.",
+      finishedAt: now,
+      status: "CANCELLED" as const,
+    };
+
+    if (queuedIds.length > 0) {
+      reconciled.queued = (
+        await prisma.checkRun.updateMany({
+          data,
+          where: {
+            id: {
+              in: queuedIds,
+            },
+            status: "QUEUED",
+          },
+        })
+      ).count;
+    }
+
+    if (runningIds.length > 0) {
+      reconciled.running = (
+        await prisma.checkRun.updateMany({
+          data,
+          where: {
+            id: {
+              in: runningIds,
+            },
+            status: "RUNNING",
+          },
+        })
+      ).count;
+    }
+  } catch (error) {
+    logger.warn("Unable to reconcile active runs with the check queue.", error);
+  }
+
+  return reconciled;
+}
+
+function compareRunsByActivityDesc(
+  left: { createdAt: Date; id: string; startedAt: Date | null },
+  right: { createdAt: Date; id: string; startedAt: Date | null },
+): number {
+  return (
+    getRunActivityTime(right) - getRunActivityTime(left) ||
+    right.id.localeCompare(left.id)
+  );
+}
+
+function getRunActivityTime(run: { createdAt: Date; startedAt: Date | null }): number {
+  return (run.startedAt ?? run.createdAt).getTime();
 }
 
 async function reconcileTerminalTestSessions({

@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   finalizeTestSession: vi.fn(),
   getRunEnvironment: vi.fn(),
   queueAdd: vi.fn(),
+  queueGetJob: vi.fn(),
   readPerformanceRuntimeSettings: vi.fn(),
   testSessionFindMany: vi.fn(),
 }));
@@ -62,6 +63,13 @@ function createLogger() {
   };
 }
 
+function createQueue() {
+  return {
+    add: mocks.queueAdd,
+    getJob: mocks.queueGetJob,
+  };
+}
+
 function createScheduledCheck(
   overrides: Partial<{
     deployment: { source: string | null } | null;
@@ -96,6 +104,7 @@ describe("scheduleDueChecks", () => {
     mocks.checkRunUpdateMany.mockResolvedValue({
       count: 0,
     });
+    mocks.queueGetJob.mockResolvedValue(undefined);
     mocks.testSessionFindMany.mockResolvedValue([]);
     mocks.readPerformanceRuntimeSettings.mockResolvedValue({
       artifactRetentionDays: 14,
@@ -134,9 +143,7 @@ describe("scheduleDueChecks", () => {
         },
         logger,
         now,
-        queue: {
-          add: mocks.queueAdd,
-        },
+        queue: createQueue(),
       }),
     ).resolves.toEqual({
       active: 0,
@@ -237,9 +244,7 @@ describe("scheduleDueChecks", () => {
         runningRunTimeoutMinutes: 120,
       },
       now,
-      queue: {
-        add: mocks.queueAdd,
-      },
+      queue: createQueue(),
     });
 
     expect(mocks.queueAdd).toHaveBeenCalledWith(
@@ -284,9 +289,7 @@ describe("scheduleDueChecks", () => {
           runningRunTimeoutMinutes: 120,
         },
         now,
-        queue: {
-          add: mocks.queueAdd,
-        },
+        queue: createQueue(),
       }),
     ).resolves.toEqual({
       active: 1,
@@ -322,9 +325,7 @@ describe("scheduleDueChecks", () => {
         },
         logger,
         now,
-        queue: {
-          add: mocks.queueAdd,
-        },
+        queue: createQueue(),
       }),
     ).resolves.toEqual({
       active: 0,
@@ -364,9 +365,7 @@ describe("scheduleDueChecks", () => {
         },
         logger,
         now,
-        queue: {
-          add: mocks.queueAdd,
-        },
+        queue: createQueue(),
       }),
     ).resolves.toEqual({
       active: 0,
@@ -426,9 +425,7 @@ describe("scheduleDueChecks", () => {
           runningRunTimeoutMinutes: 120,
         },
         now,
-        queue: {
-          add: mocks.queueAdd,
-        },
+        queue: createQueue(),
       }),
     ).resolves.toEqual({
       active: 0,
@@ -488,11 +485,6 @@ describe("scheduleDueChecks", () => {
           },
         ],
         status: "RUNNING",
-        testSession: {
-          is: {
-            kind: "TEST",
-          },
-        },
       },
     });
     expect(mocks.checkRunUpdateMany).toHaveBeenNthCalledWith(2, {
@@ -548,6 +540,144 @@ describe("scheduleDueChecks", () => {
     });
   });
 
+  it("reconciles orphaned and duplicate active runs with the queue", async () => {
+    const logger = createLogger();
+
+    mocks.checkFindMany.mockResolvedValue([]);
+    mocks.checkRunFindMany
+      .mockResolvedValueOnce([
+        {
+          createdAt: new Date("2026-06-29T09:00:00.000Z"),
+          id: "run_missing",
+          retryGroupId: "job_missing",
+          startedAt: new Date("2026-06-29T09:01:00.000Z"),
+          status: "RUNNING",
+        },
+        {
+          createdAt: new Date("2026-06-29T09:00:00.000Z"),
+          id: "run_completed",
+          retryGroupId: null,
+          startedAt: null,
+          status: "QUEUED",
+        },
+        {
+          createdAt: new Date("2026-06-29T09:00:00.000Z"),
+          id: "run_live_old",
+          retryGroupId: "job_live",
+          startedAt: new Date("2026-06-29T09:02:00.000Z"),
+          status: "RUNNING",
+        },
+        {
+          createdAt: new Date("2026-06-29T09:00:00.000Z"),
+          id: "run_live_current",
+          retryGroupId: "job_live",
+          startedAt: new Date("2026-06-29T09:59:30.000Z"),
+          status: "RUNNING",
+        },
+        {
+          createdAt: new Date("2026-06-29T09:00:00.000Z"),
+          id: "run_waiting",
+          retryGroupId: null,
+          startedAt: null,
+          status: "QUEUED",
+        },
+      ])
+      .mockResolvedValueOnce([]);
+    mocks.queueGetJob.mockImplementation(async (jobId: string) => {
+      const state = {
+        job_live: "active",
+        run_completed: "completed",
+        run_waiting: "waiting",
+      }[jobId];
+
+      return state
+        ? {
+            getState: vi.fn().mockResolvedValue(state),
+          }
+        : undefined;
+    });
+    mocks.checkRunUpdateMany
+      .mockResolvedValueOnce({ count: 0 })
+      .mockResolvedValueOnce({ count: 0 })
+      .mockResolvedValueOnce({ count: 0 })
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 2 });
+
+    await expect(
+      scheduleDueChecks({
+        config: {
+          pollIntervalMs: 60_000,
+          queuedRunTimeoutMinutes: 30,
+          reporter: "list",
+          runningRunTimeoutMinutes: 120,
+        },
+        logger,
+        now,
+        queue: createQueue(),
+      }),
+    ).resolves.toEqual({
+      active: 0,
+      cancelledQueued: 1,
+      cancelledRunning: 2,
+      failed: 0,
+      missingRoot: 0,
+      notDue: 0,
+      queued: 0,
+      scanned: 0,
+      skipped: 0,
+    });
+
+    expect(mocks.checkRunFindMany).toHaveBeenNthCalledWith(1, {
+      select: {
+        createdAt: true,
+        id: true,
+        retryGroupId: true,
+        startedAt: true,
+        status: true,
+      },
+      where: {
+        runSource: {
+          in: ["SCHEDULE", "MANUAL"],
+        },
+        status: {
+          in: ["QUEUED", "RUNNING"],
+        },
+      },
+    });
+    expect(mocks.queueGetJob).toHaveBeenCalledTimes(4);
+    expect(mocks.queueGetJob).toHaveBeenCalledWith("job_missing");
+    expect(mocks.queueGetJob).toHaveBeenCalledWith("run_completed");
+    expect(mocks.queueGetJob).toHaveBeenCalledWith("job_live");
+    expect(mocks.queueGetJob).toHaveBeenCalledWith("run_waiting");
+    expect(mocks.checkRunUpdateMany).toHaveBeenCalledWith({
+      data: {
+        errorMessage: "Run was cancelled because its queue job is no longer active.",
+        finishedAt: now,
+        status: "CANCELLED",
+      },
+      where: {
+        id: {
+          in: ["run_completed"],
+        },
+        status: "QUEUED",
+      },
+    });
+    expect(mocks.checkRunUpdateMany).toHaveBeenCalledWith({
+      data: {
+        errorMessage: "Run was cancelled because its queue job is no longer active.",
+        finishedAt: now,
+        status: "CANCELLED",
+      },
+      where: {
+        id: {
+          in: ["run_missing", "run_live_old"],
+        },
+        status: "RUNNING",
+      },
+    });
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
   it("reconciles stale active test sessions without active runs", async () => {
     mocks.checkFindMany.mockResolvedValue([]);
     mocks.testSessionFindMany.mockResolvedValue([{ id: "session_stuck" }]);
@@ -560,9 +690,7 @@ describe("scheduleDueChecks", () => {
         runningRunTimeoutMinutes: 120,
       },
       now,
-      queue: {
-        add: mocks.queueAdd,
-      },
+      queue: createQueue(),
     });
 
     expect(mocks.testSessionFindMany).toHaveBeenCalledWith({
@@ -618,7 +746,7 @@ describe("scheduleDueChecks", () => {
         path: "/tmp/selfchecks/artifact-1.zip",
       },
     ]);
-    mocks.checkRunFindMany.mockResolvedValue([
+    mocks.checkRunFindMany.mockResolvedValueOnce([]).mockResolvedValueOnce([
       {
         artifacts: [
           {
@@ -646,9 +774,7 @@ describe("scheduleDueChecks", () => {
       deleteFile,
       logger,
       now,
-      queue: {
-        add: mocks.queueAdd,
-      },
+      queue: createQueue(),
     });
 
     expect(mocks.artifactFindMany).toHaveBeenCalledWith({
