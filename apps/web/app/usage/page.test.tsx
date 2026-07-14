@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -62,14 +62,19 @@ describe("UsagePage", () => {
       basic: { login: "admin@example.com" },
     });
 
-    render(await UsagePage());
+    await act(async () => {
+      render(await UsagePage());
+      await Promise.resolve();
+    });
 
     expect(screen.getByRole("heading", { name: "Usage" })).toBeTruthy();
     expect(
       screen.getByRole("link", { name: "Usage" }).getAttribute("aria-current"),
     ).toBe("page");
     expect(
-      screen.getByRole("img", { name: "Completed API and browser tests by day" }),
+      await screen.findByRole("img", {
+        name: "Completed API and browser tests by day",
+      }),
     ).toBeTruthy();
     expect(
       screen.getByRole("img", { name: "Scheduled checks and test sessions by day" }),

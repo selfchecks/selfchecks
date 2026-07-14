@@ -1,5 +1,6 @@
 import { ChartNoAxesColumnIncreasing } from "lucide-react";
 import Link from "next/link";
+import { Suspense, type ReactNode, use } from "react";
 
 import { AppSidebar } from "@/components/app-sidebar";
 import { ServiceMark } from "@/components/service-mark";
@@ -12,19 +13,26 @@ import {
   TestSourcesChart,
   UsageChart,
 } from "./usage-chart";
+import {
+  UsageChartSkeleton,
+  UsageMetricsSkeleton,
+  UsageReliabilitySkeleton,
+} from "./usage-skeleton";
 
 export const dynamic = "force-dynamic";
 
+type UsageDataPromise = ReturnType<typeof getUsageData>;
+
 export default async function UsagePage() {
-  const data = await getUsageData("default");
-  const settings = await getDashboardSettingsData(data.projectSlug);
+  const dataPromise = getUsageData("default");
+  const settings = await getDashboardSettingsData("all");
 
   return (
     <main className="min-h-screen bg-[#0d1117] text-slate-200">
       <AppSidebar
         accountLabel={settings.basic.login || "Admin"}
         activeItem="usage"
-        projectSlug={data.projectSlug}
+        projectSlug="all"
       />
 
       <div className="min-h-screen xl:pl-72">
@@ -48,121 +56,176 @@ export default async function UsagePage() {
           <div>
             <h1 className="text-3xl font-semibold text-slate-100">Usage</h1>
             <p className="mt-1 text-sm text-slate-500">
-              Completed tests over the last {data.rangeDays} days
+              Completed tests over the last 30 days
             </p>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-3">
-            <MetricCard label="All completed tests" value={data.totals.total} />
-            <MetricCard accent="bg-sky-400" label="API tests" value={data.totals.api} />
-            <MetricCard
-              accent="bg-violet-400"
-              label="Browser tests"
-              value={data.totals.browser}
-            />
-          </div>
-
-          <section className="rounded-md border border-slate-800 bg-[#111821] p-4 sm:p-5">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 className="font-semibold text-slate-100">Tests by day</h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  Each completed test is counted on the day it finished.
-                </p>
-              </div>
-              <div className="flex items-center gap-4 text-xs text-slate-400">
-                <Legend color="bg-sky-400" label="API" />
-                <Legend color="bg-violet-400" label="Browser" />
-              </div>
-            </div>
-            <div className="mt-4">
-              <UsageChart days={data.days} />
-            </div>
-          </section>
-
-          <section className="rounded-md border border-slate-800 bg-[#111821] p-4 sm:p-5">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 className="font-semibold text-slate-100">Where tests come from</h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  Scheduled dashboard checks compared with tests run in test sessions.
-                </p>
-              </div>
-              <div className="flex items-center gap-4 text-xs text-slate-400">
-                <Legend color="bg-emerald-400" label="Scheduled" />
-                <Legend color="bg-amber-400" label="Test sessions" />
-              </div>
-            </div>
-            <div className="mt-4">
-              <TestSourcesChart days={data.days} />
-            </div>
-          </section>
-
-          <section>
-            <div className="rounded-md border border-slate-800 bg-[#111821] p-4 sm:p-5">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h2 className="font-semibold text-slate-100">Results by day</h2>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Failed includes failed, timed out and cancelled tests.
-                  </p>
-                </div>
-                <div className="flex items-center gap-4 text-xs text-slate-400">
-                  <Legend color="bg-emerald-400" label="Passed" />
-                  <Legend color="bg-red-400" label="Failed" />
-                </div>
-              </div>
-              <div className="mt-4">
-                <TestResultsChart days={data.days} />
-              </div>
-            </div>
-
-            <div className="mt-5 rounded-md border border-slate-800 bg-[#111821] p-4 sm:p-5">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h2 className="font-semibold text-slate-100">
-                    Completed tests by project
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Daily completed tests split across all projects.
-                  </p>
-                </div>
-                <div className="flex max-w-3xl flex-wrap items-center justify-end gap-4 text-xs text-slate-400">
-                  {(data.projects ?? []).map((project) => (
-                    <span className="inline-flex items-center gap-1.5" key={project.id}>
-                      <span
-                        className="h-2.5 w-2.5 rounded-sm"
-                        style={{ backgroundColor: project.color }}
-                      />
-                      {project.name}
-                    </span>
-                  ))}
-                </div>
-              </div>
-              <div className="mt-4">
-                <ProjectUsageChart days={data.days} projects={data.projects ?? []} />
-              </div>
-            </div>
-
-            <div className="mb-4 mt-5">
-              <h2 className="text-xl font-semibold text-slate-100">Test reliability</h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Success rate and the checks contributing most to failures.
-              </p>
-            </div>
-
-            <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
-              <SuccessRateCard
-                failed={data.totals.failed}
-                passed={data.totals.passed}
-                rate={data.totals.successRate}
-              />
-              <UnstableTests tests={data.unstableTests} />
-            </div>
-          </section>
+          <Suspense fallback={<UsageMetricsSkeleton />}>
+            <UsageMetricsBlock dataPromise={dataPromise} />
+          </Suspense>
+          <Suspense fallback={<UsageChartSkeleton label="tests by day" />}>
+            <UsageByDayBlock dataPromise={dataPromise} />
+          </Suspense>
+          <Suspense fallback={<UsageChartSkeleton label="test sources" />}>
+            <UsageSourcesBlock dataPromise={dataPromise} />
+          </Suspense>
+          <Suspense fallback={<UsageChartSkeleton label="results by day" />}>
+            <UsageResultsBlock dataPromise={dataPromise} />
+          </Suspense>
+          <Suspense fallback={<UsageChartSkeleton label="tests by project" />}>
+            <UsageProjectsBlock dataPromise={dataPromise} />
+          </Suspense>
+          <Suspense fallback={<UsageReliabilitySkeleton />}>
+            <UsageReliabilityBlock dataPromise={dataPromise} />
+          </Suspense>
         </section>
       </div>
     </main>
+  );
+}
+
+function UsageMetricsBlock({ dataPromise }: { dataPromise: UsageDataPromise }) {
+  const data = use(dataPromise);
+
+  return (
+    <div className="grid gap-4 sm:grid-cols-3">
+      <MetricCard label="All completed tests" value={data.totals.total} />
+      <MetricCard accent="bg-sky-400" label="API tests" value={data.totals.api} />
+      <MetricCard
+        accent="bg-violet-400"
+        label="Browser tests"
+        value={data.totals.browser}
+      />
+    </div>
+  );
+}
+
+function UsageByDayBlock({ dataPromise }: { dataPromise: UsageDataPromise }) {
+  const data = use(dataPromise);
+
+  return (
+    <UsageChartCard
+      description="Each completed test is counted on the day it finished."
+      legend={
+        <>
+          <Legend color="bg-sky-400" label="API" />
+          <Legend color="bg-violet-400" label="Browser" />
+        </>
+      }
+      title="Tests by day"
+    >
+      <UsageChart days={data.days} />
+    </UsageChartCard>
+  );
+}
+
+function UsageSourcesBlock({ dataPromise }: { dataPromise: UsageDataPromise }) {
+  const data = use(dataPromise);
+
+  return (
+    <UsageChartCard
+      description="Scheduled dashboard checks compared with tests run in test sessions."
+      legend={
+        <>
+          <Legend color="bg-emerald-400" label="Scheduled" />
+          <Legend color="bg-amber-400" label="Test sessions" />
+        </>
+      }
+      title="Where tests come from"
+    >
+      <TestSourcesChart days={data.days} />
+    </UsageChartCard>
+  );
+}
+
+function UsageResultsBlock({ dataPromise }: { dataPromise: UsageDataPromise }) {
+  const data = use(dataPromise);
+
+  return (
+    <UsageChartCard
+      description="Failed includes failed, timed out and cancelled tests."
+      legend={
+        <>
+          <Legend color="bg-emerald-400" label="Passed" />
+          <Legend color="bg-red-400" label="Failed" />
+        </>
+      }
+      title="Results by day"
+    >
+      <TestResultsChart days={data.days} />
+    </UsageChartCard>
+  );
+}
+
+function UsageProjectsBlock({ dataPromise }: { dataPromise: UsageDataPromise }) {
+  const data = use(dataPromise);
+
+  return (
+    <UsageChartCard
+      description="Daily completed tests split across all projects."
+      legend={(data.projects ?? []).map((project) => (
+        <span className="inline-flex items-center gap-1.5" key={project.id}>
+          <span
+            className="h-2.5 w-2.5 rounded-sm"
+            style={{ backgroundColor: project.color }}
+          />
+          {project.name}
+        </span>
+      ))}
+      title="Completed tests by project"
+    >
+      <ProjectUsageChart days={data.days} projects={data.projects ?? []} />
+    </UsageChartCard>
+  );
+}
+
+function UsageReliabilityBlock({ dataPromise }: { dataPromise: UsageDataPromise }) {
+  const data = use(dataPromise);
+
+  return (
+    <section>
+      <div className="mb-4">
+        <h2 className="text-xl font-semibold text-slate-100">Test reliability</h2>
+        <p className="mt-1 text-sm text-slate-500">
+          Success rate and the checks contributing most to failures.
+        </p>
+      </div>
+      <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+        <SuccessRateCard
+          failed={data.totals.failed}
+          passed={data.totals.passed}
+          rate={data.totals.successRate}
+        />
+        <UnstableTests tests={data.unstableTests} />
+      </div>
+    </section>
+  );
+}
+
+function UsageChartCard({
+  children,
+  description,
+  legend,
+  title,
+}: {
+  children: ReactNode;
+  description: string;
+  legend: ReactNode;
+  title: string;
+}) {
+  return (
+    <section className="rounded-md border border-slate-800 bg-[#111821] p-4 sm:p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="font-semibold text-slate-100">{title}</h2>
+          <p className="mt-1 text-sm text-slate-500">{description}</p>
+        </div>
+        <div className="flex max-w-3xl flex-wrap items-center justify-end gap-4 text-xs text-slate-400">
+          {legend}
+        </div>
+      </div>
+      <div className="mt-4">{children}</div>
+    </section>
   );
 }
 
