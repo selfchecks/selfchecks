@@ -363,13 +363,13 @@ describe("DashboardPage", () => {
     expect(
       skeletonPlaceholders.some((node) => String(node.className).includes("h-9 w-56")),
     ).toBe(true);
+    expect(screen.getByRole("button", { name: "Open account menu" })).toBeTruthy();
+    expect(screen.getByRole("status")).toBeTruthy();
     expect(
-      screen
-        .getByRole("button", { name: "Open account menu" })
-        .hasAttribute("disabled"),
-    ).toBe(true);
-    expect(screen.getByRole("status", { name: "Running 0, queued 0" })).toBeTruthy();
-    expect(screen.getByLabelText("Open queue: running 0, queued 0")).toBeTruthy();
+      screen.getByRole("link", {
+        name: /Open queue: running \d+, queued \d+/,
+      }),
+    ).toBeTruthy();
     expect(screen.getByText("Usage")).toBeTruthy();
     expect(screen.getByText("Firewatch")).toBeTruthy();
     expect(screen.getByText("PASSING")).toBeTruthy();

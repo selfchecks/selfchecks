@@ -1,20 +1,15 @@
 import type { CSSProperties } from "react";
 import {
   CalendarDays,
-  ChartNoAxesColumnIncreasing,
   CheckCircle2,
-  FlaskConical,
   Folder,
-  History,
-  Home,
-  ListChecks,
   Route,
   Search,
-  Settings2,
   Tag,
   Zap,
 } from "lucide-react";
 
+import { AppSidebar } from "@/components/app-sidebar";
 import { ServiceMark } from "@/components/service-mark";
 import { cn } from "@/lib/utils";
 
@@ -34,7 +29,7 @@ export function DashboardPageSkeleton({
       className="min-h-screen bg-[#0d1117] text-slate-200"
     >
       <h1 className="sr-only">Synthetic checks dashboard</h1>
-      <SkeletonSidebar activeView={activeView} />
+      <AppSidebar activeItem={activeView === "dashboard" ? "home" : activeView} />
 
       <div className="min-h-screen xl:pl-72">
         <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-4 border-b border-slate-800 bg-[#12171f]/95 px-4 backdrop-blur sm:px-6 lg:px-8">
@@ -59,100 +54,6 @@ export function DashboardPageSkeleton({
         </section>
       </div>
     </main>
-  );
-}
-
-function SkeletonSidebar({ activeView }: { activeView: DashboardActiveView }) {
-  const items = [
-    { icon: Home, id: "dashboard", label: "Home" },
-    { icon: ListChecks, id: "queue", label: "Queue" },
-    { icon: History, id: "journal", label: "Journal" },
-    { icon: FlaskConical, id: "test-sessions", label: "Test sessions" },
-    { icon: ChartNoAxesColumnIncreasing, id: "usage", label: "Usage" },
-    { icon: Settings2, id: "settings", label: "Settings" },
-  ] as const;
-
-  return (
-    <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 flex-col border-r border-slate-800 bg-[#12171f] xl:flex">
-      <div className="flex h-16 w-full items-center gap-3 border-b border-slate-800 px-5 text-left">
-        <ServiceMark className="h-9 w-9 shrink-0 rounded-md" />
-        <div className="min-w-0">
-          <div className="truncate text-sm font-semibold text-slate-100">
-            SelfChecks
-          </div>
-          <div className="truncate text-xs text-slate-500">Synthetic monitoring</div>
-        </div>
-      </div>
-
-      <nav className="flex-1 overflow-y-auto px-4 py-5">
-        <div className="space-y-1">
-          {items.map((item) => {
-            const Icon = item.icon;
-            const active = item.id === activeView;
-
-            return (
-              <div
-                aria-current={active ? "page" : undefined}
-                className={cn(
-                  "flex h-9 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-medium",
-                  active ? "bg-slate-700 text-slate-100" : "text-slate-400",
-                )}
-                key={item.id}
-              >
-                <Icon className="h-4 w-4 shrink-0" />
-                <span className="min-w-0 flex-1 truncate">{item.label}</span>
-              </div>
-            );
-          })}
-        </div>
-      </nav>
-
-      <div className="border-t border-slate-800 p-4">
-        <div className="relative flex items-center justify-between gap-3">
-          <a
-            aria-label="Open queue: running 0, queued 0"
-            className="flex h-10 min-w-0 flex-1 items-center rounded-md px-3 text-slate-300"
-            href="/queue"
-          >
-            <SkeletonSidebarQueueIndicators queuedCount={0} runningCount={0} />
-          </a>
-          <button
-            aria-expanded="false"
-            aria-label="Open account menu"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-lime-600/30 text-sm font-semibold text-lime-50"
-            disabled
-            type="button"
-          >
-            AD
-          </button>
-        </div>
-      </div>
-    </aside>
-  );
-}
-
-function SkeletonSidebarQueueIndicators({
-  queuedCount,
-  runningCount,
-}: {
-  queuedCount: number;
-  runningCount: number;
-}) {
-  return (
-    <span
-      aria-label={`Running ${runningCount}, queued ${queuedCount}`}
-      className="flex items-center gap-3 text-sm font-semibold"
-      role="status"
-    >
-      <span className="inline-flex items-center gap-1.5">
-        <span className="h-2.5 w-2.5 rounded-full bg-blue-400" />
-        <span>{runningCount}</span>
-      </span>
-      <span className="inline-flex items-center gap-1.5">
-        <span className="h-2.5 w-2.5 rounded-full bg-yellow-400" />
-        <span>{queuedCount}</span>
-      </span>
-    </span>
   );
 }
 

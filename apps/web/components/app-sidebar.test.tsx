@@ -109,4 +109,38 @@ describe("AppSidebar", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it("keeps the last status visible when another section mounts", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          accountLabel: "ops@example.com",
+          projectSlug: "persistent-project",
+          queued: 66,
+          running: 5,
+        }),
+        {
+          headers: {
+            "content-type": "application/json",
+          },
+          status: 200,
+        },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const firstRender = render(<AppSidebar projectSlug="persistent-project" />);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+
+    expect(screen.getByRole("status", { name: "Running 5, queued 66" })).toBeTruthy();
+
+    firstRender.unmount();
+    render(<AppSidebar projectSlug="another-section" />);
+
+    expect(screen.getByRole("status", { name: "Running 5, queued 66" })).toBeTruthy();
+  });
 });

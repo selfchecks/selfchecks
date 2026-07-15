@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   checkRunUpdateMany: vi.fn(),
   finalizeTestSession: vi.fn(),
   getRunEnvironment: vi.fn(),
+  markTestSessionRuns: vi.fn(),
   queueAdd: vi.fn(),
   queueGetJob: vi.fn(),
   readPerformanceRuntimeSettings: vi.fn(),
@@ -53,6 +54,7 @@ vi.mock("./performance-settings.js", () => ({
 
 vi.mock("./jobs.js", () => ({
   finalizeTestSession: mocks.finalizeTestSession,
+  markTestSessionRuns: mocks.markTestSessionRuns,
 }));
 
 import { scheduleDueChecks } from "./scheduler.js";
@@ -687,9 +689,22 @@ describe("scheduleDueChecks", () => {
     expect(logger.warn).not.toHaveBeenCalled();
   });
 
-  it("reconciles stale active test sessions without active runs", async () => {
+  it("times out expired test sessions and finalizes completed sessions", async () => {
     mocks.checkFindMany.mockResolvedValue([]);
-    mocks.testSessionFindMany.mockResolvedValue([{ id: "session_stuck" }]);
+    mocks.testSessionFindMany.mockResolvedValue([
+      {
+        id: "session_expired",
+        runs: [
+          {
+            createdAt: new Date("2026-06-29T09:29:00.000Z"),
+          },
+        ],
+      },
+      {
+        id: "session_completed",
+        runs: [],
+      },
+    ]);
 
     await scheduleDueChecks({
       config: {
@@ -705,35 +720,75 @@ describe("scheduleDueChecks", () => {
     expect(mocks.testSessionFindMany).toHaveBeenCalledWith({
       select: {
         id: true,
+        runs: {
+          orderBy: {
+            createdAt: "desc",
+          },
+          select: {
+            createdAt: true,
+          },
+          take: 1,
+          where: {
+            status: {
+              in: ["QUEUED", "RUNNING"],
+            },
+          },
+        },
       },
       where: {
         kind: "TEST",
-        runs: {
-          none: {
-            OR: [
-              {
+        OR: [
+          {
+            runs: {
+              none: {
+                createdAt: {
+                  gt: new Date("2026-06-29T09:30:00.000Z"),
+                },
                 status: {
                   in: ["QUEUED", "RUNNING"],
                 },
               },
-              {
-                finishedAt: null,
-              },
-              {
-                finishedAt: {
-                  gte: new Date("2026-06-29T09:59:00.000Z"),
+              some: {
+                status: {
+                  in: ["QUEUED", "RUNNING"],
                 },
               },
-            ],
+            },
           },
-          some: {},
-        },
+          {
+            runs: {
+              none: {
+                OR: [
+                  {
+                    status: {
+                      in: ["QUEUED", "RUNNING"],
+                    },
+                  },
+                  {
+                    finishedAt: null,
+                  },
+                  {
+                    finishedAt: {
+                      gte: new Date("2026-06-29T09:59:00.000Z"),
+                    },
+                  },
+                ],
+              },
+              some: {},
+            },
+          },
+        ],
         status: {
           in: ["QUEUED", "RUNNING"],
         },
       },
     });
-    expect(mocks.finalizeTestSession).toHaveBeenCalledWith("session_stuck");
+    expect(mocks.markTestSessionRuns).toHaveBeenCalledWith(
+      "session_expired",
+      "Test session timed out after 30 minutes.",
+      "TIMED_OUT",
+    );
+    expect(mocks.finalizeTestSession).toHaveBeenCalledWith("session_completed");
   });
 
   it("cleans expired artifact files and finished run history", async () => {

@@ -364,7 +364,7 @@ export async function handleTestSessionCheckJob(
   }
 }
 
-async function markTestSessionRuns(
+export async function markTestSessionRuns(
   sessionId: string,
   errorMessage: string,
   status: "FAILED" | "TIMED_OUT",
@@ -372,12 +372,16 @@ async function markTestSessionRuns(
   const finishedAt = new Date();
 
   await prisma.$transaction([
-    prisma.testSession.update({
+    prisma.testSession.updateMany({
       data: {
         status,
       },
       where: {
         id: sessionId,
+        kind: "TEST",
+        status: {
+          in: [...activeRunStatuses],
+        },
       },
     }),
     prisma.checkRun.updateMany({

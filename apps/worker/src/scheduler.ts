@@ -11,7 +11,7 @@ import {
 } from "@selfchecks/core";
 import { prisma, type CheckRunStatus as PrismaCheckRunStatus } from "@selfchecks/db";
 
-import { finalizeTestSession, type CheckJob } from "./jobs.js";
+import { finalizeTestSession, markTestSessionRuns, type CheckJob } from "./jobs.js";
 import { readPerformanceRuntimeSettings } from "./performance-settings.js";
 
 type LatestRun = {
@@ -181,7 +181,11 @@ export async function scheduleDueChecks({
   });
   const reconciledRuns = await reconcileQueueBackedRuns({ logger, now, queue });
 
-  await reconcileTerminalTestSessions({ logger, now });
+  await reconcileTestSessions({
+    logger,
+    now,
+    testSessionTimeoutMinutes: performanceSettings.testSessionTimeoutMinutes,
+  });
 
   await cleanupExpiredRunData({
     deleteFile,
@@ -797,51 +801,99 @@ function getRunActivityTime(run: { createdAt: Date; startedAt: Date | null }): n
   return (run.startedAt ?? run.createdAt).getTime();
 }
 
-async function reconcileTerminalTestSessions({
+async function reconcileTestSessions({
   logger,
   now,
+  testSessionTimeoutMinutes,
 }: {
   logger: Pick<Console, "warn">;
   now: Date;
+  testSessionTimeoutMinutes: number;
 }): Promise<void> {
   const finishedBefore = new Date(now.getTime() - TEST_SESSION_FINALIZATION_GRACE_MS);
+  const timedOutBefore = new Date(now.getTime() - testSessionTimeoutMinutes * 60_000);
 
   try {
     const sessions = await prisma.testSession.findMany({
       select: {
         id: true,
+        runs: {
+          orderBy: {
+            createdAt: "desc",
+          },
+          select: {
+            createdAt: true,
+          },
+          take: 1,
+          where: {
+            status: {
+              in: activeSessionStatuses,
+            },
+          },
+        },
       },
       where: {
         kind: "TEST",
-        runs: {
-          none: {
-            OR: [
-              {
+        OR: [
+          {
+            runs: {
+              none: {
+                createdAt: {
+                  gt: timedOutBefore,
+                },
                 status: {
                   in: activeSessionStatuses,
                 },
               },
-              {
-                finishedAt: null,
-              },
-              {
-                finishedAt: {
-                  gte: finishedBefore,
+              some: {
+                status: {
+                  in: activeSessionStatuses,
                 },
               },
-            ],
+            },
           },
-          some: {},
-        },
+          {
+            runs: {
+              none: {
+                OR: [
+                  {
+                    status: {
+                      in: activeSessionStatuses,
+                    },
+                  },
+                  {
+                    finishedAt: null,
+                  },
+                  {
+                    finishedAt: {
+                      gte: finishedBefore,
+                    },
+                  },
+                ],
+              },
+              some: {},
+            },
+          },
+        ],
         status: {
           in: activeSessionStatuses,
         },
       },
     });
 
-    await Promise.all(sessions.map((session) => finalizeTestSession(session.id)));
+    await Promise.all(
+      sessions.map((session) =>
+        session.runs.length > 0
+          ? markTestSessionRuns(
+              session.id,
+              `Test session timed out after ${testSessionTimeoutMinutes} minutes.`,
+              "TIMED_OUT",
+            )
+          : finalizeTestSession(session.id),
+      ),
+    );
   } catch (error) {
-    logger.warn("Unable to reconcile terminal test sessions.", error);
+    logger.warn("Unable to reconcile active test sessions.", error);
   }
 }
 

@@ -57,11 +57,13 @@ type SidebarStatus = {
   running: number;
 };
 
+let sidebarStatusCache: SidebarStatus | undefined;
+
 export function AppSidebar({
-  accountLabel = "Admin",
+  accountLabel,
   activeItem,
-  initialQueuedCount = 0,
-  initialRunningCount = 0,
+  initialQueuedCount,
+  initialRunningCount,
   onHomeClick,
   onQueueClick,
   projectSlug = "default",
@@ -76,19 +78,22 @@ export function AppSidebar({
 }) {
   const accountMenuRef = useRef<HTMLDivElement>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
-  const [status, setStatus] = useState<SidebarStatus>({
-    accountLabel,
-    queued: initialQueuedCount,
-    running: initialRunningCount,
-  });
+  const [status, setStatus] = useState<SidebarStatus>(() =>
+    resolveSidebarStatus({
+      accountLabel,
+      initialQueuedCount,
+      initialRunningCount,
+    }),
+  );
 
   useEffect(() => {
-    setStatus((current) => ({
-      ...current,
-      accountLabel,
-      queued: initialQueuedCount,
-      running: initialRunningCount,
-    }));
+    setStatus(
+      resolveSidebarStatus({
+        accountLabel,
+        initialQueuedCount,
+        initialRunningCount,
+      }),
+    );
   }, [accountLabel, initialQueuedCount, initialRunningCount]);
 
   useEffect(() => {
@@ -99,6 +104,7 @@ export function AppSidebar({
         const nextStatus = await fetchSidebarStatus(projectSlug);
 
         if (!cancelled) {
+          cacheSidebarStatus(nextStatus);
           setStatus(nextStatus);
         }
       } catch {
@@ -275,6 +281,43 @@ export function AppSidebar({
       </div>
     </aside>
   );
+}
+
+function resolveSidebarStatus({
+  accountLabel,
+  initialQueuedCount,
+  initialRunningCount,
+}: {
+  accountLabel?: string;
+  initialQueuedCount?: number;
+  initialRunningCount?: number;
+}): SidebarStatus {
+  const cachedStatus = getCachedSidebarStatus();
+  const hasInitialCounts =
+    initialQueuedCount !== undefined && initialRunningCount !== undefined;
+  const status = {
+    accountLabel: accountLabel ?? cachedStatus?.accountLabel ?? "Admin",
+    queued: hasInitialCounts ? initialQueuedCount : (cachedStatus?.queued ?? 0),
+    running: hasInitialCounts ? initialRunningCount : (cachedStatus?.running ?? 0),
+  };
+
+  cacheSidebarStatus(status);
+
+  return status;
+}
+
+function getCachedSidebarStatus() {
+  if (typeof window === "undefined") {
+    return undefined;
+  }
+
+  return sidebarStatusCache;
+}
+
+function cacheSidebarStatus(status: SidebarStatus) {
+  if (typeof window !== "undefined") {
+    sidebarStatusCache = status;
+  }
 }
 
 function SidebarQueueIndicators({

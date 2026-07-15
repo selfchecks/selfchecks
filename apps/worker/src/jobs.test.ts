@@ -660,12 +660,16 @@ describe("handleCheckJob", () => {
     expect(kill).toHaveBeenCalledWith("SIGTERM");
     expect(mocks.queueAddBulk).not.toHaveBeenCalled();
 
-    expect(mocks.testSessionUpdate).toHaveBeenCalledWith({
+    expect(mocks.testSessionUpdateMany).toHaveBeenCalledWith({
       data: {
         status: "TIMED_OUT",
       },
       where: {
         id: "session_1",
+        kind: "TEST",
+        status: {
+          in: ["QUEUED", "RUNNING"],
+        },
       },
     });
     expect(mocks.checkRunUpdateMany).toHaveBeenCalledWith({
