@@ -4,7 +4,11 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { collectBundleFiles, runRemoteTestSession } from "./remote-test-session.js";
+import {
+  collectBundleFiles,
+  fetchRemoteStatus,
+  runRemoteTestSession,
+} from "./remote-test-session.js";
 
 const tempDirs: string[] = [];
 
@@ -37,6 +41,7 @@ async function createProject() {
 }
 
 afterEach(async () => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   await Promise.all(
     tempDirs
@@ -46,6 +51,92 @@ afterEach(async () => {
 });
 
 describe("remote test sessions", () => {
+  it("retries transient remote status responses", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(null, { status: 503 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ status: "passed" }), { status: 200 }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = expect(
+      fetchRemoteStatus<{ status: string }>(
+        "https://checks.example.test/api/cli/test-sessions/session_1",
+        "secret-token",
+        "Unable to read remote test session.",
+      ),
+    ).resolves.toEqual({ status: "passed" });
+
+    await vi.runAllTimersAsync();
+    await result;
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries network errors while reading remote status", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError("fetch failed"))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ status: "running" }), { status: 200 }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = expect(
+      fetchRemoteStatus<{ status: string }>(
+        "https://checks.example.test/api/cli/test-sessions/session_1",
+        "secret-token",
+        "Unable to read remote test session.",
+      ),
+    ).resolves.toEqual({ status: "running" });
+
+    await vi.runAllTimersAsync();
+    await result;
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry permanent remote status errors", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: "Unauthorized." }), {
+        status: 401,
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      fetchRemoteStatus(
+        "https://checks.example.test/api/cli/test-sessions/session_1",
+        "secret-token",
+        "Unable to read remote test session.",
+      ),
+    ).rejects.toThrow("Unauthorized.");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports the HTTP status after transient retries are exhausted", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 503 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = expect(
+      fetchRemoteStatus(
+        "https://checks.example.test/api/cli/test-sessions/session_1",
+        "secret-token",
+        "Unable to read remote test session.",
+      ),
+    ).rejects.toThrow("Unable to read remote test session. (HTTP 503).");
+
+    await vi.runAllTimersAsync();
+    await result;
+
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+  });
+
   it("builds a runtime bundle without secrets, dependencies or previous artifacts", async () => {
     const rootDir = await createProject();
     const files = await collectBundleFiles(rootDir);

@@ -45,6 +45,8 @@ const MAX_BUNDLE_BYTES = 40 * 1024 * 1024;
 const MAX_BUNDLE_FILES = 10_000;
 const POLL_INTERVAL_MS = 2_000;
 const POLL_TIMEOUT_MS = 6 * 60 * 60_000;
+const REMOTE_STATUS_MAX_ATTEMPTS = 5;
+const REMOTE_STATUS_RETRY_BASE_DELAY_MS = 1_000;
 const TERMINAL_STATUSES = new Set(["cancelled", "failed", "passed", "timed_out"]);
 const IGNORED_DIRECTORIES = new Set([
   ".git",
@@ -184,14 +186,11 @@ async function pollTestSession(
   const statusUrl = new URL(session.statusUrl, `${apiUrl}/`).toString();
 
   while (Date.now() - startedAt < POLL_TIMEOUT_MS) {
-    const response = await fetch(statusUrl, {
-      headers: createAuthorizationHeaders(apiToken),
-    });
-    const status = await readJsonResponse<RemoteSessionStatusResponse>(response);
-
-    if (!response.ok) {
-      throw new Error(readApiError(status, "Unable to read remote test session."));
-    }
+    const status = await fetchRemoteStatus<RemoteSessionStatusResponse>(
+      statusUrl,
+      apiToken,
+      "Unable to read remote test session.",
+    );
 
     if (TERMINAL_STATUSES.has(status.status)) {
       if (!status.summary) {
@@ -239,6 +238,80 @@ export function createAuthorizationHeaders(apiToken: string) {
   return {
     Authorization: `Bearer ${apiToken}`,
   };
+}
+
+export async function fetchRemoteStatus<T>(
+  statusUrl: string,
+  apiToken: string,
+  fallbackError: string,
+): Promise<T> {
+  let lastError = new Error(fallbackError);
+
+  for (let attempt = 0; attempt < REMOTE_STATUS_MAX_ATTEMPTS; attempt += 1) {
+    let response: Response;
+
+    try {
+      response = await fetch(statusUrl, {
+        headers: createAuthorizationHeaders(apiToken),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      lastError = new Error(`${fallbackError} ${message}`);
+
+      if (attempt === REMOTE_STATUS_MAX_ATTEMPTS - 1) {
+        throw lastError;
+      }
+
+      await waitForRemoteStatusRetry(attempt);
+      continue;
+    }
+
+    let body: T;
+
+    try {
+      body = await readJsonResponse<T>(response);
+    } catch (error) {
+      if (
+        !isRetryableRemoteStatus(response.status) ||
+        attempt === REMOTE_STATUS_MAX_ATTEMPTS - 1
+      ) {
+        throw error;
+      }
+
+      lastError = error instanceof Error ? error : new Error(String(error));
+      await waitForRemoteStatusRetry(attempt);
+      continue;
+    }
+
+    if (response.ok) {
+      return body;
+    }
+
+    lastError = new Error(
+      readApiError(body, `${fallbackError} (HTTP ${response.status}).`),
+    );
+
+    if (
+      !isRetryableRemoteStatus(response.status) ||
+      attempt === REMOTE_STATUS_MAX_ATTEMPTS - 1
+    ) {
+      throw lastError;
+    }
+
+    await waitForRemoteStatusRetry(attempt);
+  }
+
+  throw lastError;
+}
+
+function isRetryableRemoteStatus(status: number): boolean {
+  return status === 408 || status === 425 || status === 429 || status >= 500;
+}
+
+async function waitForRemoteStatusRetry(attempt: number): Promise<void> {
+  const delayMs = REMOTE_STATUS_RETRY_BASE_DELAY_MS * 2 ** attempt;
+
+  await new Promise((resolve) => setTimeout(resolve, delayMs));
 }
 
 export function normalizeApiUrl(value: string): string {

@@ -1,6 +1,7 @@
 import type { RunChecksSummary } from "./runner.js";
 import {
   createAuthorizationHeaders,
+  fetchRemoteStatus,
   normalizeApiUrl,
   readApiError,
   readJsonResponse,
@@ -76,14 +77,11 @@ async function pollTrigger(
   const statusUrl = new URL(trigger.statusUrl, `${apiUrl}/`).toString();
 
   while (Date.now() - startedAt < POLL_TIMEOUT_MS) {
-    const response = await fetch(statusUrl, {
-      headers: createAuthorizationHeaders(apiToken),
-    });
-    const status = await readJsonResponse<TriggerStatusResponse>(response);
-
-    if (!response.ok) {
-      throw new Error(readApiError(status, "Unable to read remote trigger."));
-    }
+    const status = await fetchRemoteStatus<TriggerStatusResponse>(
+      statusUrl,
+      apiToken,
+      "Unable to read remote trigger.",
+    );
 
     if (status.status === "completed" && status.summary) {
       return status.summary;

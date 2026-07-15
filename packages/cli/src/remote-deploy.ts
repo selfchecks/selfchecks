@@ -3,6 +3,7 @@ import type { DeploySummary } from "@selfchecks/core";
 import {
   createAuthorizationHeaders,
   createRemoteBundleFormData,
+  fetchRemoteStatus,
   normalizeApiUrl,
   readApiError,
   readJsonResponse,
@@ -60,14 +61,11 @@ async function pollDeployment(
   const statusUrl = new URL(deployment.statusUrl, `${apiUrl}/`).toString();
 
   while (Date.now() - startedAt < POLL_TIMEOUT_MS) {
-    const response = await fetch(statusUrl, {
-      headers: createAuthorizationHeaders(apiToken),
-    });
-    const status = await readJsonResponse<DeploymentStatusResponse>(response);
-
-    if (!response.ok) {
-      throw new Error(readApiError(status, "Unable to read remote deployment."));
-    }
+    const status = await fetchRemoteStatus<DeploymentStatusResponse>(
+      statusUrl,
+      apiToken,
+      "Unable to read remote deployment.",
+    );
 
     if (status.status === "completed" && status.summary) {
       return status.summary;
