@@ -810,21 +810,21 @@ function ArtifactList({ artifacts }: { artifacts: DashboardRunArtifact[] }) {
 
       {groups.logs.length > 0 ? (
         <ArtifactGroup title="Logs">
-          <div className="divide-y divide-slate-800">
+          <div>
             {groups.logs.map((artifact) => (
               <div
                 className="grid min-w-0 gap-3 py-3 text-sm text-slate-300 first:pt-0 last:pb-0"
                 key={artifact.id}
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-start gap-3">
                   <FileText className="h-4 w-4 shrink-0 text-slate-500" />
                   <ArtifactMetadata artifact={artifact} />
+                  <div className="flex shrink-0 gap-1">
+                    <ArtifactViewLink artifact={artifact} />
+                    <ArtifactDownloadLink artifact={artifact} />
+                  </div>
                 </div>
                 <ArtifactTextPreview name={artifact.name} viewUrl={artifact.viewUrl} />
-                <div className="flex justify-end gap-1">
-                  <ArtifactViewLink artifact={artifact} />
-                  <ArtifactDownloadLink artifact={artifact} />
-                </div>
               </div>
             ))}
           </div>

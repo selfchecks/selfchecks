@@ -375,8 +375,16 @@ describe("RunDetailView", () => {
     await waitFor(() =>
       expect((preview as HTMLTextAreaElement).value).toBe("line 1\nline 2"),
     );
-    expect(screen.getByRole("link", { name: "View output.txt" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Download output.txt" })).toBeTruthy();
+    const viewLink = screen.getByRole("link", { name: "View output.txt" });
+    const downloadLink = screen.getByRole("link", { name: "Download output.txt" });
+    const logSection = screen.getByRole("heading", { name: "Logs" }).closest("section");
+
+    expect(viewLink.parentElement).toBe(downloadLink.parentElement);
+    expect(viewLink.parentElement?.parentElement).toBe(preview.previousElementSibling);
+    expect(
+      viewLink.compareDocumentPosition(preview) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(logSection?.querySelector(".divide-y")).toBeNull();
   });
 
   it("hides empty API-only blocks for browser runs", () => {
