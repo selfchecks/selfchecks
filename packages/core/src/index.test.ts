@@ -243,18 +243,20 @@ describe("normalizeCheckQueueName", () => {
 describe("normalizePerformanceSettings", () => {
   it("fills performance defaults", () => {
     expect(normalizePerformanceSettings(undefined)).toEqual({
-      artifactRetentionDays: 14,
+      failedArtifactRetentionDays: 14,
       historyRetentionDays: 180,
+      passedArtifactRetentionDays: 14,
       queuedRunTimeoutMinutes: 30,
       runningRunTimeoutMinutes: 120,
       testSessionTimeoutMinutes: 30,
+      testSessionWorkspaceRetentionDays: 14,
       workerConcurrency: 2,
     });
   });
 
   it("clamps performance values to supported limits", () => {
     expect(normalizePerformanceSettingValue("workerConcurrency", 100)).toBe(24);
-    expect(normalizePerformanceSettingValue("artifactRetentionDays", 1)).toBe(2);
+    expect(normalizePerformanceSettingValue("passedArtifactRetentionDays", 1)).toBe(2);
     expect(normalizePerformanceSettingValue("historyRetentionDays", 999)).toBe(365);
     expect(normalizePerformanceSettingValue("queuedRunTimeoutMinutes", 5)).toBe(10);
     expect(normalizePerformanceSettingValue("runningRunTimeoutMinutes", 500)).toBe(240);

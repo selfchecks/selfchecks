@@ -153,11 +153,13 @@ const fixtureSettings: DashboardSettingsData = {
     ],
   },
   performance: {
-    artifactRetentionDays: 14,
+    failedArtifactRetentionDays: 14,
     historyRetentionDays: 180,
+    passedArtifactRetentionDays: 14,
     queuedRunTimeoutMinutes: 30,
     runningRunTimeoutMinutes: 120,
     testSessionTimeoutMinutes: 30,
+    testSessionWorkspaceRetentionDays: 14,
     workerConcurrency: 2,
   },
   projectSlug: "default",
@@ -1584,11 +1586,13 @@ describe("DashboardPage", () => {
 
       if (input === "/api/settings/performance") {
         const body = JSON.parse(String(init?.body ?? "{}")) as {
-          artifactRetentionDays: number;
+          failedArtifactRetentionDays: number;
           historyRetentionDays: number;
+          passedArtifactRetentionDays: number;
           queuedRunTimeoutMinutes: number;
           runningRunTimeoutMinutes: number;
           testSessionTimeoutMinutes: number;
+          testSessionWorkspaceRetentionDays: number;
           workerConcurrency: number;
         };
 
@@ -1596,11 +1600,14 @@ describe("DashboardPage", () => {
           new Response(
             JSON.stringify({
               settings: {
-                artifactRetentionDays: body.artifactRetentionDays,
+                failedArtifactRetentionDays: body.failedArtifactRetentionDays,
                 historyRetentionDays: body.historyRetentionDays,
+                passedArtifactRetentionDays: body.passedArtifactRetentionDays,
                 queuedRunTimeoutMinutes: body.queuedRunTimeoutMinutes,
                 runningRunTimeoutMinutes: body.runningRunTimeoutMinutes,
                 testSessionTimeoutMinutes: body.testSessionTimeoutMinutes,
+                testSessionWorkspaceRetentionDays:
+                  body.testSessionWorkspaceRetentionDays,
                 workerConcurrency: body.workerConcurrency,
               },
             }),
@@ -1673,7 +1680,19 @@ describe("DashboardPage", () => {
       (screen.getByLabelText("Running run timeout") as HTMLInputElement).value,
     ).toBe("120");
     expect(
-      (screen.getByLabelText("Test artifact retention") as HTMLInputElement).value,
+      (screen.getByLabelText("Successful test artifact retention") as HTMLInputElement)
+        .value,
+    ).toBe("14");
+    expect(
+      (screen.getByLabelText("Failed test artifact retention") as HTMLInputElement)
+        .value,
+    ).toBe("14");
+    expect(
+      (
+        screen.getByLabelText(
+          "Test session branch folder retention",
+        ) as HTMLInputElement
+      ).value,
     ).toBe("14");
     expect(
       (screen.getByLabelText("Test history retention") as HTMLInputElement).value,
@@ -1795,9 +1814,19 @@ describe("DashboardPage", () => {
         value: "180",
       },
     });
-    fireEvent.change(screen.getByLabelText("Test artifact retention"), {
+    fireEvent.change(screen.getByLabelText("Successful test artifact retention"), {
       target: {
         value: "21",
+      },
+    });
+    fireEvent.change(screen.getByLabelText("Failed test artifact retention"), {
+      target: {
+        value: "30",
+      },
+    });
+    fireEvent.change(screen.getByLabelText("Test session branch folder retention"), {
+      target: {
+        value: "12",
       },
     });
     fireEvent.change(screen.getByLabelText("Test history retention"), {
@@ -1824,12 +1853,14 @@ describe("DashboardPage", () => {
       ([input]) => input === "/api/settings/performance",
     )?.[1] as RequestInit;
     expect(JSON.parse(String(performanceRequest.body))).toEqual({
-      artifactRetentionDays: 21,
+      failedArtifactRetentionDays: 30,
       historyRetentionDays: 240,
+      passedArtifactRetentionDays: 21,
       projectSlug: "default",
       queuedRunTimeoutMinutes: 45,
       runningRunTimeoutMinutes: 180,
       testSessionTimeoutMinutes: 45,
+      testSessionWorkspaceRetentionDays: 12,
       workerConcurrency: 6,
     });
     expect(screen.getByText("Performance settings saved.")).toBeTruthy();

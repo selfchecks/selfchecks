@@ -177,19 +177,23 @@ describe("settings routes", () => {
 
   it("saves performance settings", async () => {
     const settings = {
-      artifactRetentionDays: 14,
+      failedArtifactRetentionDays: 14,
       historyRetentionDays: 180,
+      passedArtifactRetentionDays: 14,
       queuedRunTimeoutMinutes: 30,
       runningRunTimeoutMinutes: 120,
       testSessionTimeoutMinutes: 30,
+      testSessionWorkspaceRetentionDays: 14,
       workerConcurrency: 4,
     };
     const input = {
-      artifactRetentionDays: 14,
+      failedArtifactRetentionDays: 14,
       historyRetentionDays: 180,
+      passedArtifactRetentionDays: 14,
       queuedRunTimeoutMinutes: 30,
       runningRunTimeoutMinutes: 120,
       testSessionTimeoutMinutes: 30,
+      testSessionWorkspaceRetentionDays: 14,
       workerConcurrency: 4,
     };
     mocks.updatePerformanceSettings.mockResolvedValue(settings);

@@ -1,5 +1,10 @@
 export const performanceSettingsLimits = {
-  artifactRetentionDays: {
+  failedArtifactRetentionDays: {
+    default: 14,
+    max: 60,
+    min: 2,
+  },
+  passedArtifactRetentionDays: {
     default: 14,
     max: 60,
     min: 2,
@@ -24,6 +29,11 @@ export const performanceSettingsLimits = {
     max: 60,
     min: 10,
   },
+  testSessionWorkspaceRetentionDays: {
+    default: 14,
+    max: 60,
+    min: 2,
+  },
   workerConcurrency: {
     default: 2,
     max: 24,
@@ -32,21 +42,28 @@ export const performanceSettingsLimits = {
 } as const;
 
 export type PerformanceSettingsData = {
-  artifactRetentionDays: number;
+  failedArtifactRetentionDays: number;
   historyRetentionDays: number;
+  passedArtifactRetentionDays: number;
   queuedRunTimeoutMinutes: number;
   runningRunTimeoutMinutes: number;
   testSessionTimeoutMinutes: number;
+  testSessionWorkspaceRetentionDays: number;
   workerConcurrency: number;
 };
 
 export const defaultPerformanceSettings: PerformanceSettingsData = {
-  artifactRetentionDays: performanceSettingsLimits.artifactRetentionDays.default,
+  failedArtifactRetentionDays:
+    performanceSettingsLimits.failedArtifactRetentionDays.default,
   historyRetentionDays: performanceSettingsLimits.historyRetentionDays.default,
+  passedArtifactRetentionDays:
+    performanceSettingsLimits.passedArtifactRetentionDays.default,
   queuedRunTimeoutMinutes: performanceSettingsLimits.queuedRunTimeoutMinutes.default,
   runningRunTimeoutMinutes: performanceSettingsLimits.runningRunTimeoutMinutes.default,
   testSessionTimeoutMinutes:
     performanceSettingsLimits.testSessionTimeoutMinutes.default,
+  testSessionWorkspaceRetentionDays:
+    performanceSettingsLimits.testSessionWorkspaceRetentionDays.default,
   workerConcurrency: performanceSettingsLimits.workerConcurrency.default,
 };
 
@@ -69,13 +86,17 @@ export function normalizePerformanceSettings(
   value: Partial<PerformanceSettingsData> | null | undefined,
 ): PerformanceSettingsData {
   return {
-    artifactRetentionDays: normalizePerformanceSettingValue(
-      "artifactRetentionDays",
-      value?.artifactRetentionDays,
+    failedArtifactRetentionDays: normalizePerformanceSettingValue(
+      "failedArtifactRetentionDays",
+      value?.failedArtifactRetentionDays,
     ),
     historyRetentionDays: normalizePerformanceSettingValue(
       "historyRetentionDays",
       value?.historyRetentionDays,
+    ),
+    passedArtifactRetentionDays: normalizePerformanceSettingValue(
+      "passedArtifactRetentionDays",
+      value?.passedArtifactRetentionDays,
     ),
     queuedRunTimeoutMinutes: normalizePerformanceSettingValue(
       "queuedRunTimeoutMinutes",
@@ -88,6 +109,10 @@ export function normalizePerformanceSettings(
     testSessionTimeoutMinutes: normalizePerformanceSettingValue(
       "testSessionTimeoutMinutes",
       value?.testSessionTimeoutMinutes,
+    ),
+    testSessionWorkspaceRetentionDays: normalizePerformanceSettingValue(
+      "testSessionWorkspaceRetentionDays",
+      value?.testSessionWorkspaceRetentionDays,
     ),
     workerConcurrency: normalizePerformanceSettingValue(
       "workerConcurrency",

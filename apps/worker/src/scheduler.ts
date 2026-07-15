@@ -1,4 +1,5 @@
-import { unlink } from "node:fs/promises";
+import { readdir, rm, stat, unlink } from "node:fs/promises";
+import path from "node:path";
 
 import { type Queue } from "bullmq";
 
@@ -48,6 +49,7 @@ export type CheckSchedulerOptions = {
 };
 
 export type ScheduleDueChecksOptions = CheckSchedulerOptions & {
+  deleteDirectory?: (directoryPath: string) => Promise<void>;
   deleteFile?: (filePath: string) => Promise<void>;
   now?: Date;
 };
@@ -156,6 +158,8 @@ export class CheckScheduler {
 
 export async function scheduleDueChecks({
   config,
+  deleteDirectory = (directoryPath) =>
+    rm(directoryPath, { force: true, recursive: true }),
   deleteFile = unlink,
   logger = console,
   now = new Date(),
@@ -180,11 +184,18 @@ export async function scheduleDueChecks({
   await reconcileTerminalTestSessions({ logger, now });
 
   await cleanupExpiredRunData({
-    artifactRetentionDays: performanceSettings.artifactRetentionDays,
     deleteFile,
+    failedArtifactRetentionDays: performanceSettings.failedArtifactRetentionDays,
     historyRetentionDays: performanceSettings.historyRetentionDays,
     logger,
     now,
+    passedArtifactRetentionDays: performanceSettings.passedArtifactRetentionDays,
+  });
+  await cleanupExpiredTestSessionWorkspaces({
+    deleteDirectory,
+    logger,
+    now,
+    retentionDays: performanceSettings.testSessionWorkspaceRetentionDays,
   });
 
   const checks = await prisma.check.findMany({
@@ -310,20 +321,25 @@ export async function scheduleDueChecks({
 }
 
 async function cleanupExpiredRunData({
-  artifactRetentionDays,
   deleteFile,
+  failedArtifactRetentionDays,
   historyRetentionDays,
   logger,
   now,
+  passedArtifactRetentionDays,
 }: {
-  artifactRetentionDays: number;
   deleteFile: (filePath: string) => Promise<void>;
+  failedArtifactRetentionDays: number;
   historyRetentionDays: number;
   logger: Pick<Console, "warn">;
   now: Date;
+  passedArtifactRetentionDays: number;
 }): Promise<void> {
-  const artifactCutoff = new Date(
-    now.getTime() - artifactRetentionDays * 24 * 60 * 60_000,
+  const failedArtifactCutoff = new Date(
+    now.getTime() - failedArtifactRetentionDays * 24 * 60 * 60_000,
+  );
+  const passedArtifactCutoff = new Date(
+    now.getTime() - passedArtifactRetentionDays * 24 * 60 * 60_000,
   );
   const historyCutoff = new Date(
     now.getTime() - historyRetentionDays * 24 * 60 * 60_000,
@@ -336,9 +352,26 @@ async function cleanupExpiredRunData({
         path: true,
       },
       where: {
-        createdAt: {
-          lt: artifactCutoff,
-        },
+        OR: [
+          {
+            createdAt: {
+              lt: passedArtifactCutoff,
+            },
+            run: {
+              status: "PASSED",
+            },
+          },
+          {
+            createdAt: {
+              lt: failedArtifactCutoff,
+            },
+            run: {
+              status: {
+                in: ["FAILED", "TIMED_OUT", "CANCELLED"],
+              },
+            },
+          },
+        ],
       },
     });
 
@@ -403,6 +436,61 @@ async function cleanupExpiredRunData({
   } catch (error) {
     logger.warn("Unable to clean expired test history.", error);
   }
+}
+
+async function cleanupExpiredTestSessionWorkspaces({
+  deleteDirectory,
+  logger,
+  now,
+  retentionDays,
+}: {
+  deleteDirectory: (directoryPath: string) => Promise<void>;
+  logger: Pick<Console, "warn">;
+  now: Date;
+  retentionDays: number;
+}): Promise<void> {
+  const root = resolveTestSessionsRoot();
+  const cutoff = new Date(now.getTime() - retentionDays * 24 * 60 * 60_000);
+  let entries;
+
+  try {
+    entries = await readdir(root, { withFileTypes: true });
+  } catch (error) {
+    if (!isFileNotFoundError(error)) {
+      logger.warn("Unable to scan expired test session branch folders.", error);
+    }
+
+    return;
+  }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+
+    const directoryPath = path.join(root, entry.name);
+
+    try {
+      const directoryStats = await stat(directoryPath);
+
+      if (directoryStats.mtime < cutoff) {
+        await deleteDirectory(directoryPath);
+      }
+    } catch (error) {
+      if (!isFileNotFoundError(error)) {
+        logger.warn(
+          `Unable to delete expired test session branch folder ${directoryPath}.`,
+          error,
+        );
+      }
+    }
+  }
+}
+
+function resolveTestSessionsRoot(): string {
+  return (
+    process.env.SELFCHECKS_TEST_SESSIONS_DIR?.trim() || "/app/runtime/test-sessions"
+  );
 }
 
 async function deleteRecordedFiles(

@@ -162,10 +162,24 @@ const performanceSettingFields = [
   },
   {
     description: "Recorded traces, screenshots, videos, reports and logs.",
-    key: "artifactRetentionDays",
-    label: "Test artifact retention",
+    key: "passedArtifactRetentionDays",
+    label: "Successful test artifact retention",
     suffix: "days",
-    ...performanceSettingsLimits.artifactRetentionDays,
+    ...performanceSettingsLimits.passedArtifactRetentionDays,
+  },
+  {
+    description: "Recorded traces, screenshots, videos, reports and logs.",
+    key: "failedArtifactRetentionDays",
+    label: "Failed test artifact retention",
+    suffix: "days",
+    ...performanceSettingsLimits.failedArtifactRetentionDays,
+  },
+  {
+    description: "Uploaded branch workspaces created for CLI test sessions.",
+    key: "testSessionWorkspaceRetentionDays",
+    label: "Test session branch folder retention",
+    suffix: "days",
+    ...performanceSettingsLimits.testSessionWorkspaceRetentionDays,
   },
   {
     description: "Stored run history shown across dashboard, journal and details.",
@@ -1578,11 +1592,14 @@ function SettingsScreen({
     responseLanguage: settings.ai.responseLanguage,
   }));
   const [performanceDraft, setPerformanceDraft] = useState(() => ({
-    artifactRetentionDays: settings.performance.artifactRetentionDays,
+    failedArtifactRetentionDays: settings.performance.failedArtifactRetentionDays,
     historyRetentionDays: settings.performance.historyRetentionDays,
+    passedArtifactRetentionDays: settings.performance.passedArtifactRetentionDays,
     queuedRunTimeoutMinutes: settings.performance.queuedRunTimeoutMinutes,
     runningRunTimeoutMinutes: settings.performance.runningRunTimeoutMinutes,
     testSessionTimeoutMinutes: settings.performance.testSessionTimeoutMinutes,
+    testSessionWorkspaceRetentionDays:
+      settings.performance.testSessionWorkspaceRetentionDays,
     workerConcurrency: settings.performance.workerConcurrency,
   }));
   const [apiKeyName, setApiKeyName] = useState("");
@@ -1631,11 +1648,14 @@ function SettingsScreen({
 
   useEffect(() => {
     setPerformanceDraft({
-      artifactRetentionDays: settings.performance.artifactRetentionDays,
+      failedArtifactRetentionDays: settings.performance.failedArtifactRetentionDays,
       historyRetentionDays: settings.performance.historyRetentionDays,
+      passedArtifactRetentionDays: settings.performance.passedArtifactRetentionDays,
       queuedRunTimeoutMinutes: settings.performance.queuedRunTimeoutMinutes,
       runningRunTimeoutMinutes: settings.performance.runningRunTimeoutMinutes,
       testSessionTimeoutMinutes: settings.performance.testSessionTimeoutMinutes,
+      testSessionWorkspaceRetentionDays:
+        settings.performance.testSessionWorkspaceRetentionDays,
       workerConcurrency: settings.performance.workerConcurrency,
     });
   }, [settings.performance]);

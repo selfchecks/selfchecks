@@ -188,12 +188,14 @@ export type RuntimeSettingsInput = {
 };
 
 export type PerformanceSettingsInput = {
-  artifactRetentionDays?: unknown;
+  failedArtifactRetentionDays?: unknown;
   historyRetentionDays?: unknown;
+  passedArtifactRetentionDays?: unknown;
   projectSlug?: unknown;
   queuedRunTimeoutMinutes?: unknown;
   runningRunTimeoutMinutes?: unknown;
   testSessionTimeoutMinutes?: unknown;
+  testSessionWorkspaceRetentionDays?: unknown;
   workerConcurrency?: unknown;
 };
 
@@ -463,17 +465,23 @@ export async function updateRuntimeEnvironmentSettings(input: RuntimeSettingsInp
 export async function updatePerformanceSettings(input: PerformanceSettingsInput) {
   const projectSlug = GLOBAL_SETTINGS_PROJECT_SLUG;
   const performanceSettings = {
-    artifactRetentionDays: readRequiredIntegerInRange(
-      input.artifactRetentionDays,
-      "Test artifact retention",
-      performanceSettingsLimits.artifactRetentionDays.min,
-      performanceSettingsLimits.artifactRetentionDays.max,
+    failedArtifactRetentionDays: readRequiredIntegerInRange(
+      input.failedArtifactRetentionDays,
+      "Failed test artifact retention",
+      performanceSettingsLimits.failedArtifactRetentionDays.min,
+      performanceSettingsLimits.failedArtifactRetentionDays.max,
     ),
     historyRetentionDays: readRequiredIntegerInRange(
       input.historyRetentionDays,
       "Test history retention",
       performanceSettingsLimits.historyRetentionDays.min,
       performanceSettingsLimits.historyRetentionDays.max,
+    ),
+    passedArtifactRetentionDays: readRequiredIntegerInRange(
+      input.passedArtifactRetentionDays,
+      "Successful test artifact retention",
+      performanceSettingsLimits.passedArtifactRetentionDays.min,
+      performanceSettingsLimits.passedArtifactRetentionDays.max,
     ),
     queuedRunTimeoutMinutes: readRequiredIntegerInRange(
       input.queuedRunTimeoutMinutes,
@@ -492,6 +500,12 @@ export async function updatePerformanceSettings(input: PerformanceSettingsInput)
       "Maximum test session duration",
       performanceSettingsLimits.testSessionTimeoutMinutes.min,
       performanceSettingsLimits.testSessionTimeoutMinutes.max,
+    ),
+    testSessionWorkspaceRetentionDays: readRequiredIntegerInRange(
+      input.testSessionWorkspaceRetentionDays,
+      "Test session branch folder retention",
+      performanceSettingsLimits.testSessionWorkspaceRetentionDays.min,
+      performanceSettingsLimits.testSessionWorkspaceRetentionDays.max,
     ),
     workerConcurrency: readRequiredIntegerInRange(
       input.workerConcurrency,
@@ -592,11 +606,13 @@ async function readPerformanceSettings(
 ): Promise<PerformanceSettingsData> {
   const settings = await prisma.performanceSettings.findUnique({
     select: {
-      artifactRetentionDays: true,
+      failedArtifactRetentionDays: true,
       historyRetentionDays: true,
+      passedArtifactRetentionDays: true,
       queuedRunTimeoutMinutes: true,
       runningRunTimeoutMinutes: true,
       testSessionTimeoutMinutes: true,
+      testSessionWorkspaceRetentionDays: true,
       workerConcurrency: true,
     },
     where: {

@@ -1,3 +1,7 @@
+import { mkdir, mkdtemp, rm, utimes } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -107,17 +111,20 @@ describe("scheduleDueChecks", () => {
     mocks.queueGetJob.mockResolvedValue(undefined);
     mocks.testSessionFindMany.mockResolvedValue([]);
     mocks.readPerformanceRuntimeSettings.mockResolvedValue({
-      artifactRetentionDays: 14,
+      failedArtifactRetentionDays: 14,
       historyRetentionDays: 180,
+      passedArtifactRetentionDays: 14,
       queuedRunTimeoutMinutes: 30,
       runningRunTimeoutMinutes: 120,
       testSessionTimeoutMinutes: 30,
+      testSessionWorkspaceRetentionDays: 14,
       workerConcurrency: 2,
     });
   });
 
   afterEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllEnvs();
   });
 
   it("creates queued runs and enqueues due checks", async () => {
@@ -398,11 +405,13 @@ describe("scheduleDueChecks", () => {
   it("cancels stale queued and running runs before scanning checks", async () => {
     mocks.checkFindMany.mockResolvedValue([]);
     mocks.readPerformanceRuntimeSettings.mockResolvedValue({
-      artifactRetentionDays: 14,
+      failedArtifactRetentionDays: 14,
       historyRetentionDays: 180,
+      passedArtifactRetentionDays: 14,
       queuedRunTimeoutMinutes: 40,
       runningRunTimeoutMinutes: 180,
       testSessionTimeoutMinutes: 30,
+      testSessionWorkspaceRetentionDays: 14,
       workerConcurrency: 2,
     });
     mocks.checkRunUpdateMany
@@ -733,11 +742,13 @@ describe("scheduleDueChecks", () => {
 
     mocks.checkFindMany.mockResolvedValue([]);
     mocks.readPerformanceRuntimeSettings.mockResolvedValue({
-      artifactRetentionDays: 2,
+      failedArtifactRetentionDays: 5,
       historyRetentionDays: 30,
+      passedArtifactRetentionDays: 2,
       queuedRunTimeoutMinutes: 60,
       runningRunTimeoutMinutes: 180,
       testSessionTimeoutMinutes: 60,
+      testSessionWorkspaceRetentionDays: 7,
       workerConcurrency: 4,
     });
     mocks.artifactFindMany.mockResolvedValue([
@@ -783,9 +794,26 @@ describe("scheduleDueChecks", () => {
         path: true,
       },
       where: {
-        createdAt: {
-          lt: new Date("2026-06-27T10:00:00.000Z"),
-        },
+        OR: [
+          {
+            createdAt: {
+              lt: new Date("2026-06-27T10:00:00.000Z"),
+            },
+            run: {
+              status: "PASSED",
+            },
+          },
+          {
+            createdAt: {
+              lt: new Date("2026-06-24T10:00:00.000Z"),
+            },
+            run: {
+              status: {
+                in: ["FAILED", "TIMED_OUT", "CANCELLED"],
+              },
+            },
+          },
+        ],
       },
     });
     expect(mocks.artifactDeleteMany).toHaveBeenCalledWith({
@@ -825,5 +853,60 @@ describe("scheduleDueChecks", () => {
     expect(deleteFile).toHaveBeenCalledWith("/tmp/selfchecks/run.log");
     expect(deleteFile).toHaveBeenCalledWith("/tmp/selfchecks/run-artifact.zip");
     expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it("cleans only expired test session branch folders", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "selfchecks-sessions-"));
+    const expiredDirectory = path.join(root, "expired-session");
+    const retainedDirectory = path.join(root, "retained-session");
+    const deleteDirectory = vi.fn().mockResolvedValue(undefined);
+    const logger = createLogger();
+
+    try {
+      await mkdir(expiredDirectory);
+      await mkdir(retainedDirectory);
+      await utimes(
+        expiredDirectory,
+        new Date("2026-06-20T10:00:00.000Z"),
+        new Date("2026-06-20T10:00:00.000Z"),
+      );
+      await utimes(
+        retainedDirectory,
+        new Date("2026-06-25T10:00:00.000Z"),
+        new Date("2026-06-25T10:00:00.000Z"),
+      );
+      vi.stubEnv("SELFCHECKS_TEST_SESSIONS_DIR", root);
+      mocks.checkFindMany.mockResolvedValue([]);
+      mocks.readPerformanceRuntimeSettings.mockResolvedValue({
+        failedArtifactRetentionDays: 14,
+        historyRetentionDays: 180,
+        passedArtifactRetentionDays: 14,
+        queuedRunTimeoutMinutes: 30,
+        runningRunTimeoutMinutes: 120,
+        testSessionTimeoutMinutes: 30,
+        testSessionWorkspaceRetentionDays: 7,
+        workerConcurrency: 2,
+      });
+
+      await scheduleDueChecks({
+        config: {
+          pollIntervalMs: 60_000,
+          queuedRunTimeoutMinutes: 30,
+          reporter: "list",
+          runningRunTimeoutMinutes: 120,
+        },
+        deleteDirectory,
+        logger,
+        now,
+        queue: createQueue(),
+      });
+
+      expect(deleteDirectory).toHaveBeenCalledTimes(1);
+      expect(deleteDirectory).toHaveBeenCalledWith(expiredDirectory);
+      expect(deleteDirectory).not.toHaveBeenCalledWith(retainedDirectory);
+      expect(logger.warn).not.toHaveBeenCalled();
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
   });
 });

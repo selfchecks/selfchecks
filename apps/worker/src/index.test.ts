@@ -78,11 +78,13 @@ describe("worker entrypoint", () => {
     mocks.queueClose.mockResolvedValue(undefined);
     mocks.queueSetGlobalConcurrency.mockResolvedValue(2);
     mocks.readPerformanceRuntimeSettings.mockResolvedValue({
-      artifactRetentionDays: 14,
+      failedArtifactRetentionDays: 14,
       historyRetentionDays: 180,
+      passedArtifactRetentionDays: 14,
       queuedRunTimeoutMinutes: 30,
       runningRunTimeoutMinutes: 120,
       testSessionTimeoutMinutes: 30,
+      testSessionWorkspaceRetentionDays: 14,
       workerConcurrency: 2,
     });
     mocks.workerClose.mockResolvedValue(undefined);
@@ -122,11 +124,13 @@ describe("worker entrypoint", () => {
     expect(mocks.queueSetGlobalConcurrency).toHaveBeenCalledWith(2);
     expect(mocks.readPerformanceRuntimeSettings).toHaveBeenCalledWith({
       fallback: {
-        artifactRetentionDays: 14,
+        failedArtifactRetentionDays: 14,
         historyRetentionDays: 180,
+        passedArtifactRetentionDays: 14,
         queuedRunTimeoutMinutes: 30,
         runningRunTimeoutMinutes: 120,
         testSessionTimeoutMinutes: 30,
+        testSessionWorkspaceRetentionDays: 14,
         workerConcurrency: 2,
       },
       logger: console,

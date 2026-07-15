@@ -22,11 +22,13 @@ const mocks = vi.hoisted(() => ({
     | undefined,
   storedPerformanceSettings: undefined as
     | {
-        artifactRetentionDays: number;
+        failedArtifactRetentionDays: number;
         historyRetentionDays: number;
+        passedArtifactRetentionDays: number;
         queuedRunTimeoutMinutes: number;
         runningRunTimeoutMinutes: number;
         testSessionTimeoutMinutes: number;
+        testSessionWorkspaceRetentionDays: number;
         workerConcurrency: number;
       }
     | undefined,
@@ -101,11 +103,14 @@ describe("settings data", () => {
     );
     mocks.performanceSettingsUpsert.mockImplementation((args) => {
       mocks.storedPerformanceSettings = {
-        artifactRetentionDays: args.create.artifactRetentionDays,
+        failedArtifactRetentionDays: args.create.failedArtifactRetentionDays,
         historyRetentionDays: args.create.historyRetentionDays,
+        passedArtifactRetentionDays: args.create.passedArtifactRetentionDays,
         queuedRunTimeoutMinutes: args.create.queuedRunTimeoutMinutes,
         runningRunTimeoutMinutes: args.create.runningRunTimeoutMinutes,
         testSessionTimeoutMinutes: args.create.testSessionTimeoutMinutes,
+        testSessionWorkspaceRetentionDays:
+          args.create.testSessionWorkspaceRetentionDays,
         workerConcurrency: args.create.workerConcurrency,
         ...args.update,
       };
@@ -275,31 +280,37 @@ describe("settings data", () => {
 
   it("saves performance settings", async () => {
     const settings = await updatePerformanceSettings({
-      artifactRetentionDays: 21,
+      failedArtifactRetentionDays: 30,
       historyRetentionDays: 240,
+      passedArtifactRetentionDays: 21,
       projectSlug: "default",
       queuedRunTimeoutMinutes: 45,
       runningRunTimeoutMinutes: 150,
       testSessionTimeoutMinutes: 45,
+      testSessionWorkspaceRetentionDays: 12,
       workerConcurrency: 8,
     });
 
     expect(mocks.performanceSettingsUpsert).toHaveBeenCalledWith({
       create: {
-        artifactRetentionDays: 21,
+        failedArtifactRetentionDays: 30,
         historyRetentionDays: 240,
+        passedArtifactRetentionDays: 21,
         projectId: "project_1",
         queuedRunTimeoutMinutes: 45,
         runningRunTimeoutMinutes: 150,
         testSessionTimeoutMinutes: 45,
+        testSessionWorkspaceRetentionDays: 12,
         workerConcurrency: 8,
       },
       update: {
-        artifactRetentionDays: 21,
+        failedArtifactRetentionDays: 30,
         historyRetentionDays: 240,
+        passedArtifactRetentionDays: 21,
         queuedRunTimeoutMinutes: 45,
         runningRunTimeoutMinutes: 150,
         testSessionTimeoutMinutes: 45,
+        testSessionWorkspaceRetentionDays: 12,
         workerConcurrency: 8,
       },
       where: {
@@ -307,11 +318,13 @@ describe("settings data", () => {
       },
     });
     expect(settings).toEqual({
-      artifactRetentionDays: 21,
+      failedArtifactRetentionDays: 30,
       historyRetentionDays: 240,
+      passedArtifactRetentionDays: 21,
       queuedRunTimeoutMinutes: 45,
       runningRunTimeoutMinutes: 150,
       testSessionTimeoutMinutes: 45,
+      testSessionWorkspaceRetentionDays: 12,
       workerConcurrency: 8,
     });
   });
@@ -319,48 +332,56 @@ describe("settings data", () => {
   it("rejects performance settings outside supported limits", async () => {
     await expect(
       updatePerformanceSettings({
-        artifactRetentionDays: 1,
+        failedArtifactRetentionDays: 1,
         historyRetentionDays: 180,
+        passedArtifactRetentionDays: 14,
         projectSlug: "default",
         queuedRunTimeoutMinutes: 30,
         runningRunTimeoutMinutes: 120,
         testSessionTimeoutMinutes: 30,
+        testSessionWorkspaceRetentionDays: 14,
         workerConcurrency: 2,
       }),
-    ).rejects.toThrow("Test artifact retention must be between 2 and 60.");
+    ).rejects.toThrow("Failed test artifact retention must be between 2 and 60.");
 
     await expect(
       updatePerformanceSettings({
-        artifactRetentionDays: 14,
+        failedArtifactRetentionDays: 14,
         historyRetentionDays: 180,
+        passedArtifactRetentionDays: 14,
         projectSlug: "default",
         queuedRunTimeoutMinutes: 30,
         runningRunTimeoutMinutes: 120,
         testSessionTimeoutMinutes: 61,
+        testSessionWorkspaceRetentionDays: 14,
         workerConcurrency: 2,
       }),
     ).rejects.toThrow("Maximum test session duration must be between 10 and 60.");
 
     await expect(
       updatePerformanceSettings({
-        artifactRetentionDays: 14,
+        failedArtifactRetentionDays: 14,
         historyRetentionDays: 180,
+        passedArtifactRetentionDays: 14,
         projectSlug: "default",
         queuedRunTimeoutMinutes: 121,
         runningRunTimeoutMinutes: 120,
         testSessionTimeoutMinutes: 30,
+        testSessionWorkspaceRetentionDays: 14,
         workerConcurrency: 2,
       }),
     ).rejects.toThrow("Queued run timeout must be between 10 and 120.");
 
     await expect(
       updatePerformanceSettings({
-        artifactRetentionDays: 14,
+        failedArtifactRetentionDays: 14,
         historyRetentionDays: 180,
+        passedArtifactRetentionDays: 14,
         projectSlug: "default",
         queuedRunTimeoutMinutes: 30,
         runningRunTimeoutMinutes: 241,
         testSessionTimeoutMinutes: 30,
+        testSessionWorkspaceRetentionDays: 14,
         workerConcurrency: 2,
       }),
     ).rejects.toThrow("Running run timeout must be between 10 and 240.");
