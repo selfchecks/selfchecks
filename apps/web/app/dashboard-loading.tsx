@@ -112,7 +112,7 @@ function SkeletonSidebar({ activeView }: { activeView: DashboardActiveView }) {
           <a
             aria-label="Open queue: running 0, queued 0"
             className="flex h-10 min-w-0 flex-1 items-center rounded-md px-3 text-slate-300"
-            href="/?view=queue"
+            href="/queue"
           >
             <SkeletonSidebarQueueIndicators queuedCount={0} runningCount={0} />
           </a>

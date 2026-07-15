@@ -28,7 +28,7 @@ describe("AppSidebar", () => {
     expect(screen.getByRole("button", { name: /SelfChecks/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Home" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Queue" }).getAttribute("href")).toBe(
-      "/?view=queue",
+      "/queue",
     );
     expect(screen.getByRole("link", { name: "Journal" }).getAttribute("href")).toBe(
       "/journal",
@@ -50,7 +50,7 @@ describe("AppSidebar", () => {
       screen
         .getByRole("link", { name: "Open queue: running 2, queued 1" })
         .getAttribute("href"),
-    ).toBe("/?view=queue");
+    ).toBe("/queue");
 
     await user.click(screen.getByRole("button", { name: "Home" }));
     await user.click(screen.getByRole("button", { name: "Open account menu" }));

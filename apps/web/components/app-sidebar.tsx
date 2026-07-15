@@ -32,7 +32,7 @@ type SidebarEntry = {
 
 const sidebarItems: SidebarEntry[] = [
   { href: "/", icon: Home, id: "home", label: "Home" },
-  { href: "/?view=queue", icon: ListChecks, id: "queue", label: "Queue" },
+  { href: "/queue", icon: ListChecks, id: "queue", label: "Queue" },
   { href: "/journal", icon: History, id: "journal", label: "Journal" },
   {
     href: "/test-sessions",
@@ -233,7 +233,7 @@ export function AppSidebar({
           <Link
             aria-label={`Open queue: running ${status.running}, queued ${status.queued}`}
             className="flex h-10 min-w-0 flex-1 items-center rounded-md px-3 text-slate-300 hover:bg-slate-800 hover:text-slate-100"
-            href="/?view=queue"
+            href="/queue"
           >
             <SidebarQueueIndicators
               queuedCount={status.queued}

@@ -1289,6 +1289,7 @@ describe("DashboardPage", () => {
 
     await user.click(screen.getByRole("button", { name: "Queue" }));
 
+    expect(mocks.routerPush).toHaveBeenCalledWith("/queue");
     expect(screen.getByRole("heading", { name: "Queue" })).toBeTruthy();
     expect(screen.getByText("2 active tests")).toBeTruthy();
     expect(screen.queryByRole("searchbox", { name: "Search checks" })).toBeNull();

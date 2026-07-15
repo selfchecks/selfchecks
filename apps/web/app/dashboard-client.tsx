@@ -573,6 +573,7 @@ export default function DashboardClient({
 
   function resetDashboard() {
     setActiveView("dashboard");
+    router.push("/");
     setDateRange("24h");
     setExpandedGroups(
       Object.fromEntries(
@@ -591,6 +592,7 @@ export default function DashboardClient({
   function openQueue() {
     setActiveView("queue");
     setActiveActionMenu(null);
+    router.push("/queue");
   }
 
   function toggleGroup(groupName: string) {
