@@ -490,6 +490,52 @@ describe("DashboardPage", () => {
     expect(passingSegment?.getAttribute("stroke-dasharray")?.split(" ")[1]).toBe("0");
   });
 
+  it("keeps a rare donut status visibly wide in a large group", () => {
+    const children = [
+      ...Array.from({ length: 99 }, (_, index) =>
+        createCheck({
+          name: `passing-${index}`,
+          runState: "passed",
+          status: "passing",
+        }),
+      ),
+      createCheck({ name: "single-failure", runState: "failed", status: "failing" }),
+    ];
+
+    render(
+      <DashboardClient
+        initialFirewatch={emptyFirewatch}
+        initialGroups={[
+          {
+            checks: "100 checks",
+            children,
+            name: "Large group",
+            status: "failing",
+            updated: "just now",
+          },
+        ]}
+        initialSettings={fixtureSettings}
+        initialSummary={{
+          degraded: 0,
+          failing: 1,
+          passing: 99,
+          queued: 0,
+          running: 0,
+        }}
+      />,
+    );
+
+    const donut = screen.getByRole("img", {
+      name: "Group status: 99 passing, 1 failing",
+    });
+    const failingSegment = donut.querySelector('[data-status="failing"]');
+    const failingDashLength = Number.parseFloat(
+      failingSegment?.getAttribute("stroke-dasharray")?.split(" ")[0] ?? "0",
+    );
+
+    expect(failingDashLength).toBeGreaterThanOrEqual(2.8);
+  });
+
   it("animates recent result bars from the bottom with a short stagger", () => {
     renderDashboard();
 

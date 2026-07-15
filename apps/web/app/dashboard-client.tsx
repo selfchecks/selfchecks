@@ -3544,6 +3544,9 @@ function GroupStatus({ group }: { group: GroupRow }) {
   const circumference = 2 * Math.PI * radius;
   const visibleSegments = counts.filter((segment) => segment.count > 0);
   const gap = visibleSegments.length > 1 ? 1.2 : 0;
+  const minimumSegmentLength = visibleSegments.length > 1 ? 4 : 0;
+  const proportionalLength =
+    circumference - minimumSegmentLength * visibleSegments.length;
   const label = counts
     .filter((segment) => segment.count > 0)
     .map((segment) => `${segment.count} ${segment.label}`)
@@ -3563,7 +3566,8 @@ function GroupStatus({ group }: { group: GroupRow }) {
           return null;
         }
 
-        const length = (segment.count / total) * circumference;
+        const length =
+          minimumSegmentLength + (segment.count / total) * proportionalLength;
         const dashLength = Math.max(0, length - gap);
         const dashOffset = -offset;
         offset += length;
