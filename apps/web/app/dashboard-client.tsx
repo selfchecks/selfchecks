@@ -381,18 +381,6 @@ export default function DashboardClient({
     () => allChecks.filter((check) => check.status === "failing"),
     [allChecks],
   );
-  const visibleFirewatch = useMemo(() => {
-    if (projectFilter === "all") {
-      return firewatch;
-    }
-
-    const checkIds = new Set(allChecks.map((check) => check.id));
-
-    return {
-      ...firewatch,
-      rows: firewatch.rows.filter((row) => checkIds.has(row.checkId)),
-    };
-  }, [allChecks, firewatch, projectFilter]);
   const visibleSummary = useMemo(
     () => (projectFilter === "all" ? summary : summarizeDashboardGroups(projectGroups)),
     [projectFilter, projectGroups, summary],
@@ -498,9 +486,7 @@ export default function DashboardClient({
           );
         }
       } catch {
-        if (!cancelled) {
-          setNotice("Unable to refresh run status.");
-        }
+        // Keep the last successful dashboard snapshot while polling recovers.
       }
     }
 
@@ -530,9 +516,11 @@ export default function DashboardClient({
     const nextGroups: GroupRow[] = [];
 
     for (const group of projectGroups) {
+      const queryMatchesGroup =
+        Boolean(query.trim()) && doesGroupMatchSearch(group, query);
       const filteredChildren = group.children?.filter((check) =>
         doesCheckMatchFilters(check, {
-          query,
+          query: queryMatchesGroup ? "" : query,
           statusFilter,
           tagFilter,
           traceOnly,
@@ -543,7 +531,8 @@ export default function DashboardClient({
         doesGroupMatchSearch(group, query) &&
         doesGroupStatusMatch(group, statusFilter) &&
         !traceOnly &&
-        tagFilter === "all";
+        tagFilter === "all" &&
+        typeFilter === "all";
 
       if (group.children) {
         if (filteredChildren?.length) {
@@ -554,13 +543,6 @@ export default function DashboardClient({
             expanded: expandedGroups[getGroupKey(group)] ?? false,
           });
           continue;
-        }
-
-        if (groupMatches) {
-          nextGroups.push({
-            ...group,
-            expanded: expandedGroups[getGroupKey(group)] ?? false,
-          });
         }
 
         continue;
@@ -584,6 +566,18 @@ export default function DashboardClient({
     traceOnly,
     typeFilter,
   ]);
+  const visibleFirewatch = useMemo(() => {
+    const visibleCheckIds = new Set(
+      filteredGroups.flatMap((group) =>
+        (group.children ?? []).map((check) => check.id),
+      ),
+    );
+
+    return {
+      ...firewatch,
+      rows: firewatch.rows.filter((row) => visibleCheckIds.has(row.checkId)),
+    };
+  }, [filteredGroups, firewatch]);
 
   function resetDashboard() {
     setActiveView("dashboard");
@@ -823,17 +817,6 @@ export default function DashboardClient({
                 ))}
               </div>
 
-              <FirewatchPanel
-                failedChecksCount={failedChecks.length}
-                firewatch={visibleFirewatch}
-                onOpenChange={setFirewatchOpen}
-                onOpenAiAnalysis={openFirewatchAiAnalysis}
-                onOpenCheck={toggleCheck}
-                onRunFailedChecks={() => void runAllFailedChecks()}
-                onRunCheck={(row) => void runFirewatchCheck(row)}
-                open={firewatchOpen}
-              />
-
               <div className="flex flex-col gap-5">
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500" />
@@ -908,6 +891,17 @@ export default function DashboardClient({
                   </div>
                 ) : null}
               </div>
+
+              <FirewatchPanel
+                failedChecksCount={failedChecks.length}
+                firewatch={visibleFirewatch}
+                onOpenChange={setFirewatchOpen}
+                onOpenAiAnalysis={openFirewatchAiAnalysis}
+                onOpenCheck={toggleCheck}
+                onRunFailedChecks={() => void runAllFailedChecks()}
+                onRunCheck={(row) => void runFirewatchCheck(row)}
+                open={firewatchOpen}
+              />
 
               <ChecksTable
                 activeActionMenu={activeActionMenu}
@@ -1266,6 +1260,80 @@ function summarizeDashboardStatus(statuses: Status[]): Status {
   return "passing";
 }
 
+function groupDashboardGroupsByProject(groups: GroupRow[]) {
+  const sections = new Map<
+    string,
+    { groups: GroupRow[]; projectName: string; projectSlug: string }
+  >();
+
+  for (const group of groups) {
+    const projectSlug = group.projectSlug ?? "default";
+    const section = sections.get(projectSlug) ?? {
+      groups: [],
+      projectName: group.projectName ?? projectSlug,
+      projectSlug,
+    };
+
+    section.groups.push(group);
+    sections.set(projectSlug, section);
+  }
+
+  return [...sections.values()].sort((left, right) =>
+    left.projectName.localeCompare(right.projectName),
+  );
+}
+
+function groupFirewatchRowsByProject(rows: DashboardFirewatchRow[]) {
+  const sections = new Map<
+    string,
+    { projectName: string; projectSlug: string; rows: DashboardFirewatchRow[] }
+  >();
+
+  for (const row of rows) {
+    const projectSlug = row.projectSlug ?? "default";
+    const section = sections.get(projectSlug) ?? {
+      projectName: row.projectName ?? projectSlug,
+      projectSlug,
+      rows: [],
+    };
+
+    section.rows.push(row);
+    sections.set(projectSlug, section);
+  }
+
+  return [...sections.values()].sort((left, right) =>
+    left.projectName.localeCompare(right.projectName),
+  );
+}
+
+function getDashboardGroupCheckCount(group: GroupRow): number {
+  if (group.children) {
+    return group.children.length;
+  }
+
+  const count = Number.parseInt(group.checks, 10);
+
+  return Number.isNaN(count) ? 0 : count;
+}
+
+function ProjectTableHeader({
+  count,
+  projectName,
+}: {
+  count: number;
+  projectName: string;
+}) {
+  return (
+    <div className="flex items-center gap-3 border-b border-slate-700 bg-[#171e27] px-5 py-3">
+      <Folder className="h-5 w-5 shrink-0 text-slate-500" />
+      <h2 className="min-w-0 truncate font-semibold text-slate-200">{projectName}</h2>
+      <span className="text-sm text-slate-500">
+        {count === 1 ? "1 check" : `${count} checks`}
+      </span>
+    </div>
+  );
+}
+
 function FirewatchPanel({
   failedChecksCount,
   firewatch,
@@ -1286,6 +1354,7 @@ function FirewatchPanel({
   open: boolean;
 }) {
   const count = firewatch.rows.length;
+  const projectSections = groupFirewatchRowsByProject(firewatch.rows);
   const alertText =
     count === 1
       ? `You have 1 check that started failing in the last ${firewatch.lookbackDays} days`
@@ -1340,101 +1409,17 @@ function FirewatchPanel({
                 <Flame className="h-4 w-4 shrink-0" />
                 <span>{alertText}</span>
               </div>
-              <div className="overflow-x-auto rounded-md border border-slate-700">
-                <table className="w-full min-w-[980px] table-fixed text-left text-sm">
-                  <thead className="border-b border-slate-700 bg-[#121820] text-xs font-semibold uppercase text-slate-400">
-                    <tr>
-                      <th className="w-[40%] px-4 py-3">
-                        <span className="inline-flex items-center gap-2">
-                          Name
-                          <ArrowDownUp className="h-3.5 w-3.5 text-slate-600" />
-                        </span>
-                      </th>
-                      <th className="w-[10%] px-4 py-3">
-                        <span className="inline-flex items-center gap-2">
-                          Type
-                          <ArrowDownUp className="h-3.5 w-3.5 text-slate-600" />
-                        </span>
-                      </th>
-                      <th className="w-[14%] px-4 py-3">
-                        <span className="inline-flex items-center gap-2">
-                          First Seen
-                          <ArrowDownUp className="h-3.5 w-3.5 text-slate-600" />
-                        </span>
-                      </th>
-                      <th className="w-[14%] px-4 py-3">
-                        <span className="inline-flex items-center gap-2">
-                          Last Seen
-                          <ArrowDownUp className="h-3.5 w-3.5 text-slate-600" />
-                        </span>
-                      </th>
-                      <th className="w-[22%] px-4 py-3" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {firewatch.rows.map((row) => (
-                      <tr
-                        className="border-b border-slate-800 last:border-b-0"
-                        key={row.checkId}
-                      >
-                        <td className="px-4 py-3">
-                          <div className="flex min-w-0 items-center gap-3">
-                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-red-500 text-white">
-                              <CircleX className="h-3.5 w-3.5" />
-                            </span>
-                            <div className="min-w-0">
-                              <button
-                                className="max-w-full truncate text-left font-medium text-blue-400 underline decoration-blue-500/60 underline-offset-2 hover:text-blue-300"
-                                onClick={() => onOpenCheck(row.checkId)}
-                                role="link"
-                                title={`${row.groupName} / ${row.name}`}
-                                type="button"
-                              >
-                                {row.groupName} / {row.name}
-                              </button>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <CheckTypeBadge type={row.type} />
-                        </td>
-                        <td
-                          className="whitespace-nowrap px-4 py-3 text-slate-300"
-                          title={row.firstSeenAt}
-                        >
-                          {row.firstSeen}
-                        </td>
-                        <td
-                          className="whitespace-nowrap px-4 py-3 text-slate-300"
-                          title={row.lastSeenAt}
-                        >
-                          {row.lastSeen}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center justify-end gap-1">
-                            <button
-                              aria-label={`AI analysis for ${row.name}`}
-                              className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-sm font-medium text-cyan-300 hover:bg-cyan-500/10 hover:text-cyan-200"
-                              onClick={() => onOpenAiAnalysis(row)}
-                              type="button"
-                            >
-                              <Bot className="h-4 w-4" />
-                              AI analysis
-                            </button>
-                            <button
-                              className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-sm font-medium text-blue-400 hover:bg-blue-500/10 hover:text-blue-300"
-                              onClick={() => onRunCheck(row)}
-                              type="button"
-                            >
-                              <Zap className="h-4 w-4" />
-                              Schedule now
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="flex flex-col gap-4">
+                {projectSections.map((section) => (
+                  <FirewatchProjectTable
+                    key={section.projectSlug}
+                    onOpenAiAnalysis={onOpenAiAnalysis}
+                    onOpenCheck={onOpenCheck}
+                    onRunCheck={onRunCheck}
+                    projectName={section.projectName}
+                    rows={section.rows}
+                  />
+                ))}
               </div>
             </>
           ) : (
@@ -1444,6 +1429,125 @@ function FirewatchPanel({
           )}
         </div>
       ) : null}
+    </section>
+  );
+}
+
+function FirewatchProjectTable({
+  onOpenAiAnalysis,
+  onOpenCheck,
+  onRunCheck,
+  projectName,
+  rows,
+}: {
+  onOpenAiAnalysis: (row: DashboardFirewatchRow) => void;
+  onOpenCheck: (checkId: string) => void;
+  onRunCheck: (row: DashboardFirewatchRow) => void;
+  projectName: string;
+  rows: DashboardFirewatchRow[];
+}) {
+  return (
+    <section
+      aria-label={`Firewatch project ${projectName}`}
+      className="overflow-hidden rounded-md border border-slate-700"
+    >
+      <ProjectTableHeader count={rows.length} projectName={projectName} />
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[980px] table-fixed text-left text-sm">
+          <thead className="border-b border-slate-700 bg-[#121820] text-xs font-semibold uppercase text-slate-400">
+            <tr>
+              <th className="w-[40%] px-4 py-3">
+                <span className="inline-flex items-center gap-2">
+                  Name
+                  <ArrowDownUp className="h-3.5 w-3.5 text-slate-600" />
+                </span>
+              </th>
+              <th className="w-[10%] px-4 py-3">
+                <span className="inline-flex items-center gap-2">
+                  Type
+                  <ArrowDownUp className="h-3.5 w-3.5 text-slate-600" />
+                </span>
+              </th>
+              <th className="w-[14%] px-4 py-3">
+                <span className="inline-flex items-center gap-2">
+                  First Seen
+                  <ArrowDownUp className="h-3.5 w-3.5 text-slate-600" />
+                </span>
+              </th>
+              <th className="w-[14%] px-4 py-3">
+                <span className="inline-flex items-center gap-2">
+                  Last Seen
+                  <ArrowDownUp className="h-3.5 w-3.5 text-slate-600" />
+                </span>
+              </th>
+              <th className="w-[22%] px-4 py-3" />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr
+                className="border-b border-slate-800 last:border-b-0"
+                key={row.checkId}
+              >
+                <td className="px-4 py-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-red-500 text-white">
+                      <CircleX className="h-3.5 w-3.5" />
+                    </span>
+                    <div className="min-w-0">
+                      <button
+                        className="max-w-full truncate text-left font-medium text-blue-400 underline decoration-blue-500/60 underline-offset-2 hover:text-blue-300"
+                        onClick={() => onOpenCheck(row.checkId)}
+                        role="link"
+                        title={`${row.groupName} / ${row.name}`}
+                        type="button"
+                      >
+                        {row.groupName} / {row.name}
+                      </button>
+                    </div>
+                  </div>
+                </td>
+                <td className="px-4 py-3">
+                  <CheckTypeBadge type={row.type} />
+                </td>
+                <td
+                  className="whitespace-nowrap px-4 py-3 text-slate-300"
+                  title={row.firstSeenAt}
+                >
+                  {row.firstSeen}
+                </td>
+                <td
+                  className="whitespace-nowrap px-4 py-3 text-slate-300"
+                  title={row.lastSeenAt}
+                >
+                  {row.lastSeen}
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center justify-end gap-1">
+                    <button
+                      aria-label={`AI analysis for ${row.name}`}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-sm font-medium text-cyan-300 hover:bg-cyan-500/10 hover:text-cyan-200"
+                      onClick={() => onOpenAiAnalysis(row)}
+                      type="button"
+                    >
+                      <Bot className="h-4 w-4" />
+                      AI analysis
+                    </button>
+                    <button
+                      className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-sm font-medium text-blue-400 hover:bg-blue-500/10 hover:text-blue-300"
+                      onClick={() => onRunCheck(row)}
+                      type="button"
+                    >
+                      <Zap className="h-4 w-4" />
+                      Schedule now
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }
@@ -2850,72 +2954,90 @@ function ChecksTable({
   onOpenAiAnalysis: (drawer: AiAnalysisDrawerState) => void;
   onRunCheckNow: (check: CheckRow) => void;
 }) {
+  const projectSections = groupDashboardGroupsByProject(visibleGroups);
+
+  if (projectSections.length === 0) {
+    return (
+      <section className="rounded-md border border-slate-800 bg-[#11161d] px-5 py-8 text-sm text-slate-500">
+        No checks match the current filters.
+      </section>
+    );
+  }
+
   return (
-    <section className="overflow-hidden rounded-md border border-slate-800 bg-[#11161d]">
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[1280px] table-fixed text-left text-sm">
-          <thead className="border-b border-slate-700 bg-[#121820] text-xs font-semibold uppercase text-slate-400">
-            <tr>
-              <th className="w-[42%] px-5 py-3">
-                <span className="inline-flex items-center gap-2">
-                  Name
-                  <ArrowDownUp className="h-3.5 w-3.5 text-slate-600" />
-                </span>
-              </th>
-              <th className="w-[8%] px-4 py-3">
-                <span className="inline-flex items-center gap-2">
-                  Type
-                  <ArrowDownUp className="h-3.5 w-3.5 text-slate-600" />
-                </span>
-              </th>
-              <th className="w-[18%] px-4 py-3">
-                <span className="border-b border-dotted border-slate-500">
-                  Last results
-                </span>
-              </th>
-              <th className="w-[6%] px-4 py-3">
-                <span className="border-b border-dotted border-slate-500">AVA</span>
-              </th>
-              <th className="w-[8%] px-4 py-3">
-                <span className="border-b border-dotted border-slate-500">AVG</span>
-              </th>
-              <th className="w-[8%] px-4 py-3">
-                <span className="border-b border-dotted border-slate-500">P95</span>
-              </th>
-              <th className="w-[6%] px-4 py-3">
-                <span className="inline-flex items-center gap-2 border-b border-dotted border-slate-500">
-                  DT
-                  <ArrowDownUp className="h-3.5 w-3.5 text-slate-600" />
-                </span>
-              </th>
-              <th className="w-[4%] px-4 py-3" />
-            </tr>
-          </thead>
-          <tbody>
-            {visibleGroups.map((group) => (
-              <GroupBlock
-                activeActionMenu={activeActionMenu}
-                group={group}
-                key={getGroupKey(group)}
-                onActionMenuToggle={onActionMenuToggle}
-                onCheckToggle={onCheckToggle}
-                onGroupToggle={onGroupToggle}
-                onNotice={onNotice}
-                onOpenAiAnalysis={onOpenAiAnalysis}
-                onRunCheckNow={onRunCheckNow}
-              />
-            ))}
-            {visibleGroups.length === 0 ? (
-              <tr>
-                <td className="px-5 py-8 text-slate-500" colSpan={8}>
-                  No checks match the current filters.
-                </td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
-      </div>
-    </section>
+    <div className="flex flex-col gap-5">
+      {projectSections.map((section) => (
+        <section
+          aria-label={`Project ${section.projectName}`}
+          className="overflow-hidden rounded-md border border-slate-800 bg-[#11161d]"
+          key={section.projectSlug}
+        >
+          <ProjectTableHeader
+            count={section.groups.reduce(
+              (count, group) => count + getDashboardGroupCheckCount(group),
+              0,
+            )}
+            projectName={section.projectName}
+          />
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1280px] table-fixed text-left text-sm">
+              <thead className="border-b border-slate-700 bg-[#121820] text-xs font-semibold uppercase text-slate-400">
+                <tr>
+                  <th className="w-[42%] px-5 py-3">
+                    <span className="inline-flex items-center gap-2">
+                      Name
+                      <ArrowDownUp className="h-3.5 w-3.5 text-slate-600" />
+                    </span>
+                  </th>
+                  <th className="w-[8%] px-4 py-3">
+                    <span className="inline-flex items-center gap-2">
+                      Type
+                      <ArrowDownUp className="h-3.5 w-3.5 text-slate-600" />
+                    </span>
+                  </th>
+                  <th className="w-[18%] px-4 py-3">
+                    <span className="border-b border-dotted border-slate-500">
+                      Last results
+                    </span>
+                  </th>
+                  <th className="w-[6%] px-4 py-3">
+                    <span className="border-b border-dotted border-slate-500">AVA</span>
+                  </th>
+                  <th className="w-[8%] px-4 py-3">
+                    <span className="border-b border-dotted border-slate-500">AVG</span>
+                  </th>
+                  <th className="w-[8%] px-4 py-3">
+                    <span className="border-b border-dotted border-slate-500">P95</span>
+                  </th>
+                  <th className="w-[6%] px-4 py-3">
+                    <span className="inline-flex items-center gap-2 border-b border-dotted border-slate-500">
+                      DT
+                      <ArrowDownUp className="h-3.5 w-3.5 text-slate-600" />
+                    </span>
+                  </th>
+                  <th className="w-[4%] px-4 py-3" />
+                </tr>
+              </thead>
+              <tbody>
+                {section.groups.map((group) => (
+                  <GroupBlock
+                    activeActionMenu={activeActionMenu}
+                    group={group}
+                    key={getGroupKey(group)}
+                    onActionMenuToggle={onActionMenuToggle}
+                    onCheckToggle={onCheckToggle}
+                    onGroupToggle={onGroupToggle}
+                    onNotice={onNotice}
+                    onOpenAiAnalysis={onOpenAiAnalysis}
+                    onRunCheckNow={onRunCheckNow}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ))}
+    </div>
   );
 }
 

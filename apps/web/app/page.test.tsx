@@ -611,6 +611,164 @@ describe("DashboardPage", () => {
     expect(screen.getByRole("button", { name: /FAILING 1/ })).toBeTruthy();
   });
 
+  it("renders a separate project table and hides empty tables after filtering", async () => {
+    const user = userEvent.setup();
+    const groups: DashboardGroupRow[] = [
+      {
+        checks: "1 checks",
+        children: [createCheck({ name: "account-health" })],
+        expanded: true,
+        name: "API / Account",
+        projectName: "Account",
+        projectSlug: "account",
+        status: "passing",
+        updated: "about 1 hour ago",
+      },
+      {
+        checks: "1 checks",
+        children: [createCheck({ name: "storybook-navigation" })],
+        expanded: true,
+        name: "Browser / Navigation",
+        projectName: "Storybook",
+        projectSlug: "storybook",
+        status: "passing",
+        updated: "about 2 hours ago",
+      },
+    ];
+
+    render(
+      <DashboardClient
+        initialFirewatch={emptyFirewatch}
+        initialGroups={groups}
+        initialSettings={fixtureSettings}
+        initialSummary={{
+          degraded: 0,
+          failing: 0,
+          passing: 2,
+          queued: 0,
+          running: 0,
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("region", { name: "Project Account" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Project Storybook" })).toBeTruthy();
+    expect(screen.getAllByRole("table")).toHaveLength(2);
+
+    const search = screen.getByRole("searchbox", { name: "Search checks" });
+
+    await user.type(search, "storybook-navigation");
+
+    expect(screen.queryByRole("region", { name: "Project Account" })).toBeNull();
+    expect(screen.getByRole("region", { name: "Project Storybook" })).toBeTruthy();
+    expect(screen.getAllByRole("table")).toHaveLength(1);
+
+    await user.clear(search);
+    await user.type(search, "missing-check");
+
+    expect(screen.queryByRole("region", { name: "Project Account" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Project Storybook" })).toBeNull();
+    expect(screen.getByText("No checks match the current filters.")).toBeTruthy();
+  });
+
+  it("renders and filters separate Firewatch tables per project", async () => {
+    const user = userEvent.setup();
+    const accountCheck = createCheck({
+      name: "account-health",
+      status: "failing",
+    });
+    const storybookCheck = createCheck({
+      name: "storybook-navigation",
+      status: "failing",
+    });
+    const groups: DashboardGroupRow[] = [
+      {
+        checks: "1 checks",
+        children: [accountCheck],
+        expanded: true,
+        name: "API / Account",
+        projectName: "Account",
+        projectSlug: "account",
+        status: "failing",
+        updated: "about 1 hour ago",
+      },
+      {
+        checks: "1 checks",
+        children: [storybookCheck],
+        expanded: true,
+        name: "Browser / Navigation",
+        projectName: "Storybook",
+        projectSlug: "storybook",
+        status: "failing",
+        updated: "about 2 hours ago",
+      },
+    ];
+
+    render(
+      <DashboardClient
+        initialFirewatch={{
+          lookbackDays: 7,
+          rows: [
+            {
+              checkId: accountCheck.id,
+              firstSeen: "about 3 hours ago",
+              firstSeenAt: "2026-07-05T09:00:00.000Z",
+              groupName: "API / Account",
+              lastSeen: "about 1 hour ago",
+              lastSeenAt: "2026-07-05T11:00:00.000Z",
+              name: accountCheck.name,
+              projectName: "Account",
+              projectSlug: "account",
+              type: "api",
+            },
+            {
+              checkId: storybookCheck.id,
+              firstSeen: "about 4 hours ago",
+              firstSeenAt: "2026-07-05T08:00:00.000Z",
+              groupName: "Browser / Navigation",
+              lastSeen: "about 2 hours ago",
+              lastSeenAt: "2026-07-05T10:00:00.000Z",
+              name: storybookCheck.name,
+              projectName: "Storybook",
+              projectSlug: "storybook",
+              type: "browser",
+            },
+          ],
+        }}
+        initialGroups={groups}
+        initialSettings={fixtureSettings}
+        initialSummary={{
+          degraded: 0,
+          failing: 2,
+          passing: 0,
+          queued: 0,
+          running: 0,
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Firewatch" }));
+
+    expect(
+      screen.getByRole("region", { name: "Firewatch project Account" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("region", { name: "Firewatch project Storybook" }),
+    ).toBeTruthy();
+
+    await user.type(
+      screen.getByRole("searchbox", { name: "Search checks" }),
+      "account-health",
+    );
+
+    expect(
+      screen.getByRole("region", { name: "Firewatch project Account" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("region", { name: "Firewatch project Storybook" }),
+    ).toBeNull();
+  });
+
   it("renders Firewatch rows and queues checks from the block", async () => {
     const user = userEvent.setup();
     const failingCheck = createCheck({
@@ -1372,9 +1530,7 @@ describe("DashboardPage", () => {
         cache: "no-store",
       });
     });
-    await waitFor(() => {
-      expect(screen.getByText("Unable to refresh run status.")).toBeTruthy();
-    });
+    expect(screen.queryByText("Unable to refresh run status.")).toBeNull();
 
     expect(screen.getByText("checkout.running")).toBeTruthy();
     expect(screen.getByText("checkout.ready")).toBeTruthy();

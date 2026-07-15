@@ -2028,6 +2028,8 @@ function mapFirewatchRow(
     lastSeen: formatRelative(latestRun.createdAt, timeZone),
     lastSeenAt: latestRun.createdAt.toISOString(),
     name: check.name,
+    projectName: check.project?.name ?? check.project?.slug ?? "default",
+    projectSlug: check.project?.slug ?? "default",
     type: check.type.toLowerCase() as DashboardCheckRow["type"],
   };
 }

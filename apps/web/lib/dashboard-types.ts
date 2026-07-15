@@ -150,6 +150,8 @@ export type DashboardFirewatchRow = {
   lastSeen: string;
   lastSeenAt: string;
   name: string;
+  projectName?: string;
+  projectSlug?: string;
   type: DashboardCheckRow["type"];
 };
 

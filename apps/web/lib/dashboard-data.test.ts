@@ -1166,6 +1166,10 @@ describe("dashboard data", () => {
         id: "check_recent",
         key: "bff-health",
         name: "bff-health",
+        project: {
+          name: "Account",
+          slug: "account",
+        },
         request: {
           assertions: [],
           headers: {},
@@ -1292,6 +1296,8 @@ describe("dashboard data", () => {
           lastSeen: "about 1 hours ago",
           lastSeenAt: "2026-07-05T11:00:00.000Z",
           name: "bff-health",
+          projectName: "Account",
+          projectSlug: "account",
           type: "api",
         },
       ],
