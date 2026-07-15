@@ -2,6 +2,16 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const mocks = vi.hoisted(() => ({
+  routerRefresh: vi.fn(),
+}));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    refresh: mocks.routerRefresh,
+  }),
+}));
+
 import type { TestSessionCheckRow } from "@/lib/dashboard-data";
 
 import { SessionCheckActions } from "./session-check-actions";
@@ -44,7 +54,13 @@ describe("SessionCheckActions", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<SessionCheckActions check={failedCheck} projectSlug="account" />);
+    render(
+      <SessionCheckActions
+        check={failedCheck}
+        projectSlug="account"
+        sessionId="session_1"
+      />,
+    );
 
     await user.click(screen.getByRole("button", { name: "Sign in actions" }));
 
@@ -56,17 +72,23 @@ describe("SessionCheckActions", () => {
     await user.click(screen.getByRole("button", { name: "Run now" }));
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith("/api/checks/signin/run?project=account", {
-        method: "POST",
-      });
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/checks/signin/run?project=account&testSession=session_1",
+        { method: "POST" },
+      );
     });
     expect((await screen.findByRole("status")).textContent).toBe("Sign in queued.");
+    expect(mocks.routerRefresh).toHaveBeenCalledOnce();
   });
 
   it("shows AI analysis only for failed runs", async () => {
     const user = userEvent.setup();
     const { rerender } = render(
-      <SessionCheckActions check={failedCheck} projectSlug="account" />,
+      <SessionCheckActions
+        check={failedCheck}
+        projectSlug="account"
+        sessionId="session_1"
+      />,
     );
 
     await user.click(screen.getByRole("button", { name: "Sign in actions" }));
@@ -74,12 +96,17 @@ describe("SessionCheckActions", () => {
 
     const drawer = screen.getByRole("dialog", { name: "AI analysis" });
     expect(within(drawer).getByText("The sign-in request returned 500.")).toBeTruthy();
+    expect(
+      within(drawer).getByRole("button", { name: "Copy AI analysis" }),
+    ).toBeTruthy();
+    expect(within(drawer).queryByText("completed", { exact: false })).toBeNull();
     await user.click(within(drawer).getByRole("button", { name: "Close AI analysis" }));
 
     rerender(
       <SessionCheckActions
         check={{ ...failedCheck, runState: "passed", status: "passing" }}
         projectSlug="account"
+        sessionId="session_1"
       />,
     );
     await user.click(screen.getByRole("button", { name: "Sign in actions" }));

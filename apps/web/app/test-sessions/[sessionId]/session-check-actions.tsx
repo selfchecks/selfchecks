@@ -4,19 +4,24 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Bot, MoreVertical, X } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
+import { CopyAnalysisButton } from "@/components/copy-analysis-button";
 import type { TestSessionCheckRow } from "@/lib/dashboard-data";
-import { cn } from "@/lib/utils";
 
 export function SessionCheckActions({
   check,
   projectSlug,
+  sessionId,
 }: {
   check: TestSessionCheckRow;
   projectSlug: string;
+  sessionId: string;
 }) {
+  const router = useRouter();
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [aiAnalysisOpen, setAiAnalysisOpen] = useState(false);
+  const [expectedRunCount, setExpectedRunCount] = useState<number | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [notice, setNotice] = useState("");
 
@@ -51,12 +56,32 @@ export function SessionCheckActions({
     };
   }, [menuOpen]);
 
+  useEffect(() => {
+    if (expectedRunCount === null) {
+      return;
+    }
+
+    const runActive = check.runState === "queued" || check.runState === "running";
+
+    if (check.runCount >= expectedRunCount && !runActive) {
+      setExpectedRunCount(null);
+      return;
+    }
+
+    const interval = window.setInterval(() => router.refresh(), 2_500);
+
+    return () => window.clearInterval(interval);
+  }, [check.runCount, check.runState, expectedRunCount, router]);
+
   async function runNow() {
     setMenuOpen(false);
     setNotice("");
 
     try {
-      const params = new URLSearchParams({ project: projectSlug });
+      const params = new URLSearchParams({
+        project: projectSlug,
+        testSession: sessionId,
+      });
       const response = await fetch(
         `/api/checks/${encodeURIComponent(check.checkKey)}/run?${params.toString()}`,
         { method: "POST" },
@@ -69,11 +94,14 @@ export function SessionCheckActions({
         throw new Error(payload.error ?? "Unable to queue check run.");
       }
 
+      setExpectedRunCount(check.runCount + 1);
       setNotice(`${check.checkName} queued.`);
+      router.refresh();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
 
       setNotice(`Failed to queue ${check.checkName}: ${message}`);
+      router.refresh();
     }
   }
 
@@ -333,15 +361,10 @@ function AiAnalysisDrawer({
         <div className="min-h-0 flex-1 overflow-y-auto p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="break-all text-xs text-slate-500">{meta.join(" · ")}</div>
-            {analysis ? (
-              <span
-                className={cn(
-                  "rounded px-2 py-1 text-xs font-semibold uppercase",
-                  analysis.status === "completed"
-                    ? "bg-cyan-950 text-cyan-200"
-                    : "bg-amber-950 text-amber-200",
-                )}
-              >
+            {analysis?.status === "completed" && analysis.content ? (
+              <CopyAnalysisButton text={analysis.content} />
+            ) : analysis ? (
+              <span className="rounded bg-amber-950 px-2 py-1 text-xs font-semibold uppercase text-amber-200">
                 {analysis.status}
               </span>
             ) : null}

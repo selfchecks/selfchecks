@@ -552,6 +552,10 @@ describe("DashboardPage", () => {
         "The checkout request failed because the upstream returned HTTP 503.",
       ),
     ).toBeTruthy();
+    expect(
+      within(drawer).getByRole("button", { name: "Copy AI analysis" }),
+    ).toBeTruthy();
+    expect(within(drawer).queryByText("completed", { exact: false })).toBeNull();
 
     await user.click(within(drawer).getByRole("button", { name: "Close AI analysis" }));
     expect(screen.queryByRole("dialog", { name: "AI analysis" })).toBeNull();

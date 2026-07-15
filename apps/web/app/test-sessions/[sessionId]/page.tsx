@@ -138,7 +138,11 @@ export default async function TestSessionPage({ params }: TestSessionPageProps) 
             <SummaryPills summary={session.summary} />
           </section>
 
-          <SessionChecksTable checks={session.checks} projectSlug={data.projectSlug} />
+          <SessionChecksTable
+            checks={session.checks}
+            projectSlug={data.projectSlug}
+            sessionId={session.id}
+          />
         </section>
       </div>
     </main>
@@ -148,9 +152,11 @@ export default async function TestSessionPage({ params }: TestSessionPageProps) 
 function SessionChecksTable({
   checks,
   projectSlug,
+  sessionId,
 }: {
   checks: TestSessionCheckRow[];
   projectSlug: string;
+  sessionId: string;
 }) {
   return (
     <section className="overflow-hidden rounded-md border border-slate-800 bg-[#111821]">
@@ -173,6 +179,7 @@ function SessionChecksTable({
                   check={check}
                   key={check.checkId}
                   projectSlug={projectSlug}
+                  sessionId={sessionId}
                 />
               ))
             ) : (
@@ -192,9 +199,11 @@ function SessionChecksTable({
 function SessionCheckTableRow({
   check,
   projectSlug,
+  sessionId,
 }: {
   check: TestSessionCheckRow;
   projectSlug: string;
+  sessionId: string;
 }) {
   return (
     <tr className="border-t border-slate-800 align-top hover:bg-slate-900/40">
@@ -220,7 +229,11 @@ function SessionCheckTableRow({
       <td className="px-4 py-3 text-slate-300">{check.runCount}</td>
       <td className="whitespace-nowrap px-4 py-3 text-slate-300">{check.duration}</td>
       <td className="px-4 py-3">
-        <SessionCheckActions check={check} projectSlug={projectSlug} />
+        <SessionCheckActions
+          check={check}
+          projectSlug={projectSlug}
+          sessionId={sessionId}
+        />
       </td>
     </tr>
   );

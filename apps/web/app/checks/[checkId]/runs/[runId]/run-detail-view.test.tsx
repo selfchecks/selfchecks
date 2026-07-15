@@ -400,6 +400,8 @@ describe("RunDetailView", () => {
     expect(screen.queryByText("Request data")).toBeNull();
     expect(screen.queryByText("No request data recorded for this run.")).toBeNull();
     expect(screen.getByText("AI analysis")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Copy AI analysis" })).toBeTruthy();
+    expect(screen.queryByText("completed", { exact: false })).toBeNull();
     expect(
       screen.getByText("Вероятная причина: селектор поля поиска не найден."),
     ).toBeTruthy();

@@ -8,10 +8,14 @@ const mocks = vi.hoisted(() => ({
   notFound: vi.fn(() => {
     throw new Error("NEXT_NOT_FOUND");
   }),
+  routerRefresh: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
   notFound: mocks.notFound,
+  useRouter: () => ({
+    refresh: mocks.routerRefresh,
+  }),
 }));
 
 vi.mock("@/lib/dashboard-data", async (importOriginal) => ({

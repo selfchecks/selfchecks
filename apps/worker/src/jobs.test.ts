@@ -179,6 +179,63 @@ describe("handleCheckJob", () => {
     });
   });
 
+  it("finalizes a test session after a manual session rerun", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    mocks.runCheckById.mockResolvedValue({
+      checkKey: "issue.get",
+      checkName: "issue.get",
+      durationMs: 42,
+      runId: "run_2",
+      status: "passed",
+    });
+    mocks.checkRunFindMany.mockResolvedValue([
+      {
+        attempt: 1,
+        checkSnapshotKey: "issue.get",
+        createdAt: new Date("2026-07-15T09:00:00.000Z"),
+        id: "run_1",
+        status: "FAILED",
+      },
+      {
+        attempt: 1,
+        checkSnapshotKey: "issue.get",
+        createdAt: new Date("2026-07-15T10:00:00.000Z"),
+        id: "run_2",
+        status: "PASSED",
+      },
+    ]);
+
+    await handleCheckJob({
+      data: {
+        checkId: "check_1",
+        checkKey: "issue.get",
+        projectSlug: "account",
+        rootDir: "/repo/config/checkly",
+        runId: "run_2",
+        runSource: "MANUAL",
+        testSessionId: "session_1",
+        type: "api",
+      },
+    });
+
+    expect(mocks.runCheckById).toHaveBeenCalledWith(
+      expect.objectContaining({
+        existingTestSessionId: "session_1",
+        runId: "run_2",
+      }),
+    );
+    expect(mocks.testSessionUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: {
+          status: "PASSED",
+        },
+        where: expect.objectContaining({
+          id: "session_1",
+        }),
+      }),
+    );
+  });
+
   it("installs and persists an uploaded deployment", async () => {
     const summary = {
       checks: [
@@ -401,18 +458,21 @@ describe("handleCheckJob", () => {
       {
         attempt: 1,
         checkSnapshotKey: "homepage",
+        createdAt: new Date("2026-07-15T09:00:00.000Z"),
         id: "run_1",
         status: "FAILED",
       },
       {
         attempt: 2,
         checkSnapshotKey: "homepage",
+        createdAt: new Date("2026-07-15T09:01:00.000Z"),
         id: "run_2",
         status: "PASSED",
       },
       {
         attempt: 1,
         checkSnapshotKey: "health",
+        createdAt: new Date("2026-07-15T09:00:00.000Z"),
         id: "run_3",
         status: "PASSED",
       },

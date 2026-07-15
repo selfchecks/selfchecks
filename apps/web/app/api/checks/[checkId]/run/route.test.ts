@@ -9,6 +9,9 @@ const mocks = vi.hoisted(() => ({
   checkRunCreate: vi.fn(),
   checkRunUpdate: vi.fn(),
   getRunEnvironment: vi.fn(),
+  testSessionFindFirst: vi.fn(),
+  testSessionUpdate: vi.fn(),
+  transaction: vi.fn(),
 }));
 
 vi.mock("bullmq", () => ({
@@ -20,6 +23,7 @@ vi.mock("bullmq", () => ({
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
+    $transaction: mocks.transaction,
     check: {
       findFirst: mocks.checkFindFirst,
       findUnique: mocks.checkFindUnique,
@@ -27,6 +31,10 @@ vi.mock("@/lib/prisma", () => ({
     checkRun: {
       create: mocks.checkRunCreate,
       update: mocks.checkRunUpdate,
+    },
+    testSession: {
+      findFirst: mocks.testSessionFindFirst,
+      update: mocks.testSessionUpdate,
     },
   },
 }));
@@ -56,6 +64,16 @@ function createRequest(url = "http://localhost/api/checks/check_1/run") {
 describe("run check route", () => {
   beforeEach(() => {
     mocks.getRunEnvironment.mockResolvedValue([]);
+    mocks.transaction.mockImplementation(async (callback) =>
+      callback({
+        checkRun: {
+          create: mocks.checkRunCreate,
+        },
+        testSession: {
+          update: mocks.testSessionUpdate,
+        },
+      }),
+    );
   });
 
   afterEach(() => {
@@ -153,27 +171,44 @@ describe("run check route", () => {
     expect(mocks.queueAdd).not.toHaveBeenCalled();
   });
 
-  it("resolves a session check by project slug and check key", async () => {
+  it("queues a new run inside the selected test session", async () => {
     mocks.checkFindUnique.mockResolvedValue(null);
     mocks.checkFindFirst.mockResolvedValue({
       deployment: {
         source: "/repo/config/checkly",
       },
       enabled: true,
+      entrypoint: "checks/issue.get.spec.ts",
+      group: {
+        name: "API",
+      },
       id: "check_1",
       key: "issue.get",
+      name: "Issue get",
       project: {
         id: "project_1",
         slug: "account",
       },
+      request: {
+        assertions: [],
+        headers: {},
+        method: "GET",
+        url: "https://example.test/issues/1",
+      },
+      tags: ["api"],
       type: "API",
+    });
+    mocks.testSessionFindFirst.mockResolvedValue({
+      id: "session_1",
     });
     mocks.checkRunCreate.mockResolvedValue({
       id: "run_1",
     });
 
     const response = await POST(
-      createRequest("http://localhost/api/checks/issue.get/run?project=account"),
+      createRequest(
+        "http://localhost/api/checks/issue.get/run?project=account&testSession=session_1",
+      ),
       createContext("issue.get"),
     );
 
@@ -187,17 +222,76 @@ describe("run check route", () => {
         },
       },
     });
-    expect(mocks.checkRunCreate).toHaveBeenCalledWith({
-      data: {
-        checkId: "check_1",
-        projectId: "project_1",
-        runSource: "MANUAL",
-        status: "QUEUED",
-      },
+    expect(mocks.testSessionFindFirst).toHaveBeenCalledWith({
       select: {
         id: true,
       },
+      where: {
+        id: "session_1",
+        kind: "TEST",
+        projectId: "project_1",
+        runs: {
+          some: {
+            OR: [{ checkId: "check_1" }, { checkSnapshotKey: "issue.get" }],
+          },
+        },
+      },
     });
+    expect(mocks.testSessionUpdate).toHaveBeenCalledWith({
+      data: {
+        status: "RUNNING",
+      },
+      where: {
+        id: "session_1",
+      },
+    });
+    expect(mocks.checkRunCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        checkId: "check_1",
+        checkSnapshotKey: "issue.get",
+        checkSnapshotName: "Issue get",
+        checkSnapshotProjectSlug: "account",
+        projectId: "project_1",
+        runSource: "MANUAL",
+        status: "QUEUED",
+        testSessionId: "session_1",
+      }),
+      select: { id: true },
+    });
+    expect(mocks.queueAdd).toHaveBeenCalledWith(
+      "run-check",
+      expect.objectContaining({
+        runId: "run_1",
+        testSessionId: "session_1",
+      }),
+      { jobId: "run_1" },
+    );
+  });
+
+  it("rejects reruns for tests outside the selected session", async () => {
+    mocks.checkFindUnique.mockResolvedValue(null);
+    mocks.checkFindFirst.mockResolvedValue({
+      deployment: { source: "/repo/config/checkly" },
+      enabled: true,
+      id: "check_1",
+      key: "issue.get",
+      project: { id: "project_1", slug: "account" },
+      type: "API",
+    });
+    mocks.testSessionFindFirst.mockResolvedValue(null);
+
+    const response = await POST(
+      createRequest(
+        "http://localhost/api/checks/issue.get/run?project=account&testSession=session_1",
+      ),
+      createContext("issue.get"),
+    );
+
+    await expect(response.json()).resolves.toEqual({
+      error: "Test was not found in this test session.",
+    });
+    expect(response.status).toBe(404);
+    expect(mocks.checkRunCreate).not.toHaveBeenCalled();
   });
 
   it("rejects checks without a known source root", async () => {

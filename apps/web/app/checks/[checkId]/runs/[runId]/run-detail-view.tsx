@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
+import { CopyAnalysisButton } from "@/components/copy-analysis-button";
 import type { RunDetailData } from "@/lib/dashboard-data";
 import type {
   DashboardRunArtifact,
@@ -332,16 +333,13 @@ function AiAnalysisPanel({
             </div>
           ) : null}
         </div>
-        <span
-          className={cn(
-            "rounded px-2 py-1 text-xs font-semibold uppercase",
-            analysis.status === "completed"
-              ? "bg-cyan-950 text-cyan-200"
-              : "bg-amber-950 text-amber-200",
-          )}
-        >
-          {analysis.status}
-        </span>
+        {analysis.status === "completed" && analysis.content ? (
+          <CopyAnalysisButton text={analysis.content} />
+        ) : (
+          <span className="rounded bg-amber-950 px-2 py-1 text-xs font-semibold uppercase text-amber-200">
+            {analysis.status}
+          </span>
+        )}
       </div>
 
       {analysis.content ? (

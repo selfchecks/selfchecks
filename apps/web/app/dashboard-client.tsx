@@ -47,6 +47,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { AppSidebar } from "@/components/app-sidebar";
+import { CopyAnalysisButton } from "@/components/copy-analysis-button";
 import { ServiceMark } from "@/components/service-mark";
 import {
   normalizePerformanceSettingValue,
@@ -3488,15 +3489,10 @@ function AiAnalysisDrawer({
         <div className="min-h-0 flex-1 overflow-y-auto p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="break-all text-xs text-slate-500">{meta.join(" · ")}</div>
-            {analysis ? (
-              <span
-                className={cn(
-                  "rounded px-2 py-1 text-xs font-semibold uppercase",
-                  analysis.status === "completed"
-                    ? "bg-cyan-950 text-cyan-200"
-                    : "bg-amber-950 text-amber-200",
-                )}
-              >
+            {analysis?.status === "completed" && analysis.content ? (
+              <CopyAnalysisButton text={analysis.content} />
+            ) : analysis ? (
+              <span className="rounded bg-amber-950 px-2 py-1 text-xs font-semibold uppercase text-amber-200">
                 {analysis.status}
               </span>
             ) : null}

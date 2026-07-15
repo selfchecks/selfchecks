@@ -544,6 +544,98 @@ describe("runCheckById", () => {
       }),
     );
   });
+
+  it("keeps a manual rerun attached to its existing test session", async () => {
+    const runId = "run_2";
+
+    mocks.checkFindFirst.mockResolvedValue({
+      entrypoint: null,
+      group: null,
+      id: "check_1",
+      key: "api-health",
+      name: "API health",
+      request: {
+        assertions: [],
+        headers: {},
+        method: "GET",
+        url: "https://example.test/health",
+      },
+      retryStrategy: null,
+      runs: [],
+      tags: ["api"],
+      type: "API",
+    });
+    mocks.testSessionFindUnique.mockResolvedValue({
+      id: "session_1",
+      kind: "TEST",
+      projectId: "project_1",
+    });
+    mocks.testSessionUpdate.mockResolvedValue({
+      id: "session_1",
+      kind: "TEST",
+      projectId: "project_1",
+      status: "RUNNING",
+    });
+    mocks.checkRunFindFirst.mockResolvedValue({
+      checkId: "check_1",
+      id: runId,
+      testSessionId: "session_1",
+    });
+    mocks.checkRunUpdate.mockImplementation(async (args) => ({
+      checkId: "check_1",
+      id: args.where.id,
+      ...args.data,
+    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response('{"ok":true}', {
+          status: 200,
+          statusText: "OK",
+        }),
+      ),
+    );
+
+    await expect(
+      runCheckById({
+        checkId: "check_1",
+        env: [],
+        existingTestSessionId: "session_1",
+        projectSlug: "default",
+        record: true,
+        reporter: "list",
+        rootDir: "/repo",
+        runId,
+        runSource: "MANUAL",
+      }),
+    ).resolves.toMatchObject({
+      checkKey: "api-health",
+      runId,
+      status: "passed",
+    });
+
+    expect(mocks.testSessionUpdate).toHaveBeenCalledWith({
+      data: {
+        status: "RUNNING",
+      },
+      where: {
+        id: "session_1",
+      },
+    });
+    expect(mocks.checkRunUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          checkSnapshotKey: "api-health",
+          runSource: "MANUAL",
+          status: "RUNNING",
+          testSessionId: "session_1",
+        }),
+        where: {
+          id: runId,
+        },
+      }),
+    );
+  });
 });
 
 describe("runChecks", () => {

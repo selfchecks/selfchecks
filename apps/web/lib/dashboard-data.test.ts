@@ -1460,6 +1460,92 @@ describe("dashboard data", () => {
     });
   });
 
+  it("merges a manual session rerun into the existing check row by key", async () => {
+    mocks.testSessionFindFirst.mockResolvedValue({
+      commitSha: null,
+      createdAt: new Date("2026-07-05T11:20:00.000Z"),
+      id: "session_1",
+      jobUrl: null,
+      name: "Release v1.2.3",
+      pipelineUrl: null,
+      project: {
+        slug: "account",
+      },
+      ref: null,
+      repository: null,
+      runs: [
+        {
+          artifacts: [],
+          check: {
+            enabled: true,
+            entrypoint: "signin.spec.ts",
+            group: {
+              name: "Browser",
+            },
+            id: "check_live",
+            key: "signin",
+            name: "Sign in",
+            project: {
+              slug: "account",
+            },
+            request: null,
+            tags: ["app"],
+            type: "BROWSER",
+          },
+          checkId: "check_live",
+          checkSnapshotKey: "signin",
+          createdAt: new Date("2026-07-15T10:00:00.000Z"),
+          durationMs: null,
+          id: "run_2",
+          logsPath: null,
+          result: null,
+          status: "QUEUED",
+        },
+        {
+          artifacts: [],
+          check: null,
+          checkId: null,
+          checkSnapshotEntrypoint: "signin.spec.ts",
+          checkSnapshotGroupName: "Browser",
+          checkSnapshotKey: "signin",
+          checkSnapshotName: "Sign in",
+          checkSnapshotProjectSlug: "account",
+          checkSnapshotRequest: null,
+          checkSnapshotTags: ["app"],
+          checkSnapshotType: "BROWSER",
+          createdAt: new Date("2026-07-05T11:20:00.000Z"),
+          durationMs: 1200,
+          id: "run_1",
+          logsPath: null,
+          result: null,
+          status: "FAILED",
+        },
+      ],
+      source: null,
+      status: "RUNNING",
+      targetUrl: "https://example.test",
+    });
+
+    const data = await getTestSessionData("session_1");
+
+    expect(data?.session.checks).toHaveLength(1);
+    expect(data?.session.checks[0]).toMatchObject({
+      checkHref: "/test-sessions/session_1/checks/signin",
+      checkId: "signin",
+      checkKey: "signin",
+      latestRunHref: "/checks/check_live/runs/run_2",
+      runCount: 2,
+      runState: "queued",
+    });
+    expect(data?.session).toMatchObject({
+      runState: "running",
+      summary: {
+        queued: 1,
+        total: 1,
+      },
+    });
+  });
+
   it("loads CLI test sessions with target URLs and test summaries", async () => {
     mocks.checkRunUpdateMany.mockResolvedValue({ count: 0 });
     mocks.projectFindUnique.mockResolvedValue({

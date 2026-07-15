@@ -88,6 +88,7 @@ export class TestSessionTimeoutError extends Error {
 export type RunCheckByIdOptions = {
   checkId: string;
   env: EnvVar[];
+  existingTestSessionId?: string;
   projectSlug: string;
   record: true;
   reporter: string;
@@ -236,24 +237,25 @@ export async function runCheckById(
     throw new Error(`Check ${options.checkId} was not found.`);
   }
 
-  return runCheck(
-    check,
-    {
-      checks: undefined,
-      checkKeys: [check.key],
-      env: options.env,
-      projectSlug: options.projectSlug,
-      record: options.record,
-      reporter: options.reporter,
-      retries: options.retries,
-      rootDir: options.rootDir,
-      runMode: "monitoring",
-      runSource: options.runSource,
-      tagSets: [],
-    },
-    undefined,
-    options.runId,
-  );
+  const runOptions: RunChecksOptions = {
+    checks: undefined,
+    checkKeys: [check.key],
+    env: options.env,
+    existingTestSessionId: options.existingTestSessionId,
+    projectSlug: options.projectSlug,
+    record: options.record,
+    reporter: options.reporter,
+    retries: options.retries,
+    rootDir: options.rootDir,
+    runMode: options.existingTestSessionId ? "test" : "monitoring",
+    runSource: options.runSource,
+    tagSets: [],
+  };
+  const session = options.existingTestSessionId
+    ? await resolveRunSession(runOptions)
+    : undefined;
+
+  return runCheck(check, runOptions, session, options.runId);
 }
 
 export async function runTestSessionCheck(

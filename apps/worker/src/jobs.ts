@@ -32,6 +32,7 @@ export type RunCheckJob = {
   rootDir: string;
   runId?: string;
   runSource?: CheckRunSource;
+  testSessionId?: string;
   type: CheckType;
 };
 
@@ -120,6 +121,9 @@ export async function handleCheckJob(
     return await runCheckById({
       checkId: job.data.checkId,
       env: job.data.env ?? [],
+      ...(job.data.testSessionId
+        ? { existingTestSessionId: job.data.testSessionId }
+        : {}),
       projectSlug: job.data.projectSlug,
       record: true,
       reporter: job.data.reporter ?? "list",
@@ -142,6 +146,10 @@ export async function handleCheckJob(
     }
 
     throw error;
+  } finally {
+    if (job.data.testSessionId) {
+      await finalizeTestSession(job.data.testSessionId);
+    }
   }
 }
 
@@ -417,6 +425,7 @@ export async function finalizeTestSession(sessionId: string): Promise<void> {
     select: {
       attempt: true,
       checkSnapshotKey: true,
+      createdAt: true,
       id: true,
       status: true,
     },
@@ -431,7 +440,12 @@ export async function finalizeTestSession(sessionId: string): Promise<void> {
     const key = run.checkSnapshotKey ?? run.id;
     const current = finalRuns.get(key);
 
-    if (!current || run.attempt >= current.attempt) {
+    if (
+      !current ||
+      run.createdAt > current.createdAt ||
+      (run.createdAt.getTime() === current.createdAt.getTime() &&
+        run.attempt >= current.attempt)
+    ) {
       finalRuns.set(key, run);
     }
   });

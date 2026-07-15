@@ -1500,7 +1500,7 @@ function mapTestSessionChecks(
   for (const run of runs) {
     const check = getRunCheckSnapshot(run);
 
-    runsByCheck.set(check.id, [...(runsByCheck.get(check.id) ?? []), run]);
+    runsByCheck.set(check.key, [...(runsByCheck.get(check.key) ?? []), run]);
   }
 
   return [...runsByCheck.values()]
@@ -1512,8 +1512,8 @@ function mapTestSessionChecks(
         aiAnalysis: formatAiAnalysis(latestRun.result),
         checkHref: `/test-sessions/${encodeURIComponent(
           sessionId,
-        )}/checks/${encodeURIComponent(check.id)}`,
-        checkId: check.id,
+        )}/checks/${encodeURIComponent(check.key)}`,
+        checkId: check.key,
         checkKey: check.key,
         checkName: check.name,
         checkType: check.type.toLowerCase() as DashboardCheckRow["type"],
@@ -1578,10 +1578,10 @@ function getLatestRunsByCheck(
 
   for (const run of runs) {
     const check = getRunCheckSnapshot(run);
-    const current = runsByCheck.get(check.id);
+    const current = runsByCheck.get(check.key);
 
     if (!current || run.createdAt > current.createdAt) {
-      runsByCheck.set(check.id, run);
+      runsByCheck.set(check.key, run);
     }
   }
 

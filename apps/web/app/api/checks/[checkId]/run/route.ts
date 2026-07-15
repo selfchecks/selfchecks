@@ -1,6 +1,7 @@
 import { Queue } from "bullmq";
 import { NextResponse } from "next/server";
 
+import type { Prisma } from "@prisma/client";
 import { getRunEnvironment } from "@selfchecks/cli/environment";
 import { type CheckType } from "@selfchecks/core";
 
@@ -25,6 +26,7 @@ type CheckJob = {
   rootDir: string;
   runId: string;
   runSource: "MANUAL";
+  testSessionId?: string;
   type: CheckType;
 };
 
@@ -87,6 +89,11 @@ export async function POST(request: Request, context: RouteContext) {
         source: true,
       },
     },
+    group: {
+      select: {
+        name: true,
+      },
+    },
     project: {
       select: {
         id: true,
@@ -100,7 +107,9 @@ export async function POST(request: Request, context: RouteContext) {
       id: checkId,
     },
   });
-  const projectSlug = new URL(request.url).searchParams.get("project")?.trim();
+  const searchParams = new URL(request.url).searchParams;
+  const projectSlug = searchParams.get("project")?.trim();
+  const testSessionId = searchParams.get("testSession")?.trim();
 
   if (!check && projectSlug) {
     check = await prisma.check.findFirst({
@@ -118,6 +127,38 @@ export async function POST(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Check was not found." }, { status: 404 });
   }
 
+  const testSession = testSessionId
+    ? await prisma.testSession.findFirst({
+        select: {
+          id: true,
+        },
+        where: {
+          id: testSessionId,
+          kind: "TEST",
+          projectId: check.project.id,
+          runs: {
+            some: {
+              OR: [
+                {
+                  checkId: check.id,
+                },
+                {
+                  checkSnapshotKey: check.key,
+                },
+              ],
+            },
+          },
+        },
+      })
+    : undefined;
+
+  if (testSessionId && !testSession) {
+    return NextResponse.json(
+      { error: "Test was not found in this test session." },
+      { status: 404 },
+    );
+  }
+
   const rootDir = resolveRootDir(check.deployment?.source);
 
   if (!rootDir) {
@@ -130,17 +171,51 @@ export async function POST(request: Request, context: RouteContext) {
     );
   }
 
-  const run = await prisma.checkRun.create({
-    data: {
-      checkId: check.id,
-      projectId: check.project.id,
-      runSource: "MANUAL",
-      status: "QUEUED",
-    },
-    select: {
-      id: true,
-    },
-  });
+  const runData: Prisma.CheckRunUncheckedCreateInput = {
+    checkId: check.id,
+    ...(testSession
+      ? {
+          checkSnapshotEntrypoint: check.entrypoint,
+          checkSnapshotGroupName: check.group?.name,
+          checkSnapshotKey: check.key,
+          checkSnapshotName: check.name,
+          checkSnapshotProjectSlug: check.project.slug,
+          ...(check.request === null
+            ? {}
+            : { checkSnapshotRequest: check.request as Prisma.InputJsonValue }),
+          checkSnapshotTags: check.tags,
+          checkSnapshotType: check.type,
+          testSessionId: testSession.id,
+        }
+      : {}),
+    projectId: check.project.id,
+    runSource: "MANUAL",
+    status: "QUEUED",
+  };
+  const run = testSession
+    ? await prisma.$transaction(async (tx) => {
+        await tx.testSession.update({
+          data: {
+            status: "RUNNING",
+          },
+          where: {
+            id: testSession.id,
+          },
+        });
+
+        return tx.checkRun.create({
+          data: runData,
+          select: {
+            id: true,
+          },
+        });
+      })
+    : await prisma.checkRun.create({
+        data: runData,
+        select: {
+          id: true,
+        },
+      });
   const env = await getRunEnvironment(check.project.slug);
   const queue = createCheckQueue();
 
@@ -155,6 +230,7 @@ export async function POST(request: Request, context: RouteContext) {
         rootDir,
         runId: run.id,
         runSource: "MANUAL",
+        ...(testSession ? { testSessionId: testSession.id } : {}),
         type: toCheckType(check.type),
       },
       {
@@ -174,6 +250,17 @@ export async function POST(request: Request, context: RouteContext) {
         id: run.id,
       },
     });
+
+    if (testSession) {
+      await prisma.testSession.update({
+        data: {
+          status: "FAILED",
+        },
+        where: {
+          id: testSession.id,
+        },
+      });
+    }
 
     return NextResponse.json(
       {
