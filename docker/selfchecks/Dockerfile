@@ -1,9 +1,10 @@
-FROM mcr.microsoft.com/playwright:v1.49.0-noble AS app
+FROM mcr.microsoft.com/playwright:v1.58.2-noble AS app
+
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 WORKDIR /app
 
 RUN corepack enable
-RUN npx -y playwright@1.48.1 install chromium
 
 COPY . .
 

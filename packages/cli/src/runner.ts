@@ -960,6 +960,7 @@ async function runBrowserCheck(
   }
 
   await writeBrowserPerformanceCollector(artifactPaths.performanceCollectorPath);
+  const managedPlaywrightBrowsersPath = process.env.PLAYWRIGHT_BROWSERS_PATH?.trim();
   const logs = await runProcess({
     args: [
       "playwright",
@@ -977,6 +978,9 @@ async function runBrowserCheck(
     command: "npx",
     env: options.env,
     processEnv: {
+      ...(managedPlaywrightBrowsersPath
+        ? { PLAYWRIGHT_BROWSERS_PATH: managedPlaywrightBrowsersPath }
+        : {}),
       PLAYWRIGHT_BLOB_OUTPUT_DIR: artifactPaths.blobReportDir,
       PLAYWRIGHT_HTML_OUTPUT_DIR: artifactPaths.htmlReportDir,
       SELFCHECKS_BROWSER_PERFORMANCE_DIR: artifactPaths.performanceDir,

@@ -143,6 +143,7 @@ describe("runCheckById", () => {
     const runId = "run_1";
     const artifactsRootDir = path.join(rootDir, "runtime-artifacts");
     vi.stubEnv("SELFCHECKS_ARTIFACTS_DIR", artifactsRootDir);
+    vi.stubEnv("PLAYWRIGHT_BROWSERS_PATH", "/ms-playwright");
 
     const isolatedOutputDir = path.join(artifactsRootDir, runId, "test-results");
     const isolatedTracePath = path.join(
@@ -247,7 +248,10 @@ describe("runCheckById", () => {
     await expect(
       runCheckById({
         checkId: "check_1",
-        env: [{ name: "ENVIRONMENT_URL", value: "https://example.test" }],
+        env: [
+          { name: "ENVIRONMENT_URL", value: "https://example.test" },
+          { name: "PLAYWRIGHT_BROWSERS_PATH", value: "0" },
+        ],
         projectSlug: "default",
         record: true,
         reporter: "list",
@@ -279,6 +283,7 @@ describe("runCheckById", () => {
         cwd: rootDir,
         env: expect.objectContaining({
           ENVIRONMENT_URL: "https://example.test",
+          PLAYWRIGHT_BROWSERS_PATH: "/ms-playwright",
           PLAYWRIGHT_BLOB_OUTPUT_DIR: path.join(artifactsRootDir, runId, "blob-report"),
           PLAYWRIGHT_HTML_OUTPUT_DIR: path.join(
             artifactsRootDir,
