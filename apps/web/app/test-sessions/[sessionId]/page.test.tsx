@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -39,6 +40,7 @@ const sessionDetailFixture: TestSessionDetailData = {
         duration: "1.2 s",
         groupName: "App",
         latestRunHref: "/checks/check_1/runs/run_1",
+        latestRunOccurredAt: "Jul 05 14:20",
         runCount: 2,
         runState: "failed",
         status: "failing",
@@ -74,6 +76,7 @@ describe("TestSessionPage", () => {
   });
 
   it("renders a test session with recorded checks", async () => {
+    const user = userEvent.setup();
     mocks.getTestSessionData.mockResolvedValue(sessionDetailFixture);
     mocks.getDashboardSettingsData.mockResolvedValue({
       basic: {
@@ -103,6 +106,9 @@ describe("TestSessionPage", () => {
     expect(screen.getByText("Commit")).toBeTruthy();
     expect(screen.getByText("c05713df")).toBeTruthy();
     expect(
+      screen.getByRole("link", { name: /Homepage smoke/ }).getAttribute("href"),
+    ).toBe("/checks/check_1/runs/run_1");
+    expect(
       screen
         .getByRole("link", {
           name: "https://gitlab.sndsy.ru/sendsay-ru/frontend/account/-/pipelines/6569",
@@ -116,16 +122,13 @@ describe("TestSessionPage", () => {
         })
         .getAttribute("href"),
     ).toBe("https://gitlab.sndsy.ru/sendsay-ru/frontend/account/-/jobs/123");
-    expect(
-      screen
-        .getByRole("link", { name: "Open test Homepage smoke" })
-        .getAttribute("href"),
-    ).toBe("/test-sessions/session_1/checks/check_1");
-    expect(
-      screen
-        .getByRole("link", { name: "Open latest run for Homepage smoke" })
-        .getAttribute("href"),
-    ).toBe("/checks/check_1/runs/run_1");
+    await user.click(screen.getByRole("button", { name: "Homepage smoke actions" }));
+    expect(screen.getByRole("link", { name: "Open" }).getAttribute("href")).toBe(
+      "/checks/check_1/runs/run_1",
+    );
+    expect(screen.getByRole("button", { name: "Run now" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "AI analysis" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Copy name" })).toBeTruthy();
   });
 
   it("delegates to notFound when the session is missing", async () => {

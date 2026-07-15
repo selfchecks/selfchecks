@@ -79,26 +79,40 @@ function toCheckType(type: string): CheckType {
   return type.toLowerCase() as CheckType;
 }
 
-export async function POST(_request: Request, context: RouteContext) {
+export async function POST(request: Request, context: RouteContext) {
   const { checkId } = await context.params;
-  const check = await prisma.check.findUnique({
-    include: {
-      deployment: {
-        select: {
-          source: true,
-        },
-      },
-      project: {
-        select: {
-          id: true,
-          slug: true,
-        },
+  const include = {
+    deployment: {
+      select: {
+        source: true,
       },
     },
+    project: {
+      select: {
+        id: true,
+        slug: true,
+      },
+    },
+  } as const;
+  let check = await prisma.check.findUnique({
+    include,
     where: {
       id: checkId,
     },
   });
+  const projectSlug = new URL(request.url).searchParams.get("project")?.trim();
+
+  if (!check && projectSlug) {
+    check = await prisma.check.findFirst({
+      include,
+      where: {
+        key: checkId,
+        project: {
+          slug: projectSlug,
+        },
+      },
+    });
+  }
 
   if (!check || !check.enabled) {
     return NextResponse.json({ error: "Check was not found." }, { status: 404 });

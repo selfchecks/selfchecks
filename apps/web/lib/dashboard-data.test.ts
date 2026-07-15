@@ -47,6 +47,7 @@ import {
   getDashboardData,
   getJournalData,
   getRunDetailData,
+  getTestSessionData,
   getTestSessionCheckData,
   getTestSessionsData,
 } from "./dashboard-data";
@@ -1394,6 +1395,68 @@ describe("dashboard data", () => {
       runHref: "/checks/check_1/runs/run_1",
       schedule: "15 min",
       status: "passing",
+    });
+  });
+
+  it("includes the latest failed run AI analysis in test session rows", async () => {
+    mocks.testSessionFindFirst.mockResolvedValue({
+      commitSha: "c05713df",
+      createdAt: new Date("2026-07-05T11:20:00.000Z"),
+      id: "session_1",
+      jobUrl: null,
+      name: "Release v1.2.3",
+      pipelineUrl: null,
+      project: {
+        slug: "account",
+      },
+      ref: "release/1.2.3",
+      repository: "developers/frontend/account",
+      runs: [
+        {
+          artifacts: [],
+          check: null,
+          checkId: null,
+          checkSnapshotEntrypoint: "signin.spec.ts",
+          checkSnapshotGroupName: "Browser",
+          checkSnapshotKey: "signin",
+          checkSnapshotName: "Sign in",
+          checkSnapshotProjectSlug: "account",
+          checkSnapshotRequest: null,
+          checkSnapshotTags: ["app"],
+          checkSnapshotType: "BROWSER",
+          createdAt: new Date("2026-07-05T11:20:00.000Z"),
+          durationMs: 1200,
+          id: "run_1",
+          logsPath: null,
+          result: {
+            aiAnalysis: {
+              content: "The sign-in request returned 500.",
+              model: "gpt-test",
+              responseLanguage: "English",
+              status: "completed",
+            },
+          },
+          status: "FAILED",
+        },
+      ],
+      source: null,
+      status: "FAILED",
+      targetUrl: "https://example.test",
+    });
+
+    const data = await getTestSessionData("session_1");
+
+    expect(data?.session.checks[0]).toMatchObject({
+      aiAnalysis: {
+        content: "The sign-in request returned 500.",
+        model: "gpt-test",
+        responseLanguage: "English",
+        status: "completed",
+      },
+      checkKey: "signin",
+      checkName: "Sign in",
+      latestRunOccurredAt: expect.any(String),
+      runState: "failed",
     });
   });
 

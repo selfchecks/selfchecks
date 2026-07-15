@@ -9,6 +9,7 @@ import { getDashboardSettingsData } from "@/lib/settings-data";
 import { formatTestSessionSource } from "@/lib/test-session-source";
 
 import { RunStateBadge, SummaryPills } from "../test-session-components";
+import { SessionCheckActions } from "./session-check-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -137,14 +138,20 @@ export default async function TestSessionPage({ params }: TestSessionPageProps) 
             <SummaryPills summary={session.summary} />
           </section>
 
-          <SessionChecksTable checks={session.checks} />
+          <SessionChecksTable checks={session.checks} projectSlug={data.projectSlug} />
         </section>
       </div>
     </main>
   );
 }
 
-function SessionChecksTable({ checks }: { checks: TestSessionCheckRow[] }) {
+function SessionChecksTable({
+  checks,
+  projectSlug,
+}: {
+  checks: TestSessionCheckRow[];
+  projectSlug: string;
+}) {
   return (
     <section className="overflow-hidden rounded-md border border-slate-800 bg-[#111821]">
       <div className="overflow-x-auto">
@@ -162,7 +169,11 @@ function SessionChecksTable({ checks }: { checks: TestSessionCheckRow[] }) {
           <tbody>
             {checks.length > 0 ? (
               checks.map((check) => (
-                <SessionCheckTableRow check={check} key={check.checkId} />
+                <SessionCheckTableRow
+                  check={check}
+                  key={check.checkId}
+                  projectSlug={projectSlug}
+                />
               ))
             ) : (
               <tr>
@@ -178,13 +189,19 @@ function SessionChecksTable({ checks }: { checks: TestSessionCheckRow[] }) {
   );
 }
 
-function SessionCheckTableRow({ check }: { check: TestSessionCheckRow }) {
+function SessionCheckTableRow({
+  check,
+  projectSlug,
+}: {
+  check: TestSessionCheckRow;
+  projectSlug: string;
+}) {
   return (
     <tr className="border-t border-slate-800 align-top hover:bg-slate-900/40">
       <td className="px-4 py-3">
         <Link
           className="inline-flex max-w-72 flex-col text-blue-300 hover:text-blue-200"
-          href={check.checkHref}
+          href={check.latestRunHref}
         >
           <span className="truncate font-medium">{check.checkName}</span>
           <span className="mt-1 truncate text-xs text-slate-500">
@@ -203,23 +220,7 @@ function SessionCheckTableRow({ check }: { check: TestSessionCheckRow }) {
       <td className="px-4 py-3 text-slate-300">{check.runCount}</td>
       <td className="whitespace-nowrap px-4 py-3 text-slate-300">{check.duration}</td>
       <td className="px-4 py-3">
-        <div className="flex items-center gap-2">
-          <Link
-            aria-label={`Open test ${check.checkName}`}
-            className="inline-flex h-9 items-center gap-2 rounded-md border border-slate-700 px-3 text-xs font-semibold text-slate-300 hover:bg-slate-800 hover:text-slate-100"
-            href={check.checkHref}
-          >
-            Test
-          </Link>
-          <Link
-            aria-label={`Open latest run for ${check.checkName}`}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md text-slate-400 hover:bg-slate-800 hover:text-slate-100"
-            href={check.latestRunHref}
-            title="Open latest run"
-          >
-            <ExternalLink className="h-4 w-4" />
-          </Link>
-        </div>
+        <SessionCheckActions check={check} projectSlug={projectSlug} />
       </td>
     </tr>
   );

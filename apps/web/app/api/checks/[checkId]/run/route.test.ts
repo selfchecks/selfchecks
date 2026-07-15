@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   queueAdd: vi.fn(),
   queueClose: vi.fn(),
   queueConstructor: vi.fn(),
+  checkFindFirst: vi.fn(),
   checkFindUnique: vi.fn(),
   checkRunCreate: vi.fn(),
   checkRunUpdate: vi.fn(),
@@ -20,6 +21,7 @@ vi.mock("bullmq", () => ({
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     check: {
+      findFirst: mocks.checkFindFirst,
       findUnique: mocks.checkFindUnique,
     },
     checkRun: {
@@ -45,8 +47,8 @@ function createContext(checkId = "check_1") {
   };
 }
 
-function createRequest() {
-  return new Request("http://localhost/api/checks/check_1/run", {
+function createRequest(url = "http://localhost/api/checks/check_1/run") {
+  return new Request(url, {
     method: "POST",
   });
 }
@@ -149,6 +151,53 @@ describe("run check route", () => {
     });
     expect(response.status).toBe(404);
     expect(mocks.queueAdd).not.toHaveBeenCalled();
+  });
+
+  it("resolves a session check by project slug and check key", async () => {
+    mocks.checkFindUnique.mockResolvedValue(null);
+    mocks.checkFindFirst.mockResolvedValue({
+      deployment: {
+        source: "/repo/config/checkly",
+      },
+      enabled: true,
+      id: "check_1",
+      key: "issue.get",
+      project: {
+        id: "project_1",
+        slug: "account",
+      },
+      type: "API",
+    });
+    mocks.checkRunCreate.mockResolvedValue({
+      id: "run_1",
+    });
+
+    const response = await POST(
+      createRequest("http://localhost/api/checks/issue.get/run?project=account"),
+      createContext("issue.get"),
+    );
+
+    expect(response.status).toBe(202);
+    expect(mocks.checkFindFirst).toHaveBeenCalledWith({
+      include: expect.any(Object),
+      where: {
+        key: "issue.get",
+        project: {
+          slug: "account",
+        },
+      },
+    });
+    expect(mocks.checkRunCreate).toHaveBeenCalledWith({
+      data: {
+        checkId: "check_1",
+        projectId: "project_1",
+        runSource: "MANUAL",
+        status: "QUEUED",
+      },
+      select: {
+        id: true,
+      },
+    });
   });
 
   it("rejects checks without a known source root", async () => {

@@ -5,6 +5,7 @@ import type { Prisma } from "@prisma/client";
 import { summarizeTerminalRunStatuses } from "@selfchecks/core";
 
 import type {
+  DashboardAiAnalysis,
   DashboardCheckRow,
   DashboardFirewatch,
   DashboardFirewatchRow,
@@ -112,6 +113,7 @@ export type TestSessionsDataOptions = {
 };
 
 export type TestSessionCheckRow = {
+  aiAnalysis?: DashboardAiAnalysis;
   checkHref: string;
   checkId: string;
   checkKey: string;
@@ -120,6 +122,7 @@ export type TestSessionCheckRow = {
   duration: string;
   groupName: string;
   latestRunHref: string;
+  latestRunOccurredAt: string;
   runCount: number;
   runState: DashboardRunState;
   status: DashboardStatus;
@@ -988,7 +991,7 @@ export async function getTestSessionData(
         (runs[0] ? getRunCheckSnapshot(runs[0]).projectSlug : "default"),
       session: {
         ...mappedSession,
-        checks: mapTestSessionChecks(runs, session.id),
+        checks: mapTestSessionChecks(runs, session.id, timeZone),
       },
     };
   } catch (error) {
@@ -1490,6 +1493,7 @@ function resolveTestSessionStatus(
 function mapTestSessionChecks(
   runs: TestSessionRunWithCheck[],
   sessionId: string,
+  timeZone: string,
 ): TestSessionCheckRow[] {
   const runsByCheck = new Map<string, TestSessionRunWithCheck[]>();
 
@@ -1505,6 +1509,7 @@ function mapTestSessionChecks(
       const check = getRunCheckSnapshot(latestRun);
 
       return {
+        aiAnalysis: formatAiAnalysis(latestRun.result),
         checkHref: `/test-sessions/${encodeURIComponent(
           sessionId,
         )}/checks/${encodeURIComponent(check.id)}`,
@@ -1515,6 +1520,7 @@ function mapTestSessionChecks(
         duration: formatDuration(latestRun.durationMs ?? undefined),
         groupName: check.groupName,
         latestRunHref: buildRunHref(check.id, latestRun.id),
+        latestRunOccurredAt: formatBarTimestamp(latestRun, timeZone),
         runCount: checkRuns.length,
         runState: mapRunState(latestRun.status),
         status: mapRunStatus(latestRun.status),
