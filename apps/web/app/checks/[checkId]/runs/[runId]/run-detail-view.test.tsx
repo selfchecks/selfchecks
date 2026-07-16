@@ -546,9 +546,32 @@ describe("RunDetailView", () => {
     const actualImage = screen.getByAltText(
       "Actual screenshot for home page",
     ) as HTMLImageElement;
+    const expectedImage = screen.getByAltText(
+      "Expected screenshot for home page",
+    ) as HTMLImageElement;
+    const actualLayer = actualImage.parentElement as HTMLDivElement;
 
-    expect(actualImage.style.clipPath).toBe("inset(0 50% 0 0)");
+    expect(actualLayer.style.clipPath).toBe("inset(0 50% 0 0)");
     fireEvent.change(slider, { target: { value: "75" } });
-    expect(actualImage.style.clipPath).toBe("inset(0 25% 0 0)");
+    expect(actualLayer.style.clipPath).toBe("inset(0 25% 0 0)");
+
+    Object.defineProperties(expectedImage, {
+      naturalHeight: { value: 900 },
+      naturalWidth: { value: 1440 },
+    });
+    Object.defineProperties(actualImage, {
+      naturalHeight: { value: 800 },
+      naturalWidth: { value: 1280 },
+    });
+    fireEvent.load(expectedImage);
+    fireEvent.load(actualImage);
+
+    expect(expectedImage.style.height).toBe("100%");
+    expect(expectedImage.style.width).toBe("100%");
+    expect(actualImage.style.height).toBe("88.88888888888889%");
+    expect(actualImage.style.width).toBe("88.88888888888889%");
+    expect(screen.getByTestId("screenshot-dimension-warning").textContent).toContain(
+      "expected 1440×900, actual 1280×800",
+    );
   });
 });

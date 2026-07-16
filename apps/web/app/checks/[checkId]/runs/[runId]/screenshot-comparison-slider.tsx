@@ -7,6 +7,11 @@ import { useId, useState } from "react";
 
 import type { DashboardRunArtifact } from "@/lib/dashboard-types";
 
+type ScreenshotDimensions = {
+  height: number;
+  width: number;
+};
+
 export type ScreenshotComparison = {
   actual: DashboardRunArtifact;
   diff?: DashboardRunArtifact;
@@ -40,7 +45,21 @@ function ScreenshotComparisonSlider({
 }) {
   const sliderId = useId();
   const [position, setPosition] = useState(50);
+  const [actualDimensions, setActualDimensions] = useState<ScreenshotDimensions>();
+  const [expectedDimensions, setExpectedDimensions] = useState<ScreenshotDimensions>();
   const actualClipPath = `inset(0 ${100 - position}% 0 0)`;
+  const canvasDimensions =
+    actualDimensions && expectedDimensions
+      ? {
+          height: Math.max(actualDimensions.height, expectedDimensions.height),
+          width: Math.max(actualDimensions.width, expectedDimensions.width),
+        }
+      : undefined;
+  const dimensionsDiffer =
+    actualDimensions &&
+    expectedDimensions &&
+    (actualDimensions.height !== expectedDimensions.height ||
+      actualDimensions.width !== expectedDimensions.width);
 
   return (
     <article className="grid gap-3 py-4 first:pt-0 last:pb-0">
@@ -73,20 +92,46 @@ function ScreenshotComparisonSlider({
       </div>
 
       <div>
-        <div className="relative overflow-hidden rounded border border-slate-800 bg-black">
+        <div
+          className="relative overflow-hidden rounded border border-slate-800 bg-black"
+          style={
+            canvasDimensions
+              ? {
+                  aspectRatio: `${canvasDimensions.width} / ${canvasDimensions.height}`,
+                }
+              : undefined
+          }
+        >
           <img
             alt={`Expected screenshot for ${comparison.label}`}
-            className="block w-full select-none"
+            className={
+              canvasDimensions
+                ? "absolute left-0 top-0 select-none"
+                : "block w-full select-none"
+            }
             draggable={false}
+            onLoad={(event) =>
+              setExpectedDimensions(getImageDimensions(event.currentTarget))
+            }
             src={comparison.expected.viewUrl}
+            style={getImagePosition(expectedDimensions, canvasDimensions)}
           />
-          <img
-            alt={`Actual screenshot for ${comparison.label}`}
-            className="absolute inset-0 h-full w-full select-none object-contain"
-            draggable={false}
-            src={comparison.actual.viewUrl}
-            style={{ clipPath: actualClipPath }}
-          />
+          <div className="absolute inset-0" style={{ clipPath: actualClipPath }}>
+            <img
+              alt={`Actual screenshot for ${comparison.label}`}
+              className={
+                canvasDimensions
+                  ? "absolute left-0 top-0 select-none"
+                  : "h-full w-full select-none object-contain"
+              }
+              draggable={false}
+              onLoad={(event) =>
+                setActualDimensions(getImageDimensions(event.currentTarget))
+              }
+              src={comparison.actual.viewUrl}
+              style={getImagePosition(actualDimensions, canvasDimensions)}
+            />
+          </div>
           <div
             aria-hidden="true"
             className="pointer-events-none absolute inset-y-0 flex items-center"
@@ -116,11 +161,40 @@ function ScreenshotComparisonSlider({
           type="range"
           value={position}
         />
-        <div className="mt-1 flex justify-between text-xs text-slate-500">
-          <span>Expected</span>
-          <span>Actual</span>
-        </div>
+        {dimensionsDiffer ? (
+          <p
+            className="mt-2 text-xs text-amber-400"
+            data-testid="screenshot-dimension-warning"
+            role="status"
+          >
+            Screenshot dimensions differ: expected {expectedDimensions.width}×
+            {expectedDimensions.height}, actual {actualDimensions.width}×
+            {actualDimensions.height}. Images are aligned at the top-left corner without
+            stretching.
+          </p>
+        ) : null}
       </div>
     </article>
   );
+}
+
+function getImageDimensions(image: HTMLImageElement): ScreenshotDimensions {
+  return {
+    height: image.naturalHeight,
+    width: image.naturalWidth,
+  };
+}
+
+function getImagePosition(
+  image: ScreenshotDimensions | undefined,
+  canvas: ScreenshotDimensions | undefined,
+) {
+  if (!image || !canvas) {
+    return undefined;
+  }
+
+  return {
+    height: `${(image.height / canvas.height) * 100}%`,
+    width: `${(image.width / canvas.width) * 100}%`,
+  };
 }
