@@ -259,7 +259,15 @@ describe("normalizePerformanceSettings", () => {
     expect(normalizePerformanceSettingValue("passedArtifactRetentionDays", 1)).toBe(2);
     expect(normalizePerformanceSettingValue("historyRetentionDays", 999)).toBe(365);
     expect(normalizePerformanceSettingValue("queuedRunTimeoutMinutes", 5)).toBe(10);
-    expect(normalizePerformanceSettingValue("runningRunTimeoutMinutes", 500)).toBe(240);
+    expect(normalizePerformanceSettingValue("queuedRunTimeoutMinutes", 2_000)).toBe(
+      1_440,
+    );
+    expect(normalizePerformanceSettingValue("runningRunTimeoutMinutes", 2_000)).toBe(
+      1_440,
+    );
     expect(normalizePerformanceSettingValue("testSessionTimeoutMinutes", 5)).toBe(10);
+    expect(normalizePerformanceSettingValue("testSessionTimeoutMinutes", 2_000)).toBe(
+      1_440,
+    );
   });
 });

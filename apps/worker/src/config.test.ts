@@ -71,8 +71,8 @@ describe("getWorkerRuntimeConfig", () => {
     expect(
       getWorkerRuntimeConfig({
         REDIS_PORT: "not-a-port",
-        SELFCHECKS_QUEUED_RUN_TIMEOUT_MINUTES: "121",
-        SELFCHECKS_RUNNING_RUN_TIMEOUT_MINUTES: "241",
+        SELFCHECKS_QUEUED_RUN_TIMEOUT_MINUTES: "1441",
+        SELFCHECKS_RUNNING_RUN_TIMEOUT_MINUTES: "1441",
         SELFCHECKS_SCHEDULER_INTERVAL_MS: "not-an-interval",
         SELFCHECKS_WORKER_CONCURRENCY: "-1",
       }),

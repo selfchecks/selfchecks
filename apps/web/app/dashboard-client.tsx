@@ -2390,7 +2390,6 @@ function SettingsScreen({
 
                 <div className="flex justify-between text-xs text-slate-600">
                   <span>{field.min}</span>
-                  <span>Default {field.default}</span>
                   <span>{field.max}</span>
                 </div>
               </div>

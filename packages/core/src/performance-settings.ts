@@ -1,3 +1,5 @@
+const MAX_TIMEOUT_MINUTES = 24 * 60;
+
 export const performanceSettingsLimits = {
   failedArtifactRetentionDays: {
     default: 14,
@@ -16,17 +18,17 @@ export const performanceSettingsLimits = {
   },
   queuedRunTimeoutMinutes: {
     default: 30,
-    max: 120,
+    max: MAX_TIMEOUT_MINUTES,
     min: 10,
   },
   runningRunTimeoutMinutes: {
     default: 120,
-    max: 240,
+    max: MAX_TIMEOUT_MINUTES,
     min: 10,
   },
   testSessionTimeoutMinutes: {
     default: 30,
-    max: 60,
+    max: MAX_TIMEOUT_MINUTES,
     min: 10,
   },
   testSessionWorkspaceRetentionDays: {

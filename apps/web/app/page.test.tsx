@@ -1907,6 +1907,16 @@ describe("DashboardPage", () => {
       (screen.getByLabelText("Maximum test session duration") as HTMLInputElement)
         .value,
     ).toBe("30");
+    for (const timeoutLabel of [
+      "Queued run timeout",
+      "Running run timeout",
+      "Maximum test session duration",
+    ]) {
+      expect((screen.getByLabelText(timeoutLabel) as HTMLInputElement).max).toBe(
+        "1440",
+      );
+    }
+    expect(screen.queryByText(/^Default \d+$/)).toBeNull();
     expect(screen.getByRole("heading", { name: "AI / LLM" })).toBeTruthy();
     expect((screen.getByLabelText("AI_API_ENDPOINT") as HTMLSelectElement).value).toBe(
       "https://openrouter.ai/api/v1",

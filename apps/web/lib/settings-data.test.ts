@@ -352,11 +352,11 @@ describe("settings data", () => {
         projectSlug: "default",
         queuedRunTimeoutMinutes: 30,
         runningRunTimeoutMinutes: 120,
-        testSessionTimeoutMinutes: 61,
+        testSessionTimeoutMinutes: 1441,
         testSessionWorkspaceRetentionDays: 14,
         workerConcurrency: 2,
       }),
-    ).rejects.toThrow("Maximum test session duration must be between 10 and 60.");
+    ).rejects.toThrow("Maximum test session duration must be between 10 and 1440.");
 
     await expect(
       updatePerformanceSettings({
@@ -364,13 +364,13 @@ describe("settings data", () => {
         historyRetentionDays: 180,
         passedArtifactRetentionDays: 14,
         projectSlug: "default",
-        queuedRunTimeoutMinutes: 121,
+        queuedRunTimeoutMinutes: 1441,
         runningRunTimeoutMinutes: 120,
         testSessionTimeoutMinutes: 30,
         testSessionWorkspaceRetentionDays: 14,
         workerConcurrency: 2,
       }),
-    ).rejects.toThrow("Queued run timeout must be between 10 and 120.");
+    ).rejects.toThrow("Queued run timeout must be between 10 and 1440.");
 
     await expect(
       updatePerformanceSettings({
@@ -379,12 +379,12 @@ describe("settings data", () => {
         passedArtifactRetentionDays: 14,
         projectSlug: "default",
         queuedRunTimeoutMinutes: 30,
-        runningRunTimeoutMinutes: 241,
+        runningRunTimeoutMinutes: 1441,
         testSessionTimeoutMinutes: 30,
         testSessionWorkspaceRetentionDays: 14,
         workerConcurrency: 2,
       }),
-    ).rejects.toThrow("Running run timeout must be between 10 and 240.");
+    ).rejects.toThrow("Running run timeout must be between 10 and 1440.");
 
     expect(mocks.performanceSettingsUpsert).not.toHaveBeenCalled();
   });
