@@ -5,7 +5,7 @@ import { config, isTraceViewerArtifactRequest } from "./middleware";
 describe("middleware config", () => {
   it("protects application routes and leaves auth/static routes public", () => {
     expect(config.matcher).toEqual([
-      "/((?!api/auth|api/setup|api/cli|setup|login|getting-started|trace-viewer|_next/static|_next/image|favicon.ico).*)",
+      "/((?!api/auth|api/setup|api/cli|setup|login|trace-viewer|_next/static|_next/image|favicon.ico).*)",
     ]);
   });
 

@@ -27,9 +27,12 @@ describe("AppSidebar", () => {
 
     expect(screen.getByRole("button", { name: /SelfChecks/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Home" })).toBeTruthy();
-    expect(
-      screen.getByRole("link", { name: "Getting started" }).getAttribute("href"),
-    ).toBe("/getting-started");
+    const documentationLink = screen.getByRole("link", { name: "Documentation" });
+    expect(documentationLink.getAttribute("href")).toBe(
+      "https://selfchecks.github.io/getting-started.html",
+    );
+    expect(documentationLink.getAttribute("target")).toBe("_blank");
+    expect(documentationLink.getAttribute("rel")).toBe("noreferrer");
     expect(screen.getByRole("link", { name: "Queue" }).getAttribute("href")).toBe(
       "/queue",
     );

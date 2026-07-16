@@ -10,6 +10,8 @@ The goal is not to clone the whole Checkly product. The goal is to keep the
 existing repository workflow familiar while replacing the cloud service with a
 small self-hosted service that runs on our own server.
 
+Public documentation: [Getting started](https://selfchecks.github.io/getting-started.html).
+
 ## Product Idea
 
 The first version should provide:

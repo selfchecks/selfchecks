@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   BookOpenText,
   ChartNoAxesColumnIncreasing,
+  ExternalLink,
   FlaskConical,
   History,
   Home,
@@ -17,7 +18,7 @@ import { ServiceMark } from "@/components/service-mark";
 import { cn } from "@/lib/utils";
 
 export type AppSidebarItem =
-  | "getting-started"
+  | "documentation"
   | "home"
   | "journal"
   | "queue"
@@ -26,6 +27,7 @@ export type AppSidebarItem =
   | "usage";
 
 type SidebarEntry = {
+  external?: boolean;
   href: string;
   icon: LucideIcon;
   id: AppSidebarItem;
@@ -35,10 +37,11 @@ type SidebarEntry = {
 const sidebarItems: SidebarEntry[] = [
   { href: "/", icon: Home, id: "home", label: "Home" },
   {
-    href: "/getting-started",
+    external: true,
+    href: "https://selfchecks.github.io/getting-started.html",
     icon: BookOpenText,
-    id: "getting-started",
-    label: "Getting started",
+    id: "documentation",
+    label: "Documentation",
   },
   { href: "/queue", icon: ListChecks, id: "queue", label: "Queue" },
   { href: "/journal", icon: History, id: "journal", label: "Journal" },
@@ -221,6 +224,22 @@ export function AppSidebar({
                   <Icon className="h-4 w-4 shrink-0" />
                   <span className="min-w-0 flex-1 truncate">{item.label}</span>
                 </button>
+              );
+            }
+
+            if (item.external) {
+              return (
+                <a
+                  className={className}
+                  href={item.href}
+                  key={item.id}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  <Icon className="h-4 w-4 shrink-0" />
+                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                  <ExternalLink className="h-3.5 w-3.5 shrink-0 text-slate-600" />
+                </a>
               );
             }
 
