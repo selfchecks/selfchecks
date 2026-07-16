@@ -6,6 +6,7 @@ import {
   runCheckById,
   runChecks,
   runTestSessionCheck,
+  TestSessionCancelledError,
   TestSessionTimeoutError,
   type CheckRunSource,
   type EnvVar,
@@ -108,6 +109,7 @@ export type TestSessionJobResult = {
 };
 
 const TEST_SESSION_JOB_PRIORITY = 10;
+const TEST_SESSION_CANCELLATION_POLL_MS = 1_000;
 const activeRunStatuses = ["QUEUED", "RUNNING"] as const;
 
 export async function handleCheckJob(
@@ -237,9 +239,26 @@ export async function handleTestSessionJob(
   );
 
   const deadline = await createSessionDeadline(data.projectSlug);
+  const cancellation = monitorTestSessionCancellation(data.sessionId);
 
   try {
-    await installRuntimeDependencies(data.rootDir, data.checks, deadline);
+    await cancellation.ready;
+
+    if (cancellation.signal.aborted) {
+      return { queued: 0, sessionId: data.sessionId };
+    }
+
+    await installRuntimeDependencies(
+      data.rootDir,
+      data.checks,
+      deadline,
+      cancellation.signal,
+    );
+
+    if (cancellation.signal.aborted) {
+      return { queued: 0, sessionId: data.sessionId };
+    }
+
     await queue.addBulk(
       data.checks.map((check) => {
         const existingRunId = data.existingRunIds[check.key];
@@ -275,6 +294,10 @@ export async function handleTestSessionJob(
       sessionId: data.sessionId,
     };
   } catch (error) {
+    if (error instanceof TestSessionCancelledError) {
+      return { queued: 0, sessionId: data.sessionId };
+    }
+
     const errorMessage = error instanceof Error ? error.message : String(error);
     const timedOut = error instanceof TestSessionTimeoutError;
     const status = timedOut ? "TIMED_OUT" : "FAILED";
@@ -282,6 +305,8 @@ export async function handleTestSessionJob(
     await markTestSessionRuns(data.sessionId, errorMessage, status);
 
     throw error;
+  } finally {
+    cancellation.close();
   }
 }
 
@@ -325,7 +350,21 @@ export async function handleTestSessionCheckJob(
     `Running ${data.check.type} check ${data.check.key} for test session ${data.sessionId}`,
   );
 
+  const cancellation = monitorTestSessionCancellation(data.sessionId);
+
   try {
+    await cancellation.ready;
+
+    if (cancellation.signal.aborted) {
+      return {
+        checkKey: existingRun.checkSnapshotKey ?? data.check.key,
+        checkName: existingRun.checkSnapshotName ?? data.check.name,
+        durationMs: existingRun.durationMs ?? 0,
+        runId: existingRun.id,
+        status: "cancelled",
+      };
+    }
+
     return await runTestSessionCheck({
       check: data.check,
       env: data.env,
@@ -335,9 +374,20 @@ export async function handleTestSessionCheckJob(
       reporter: data.reporter,
       retries: data.retries,
       rootDir: data.rootDir,
+      signal: cancellation.signal,
       testSessionDeadline: data.testSessionDeadline,
     });
   } catch (error) {
+    if (error instanceof TestSessionCancelledError) {
+      return {
+        checkKey: existingRun.checkSnapshotKey ?? data.check.key,
+        checkName: existingRun.checkSnapshotName ?? data.check.name,
+        durationMs: existingRun.durationMs ?? 0,
+        runId: existingRun.id,
+        status: "cancelled",
+      };
+    }
+
     const errorMessage = error instanceof Error ? error.message : String(error);
 
     if (error instanceof TestSessionTimeoutError) {
@@ -360,6 +410,7 @@ export async function handleTestSessionCheckJob(
 
     throw error;
   } finally {
+    cancellation.close();
     await finalizeTestSession(data.sessionId);
   }
 }
@@ -499,16 +550,24 @@ async function installRuntimeDependencies(
   rootDir: string,
   checks: CheckDefinition[],
   deadline: TestSessionDeadline,
+  signal?: AbortSignal,
 ) {
   await runCommand(
     "npm",
     ["install", "--omit=dev", "--no-audit", "--no-fund"],
     rootDir,
     deadline,
+    signal,
   );
 
   if (checks.some((check) => check.type === "browser")) {
-    await runCommand("npx", ["playwright", "install", "chromium"], rootDir, deadline);
+    await runCommand(
+      "npx",
+      ["playwright", "install", "chromium"],
+      rootDir,
+      deadline,
+      signal,
+    );
   }
 }
 
@@ -522,6 +581,7 @@ async function runCommand(
   args: string[],
   rootDir: string,
   deadline: TestSessionDeadline,
+  signal?: AbortSignal,
 ) {
   const remainingMs = getRemainingSessionTimeMs(deadline);
 
@@ -534,6 +594,7 @@ async function runCommand(
     });
     let killTimer: NodeJS.Timeout | undefined;
     let settled = false;
+    let cancelled = false;
     let timedOut = false;
     const timeoutTimer = setTimeout(() => {
       timedOut = true;
@@ -552,6 +613,7 @@ async function runCommand(
       }
 
       settled = true;
+      signal?.removeEventListener("abort", handleCancellation);
       clearTimeout(timeoutTimer);
 
       if (killTimer) {
@@ -565,8 +627,31 @@ async function runCommand(
       }
     }
 
+    function handleCancellation() {
+      if (settled || cancelled) {
+        return;
+      }
+
+      cancelled = true;
+      clearTimeout(timeoutTimer);
+      signalChildProcess(child, "SIGTERM");
+      killTimer = setTimeout(() => signalChildProcess(child, "SIGKILL"), 5000);
+      killTimer.unref?.();
+    }
+
+    signal?.addEventListener("abort", handleCancellation, { once: true });
+
+    if (signal?.aborted) {
+      handleCancellation();
+    }
+
     child.once("error", (error) => settle(error));
     child.once("close", (exitCode) => {
+      if (cancelled) {
+        settle(new TestSessionCancelledError());
+        return;
+      }
+
       if (timedOut) {
         settle(new TestSessionTimeoutError(deadline.timeoutMs));
         return;
@@ -580,6 +665,52 @@ async function runCommand(
       settle(new Error(`${command} ${args.join(" ")} failed with status ${exitCode}.`));
     });
   });
+}
+
+function monitorTestSessionCancellation(sessionId: string) {
+  const controller = new AbortController();
+  let checking = false;
+  let closed = false;
+  const check = async () => {
+    if (checking || closed || controller.signal.aborted) {
+      return;
+    }
+
+    checking = true;
+
+    try {
+      const session = await prisma.testSession.findUnique({
+        select: {
+          status: true,
+        },
+        where: {
+          id: sessionId,
+        },
+      });
+
+      if (!session || session.status === "CANCELLED") {
+        controller.abort();
+      }
+    } finally {
+      checking = false;
+    }
+  };
+  const ready = check();
+  const timer = setInterval(() => {
+    void check().catch((error) => {
+      console.error(`Unable to read test session ${sessionId} status:`, error);
+    });
+  }, TEST_SESSION_CANCELLATION_POLL_MS);
+  timer.unref?.();
+
+  return {
+    close: () => {
+      closed = true;
+      clearInterval(timer);
+    },
+    ready,
+    signal: controller.signal,
+  };
 }
 
 function getRemainingSessionTimeMs(deadline: TestSessionDeadline): number {

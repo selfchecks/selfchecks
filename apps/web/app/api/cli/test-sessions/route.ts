@@ -57,6 +57,7 @@ type BundleManifestEntry = {
 
 const MAX_BUNDLE_BYTES = 40 * 1024 * 1024;
 const MAX_BUNDLE_FILES = 10_000;
+const activeStatuses = ["QUEUED", "RUNNING"] as const;
 
 export async function POST(request: Request) {
   if (!(await isCliRequestAuthorized(request))) {
@@ -163,6 +164,9 @@ async function createQueuedSession(
         slug: metadata.projectSlug,
       },
     });
+
+    await cancelSupersededSessions(tx, project.id, metadata);
+
     const session = await tx.testSession.create({
       data: {
         commitSha: metadata.commitSha,
@@ -211,6 +215,70 @@ async function createQueuedSession(
       existingRunIds,
       session,
     };
+  });
+}
+
+async function cancelSupersededSessions(
+  tx: Prisma.TransactionClient,
+  projectId: string,
+  metadata: TestSessionMetadata,
+) {
+  if (!metadata.commitSha || !metadata.ref) {
+    return;
+  }
+
+  const sessions = await tx.testSession.findMany({
+    select: {
+      id: true,
+    },
+    where: {
+      commitSha: {
+        not: metadata.commitSha,
+      },
+      kind: "TEST",
+      projectId,
+      ref: metadata.ref,
+      ...(metadata.repository ? { repository: metadata.repository } : {}),
+      status: {
+        in: [...activeStatuses],
+      },
+    },
+  });
+  const sessionIds = sessions.map((session) => session.id);
+
+  if (sessionIds.length === 0) {
+    return;
+  }
+
+  const finishedAt = new Date();
+
+  await tx.testSession.updateMany({
+    data: {
+      status: "CANCELLED",
+    },
+    where: {
+      id: {
+        in: sessionIds,
+      },
+      status: {
+        in: [...activeStatuses],
+      },
+    },
+  });
+  await tx.checkRun.updateMany({
+    data: {
+      errorMessage: `Superseded by commit ${metadata.commitSha}.`,
+      finishedAt,
+      status: "CANCELLED",
+    },
+    where: {
+      status: {
+        in: [...activeStatuses],
+      },
+      testSessionId: {
+        in: sessionIds,
+      },
+    },
   });
 }
 

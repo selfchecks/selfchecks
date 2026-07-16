@@ -59,6 +59,7 @@ export type RunChecksOptions = {
   rootDir: string;
   runMode?: "monitoring" | "test";
   runSource?: CheckRunSource;
+  signal?: AbortSignal;
   source?: string;
   tagSets: string[][];
   testSessionDeadline?: {
@@ -85,6 +86,13 @@ export class TestSessionTimeoutError extends Error {
   }
 }
 
+export class TestSessionCancelledError extends Error {
+  constructor() {
+    super("Test session was cancelled.");
+    this.name = "TestSessionCancelledError";
+  }
+}
+
 export type RunCheckByIdOptions = {
   checkId: string;
   env: EnvVar[];
@@ -107,6 +115,7 @@ export type RunTestSessionCheckOptions = {
   reporter: string;
   retries?: number;
   rootDir: string;
+  signal?: AbortSignal;
   testSessionDeadline: {
     at: number;
     timeoutMs: number;
@@ -275,11 +284,12 @@ export async function runTestSessionCheck(
     retries: options.retries,
     rootDir: options.rootDir,
     runMode: "test",
+    signal: options.signal,
     tagSets: [],
     testSessionDeadline: options.testSessionDeadline,
   };
 
-  assertTestSessionDeadline(runOptions.testSessionDeadline);
+  assertTestSessionActive(runOptions);
   const [check] = await findRunnableChecks(runOptions);
 
   if (!check) {
@@ -391,6 +401,10 @@ async function resolveRunSession(options: RunChecksOptions): Promise<TestSession
       throw new Error(`Test session ${options.existingTestSessionId} was not found.`);
     }
 
+    if (session.status === "CANCELLED") {
+      throw new TestSessionCancelledError();
+    }
+
     const project = await prisma.project.findUnique({
       select: { id: true },
       where: { slug: options.projectSlug },
@@ -484,7 +498,7 @@ async function runCheck(
   let lastResult: RunCheckResult | undefined;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    assertTestSessionDeadline(options.testSessionDeadline);
+    assertTestSessionActive(options);
     const startedAt = new Date();
     const run = options.record
       ? await upsertStartedRun(check, options, startedAt, session, attemptRunId, {
@@ -513,7 +527,12 @@ async function runCheck(
       retryPlan,
     });
 
-    if (run && result.status !== "passed" && !shouldRetry) {
+    if (
+      run &&
+      result.status !== "cancelled" &&
+      result.status !== "passed" &&
+      !shouldRetry
+    ) {
       const aiAnalysis = await analyzeFailedCheck({
         check,
         options,
@@ -567,7 +586,7 @@ async function runCheck(
       return lastResult;
     }
 
-    await waitForRetry(retryDelayMs, options.testSessionDeadline);
+    await waitForRetry(retryDelayMs, options);
     attemptRunId = queuedRetryRun?.id;
   }
 
@@ -814,7 +833,11 @@ function shouldRetryCheck({
   retryDelayMs: number;
   retryPlan: RetryPlan;
 }): boolean {
-  if (result.status === "passed" || attempt >= maxAttempts) {
+  if (
+    result.status === "cancelled" ||
+    result.status === "passed" ||
+    attempt >= maxAttempts
+  ) {
     return false;
   }
 
@@ -875,21 +898,32 @@ function addRetryMetadata(
 
 async function waitForRetry(
   delayMs: number,
-  deadline?: RunChecksOptions["testSessionDeadline"],
+  options: Pick<RunChecksOptions, "signal" | "testSessionDeadline">,
 ): Promise<void> {
   if (delayMs <= 0) {
     return;
   }
 
-  const remainingMs = getTestSessionRemainingMs(deadline);
+  assertTestSessionActive(options);
+  const remainingMs = getTestSessionRemainingMs(options.testSessionDeadline);
   const waitMs =
     typeof remainingMs === "number" ? Math.min(delayMs, remainingMs) : delayMs;
 
-  await new Promise((resolve) => {
-    setTimeout(resolve, waitMs);
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      options.signal?.removeEventListener("abort", handleAbort);
+      resolve();
+    }, waitMs);
+    const handleAbort = () => {
+      clearTimeout(timer);
+      reject(new TestSessionCancelledError());
+    };
+
+    options.signal?.addEventListener("abort", handleAbort, { once: true });
+    timer.unref?.();
   });
 
-  assertTestSessionDeadline(deadline);
+  assertTestSessionActive(options);
 }
 
 async function executeCheck(
@@ -902,7 +936,10 @@ async function executeCheck(
       ? await runBrowserCheck(check, options, run)
       : await runApiCheck(check, options);
   } catch (error) {
-    if (error instanceof TestSessionTimeoutError) {
+    if (
+      error instanceof TestSessionCancelledError ||
+      error instanceof TestSessionTimeoutError
+    ) {
       throw error;
     }
 
@@ -990,6 +1027,7 @@ async function runBrowserCheck(
       ),
     },
     rootDir: options.rootDir,
+    signal: options.signal,
     timeout: processTimeout,
   });
   const logsPath = run
@@ -1011,8 +1049,9 @@ async function runBrowserCheck(
 
   return {
     artifacts,
-    errorMessage:
-      logs.exitCode === 0
+    errorMessage: logs.cancelled
+      ? "Test session was cancelled."
+      : logs.exitCode === 0
         ? undefined
         : (timeoutErrorMessage ?? logs.output.slice(-4000)),
     logsPath,
@@ -1029,7 +1068,13 @@ async function runBrowserCheck(
       timeoutMs: logs.timeoutMs,
       timeoutSource: logs.timeoutSource,
     },
-    status: logs.exitCode === 0 ? "passed" : logs.timedOut ? "timed_out" : "failed",
+    status: logs.cancelled
+      ? "cancelled"
+      : logs.exitCode === 0
+        ? "passed"
+        : logs.timedOut
+          ? "timed_out"
+          : "failed",
   };
 }
 
@@ -1051,11 +1096,13 @@ async function runApiCheck(
   const env = Object.fromEntries(options.env.map((item) => [item.name, item.value]));
   const url = interpolateEnv(request.url, env);
   const remainingSessionMs = getTestSessionRemainingMs(options.testSessionDeadline);
-  const controller =
-    typeof remainingSessionMs === "number" ? new AbortController() : undefined;
-  const timeoutTimer = controller
-    ? setTimeout(() => controller.abort(), remainingSessionMs)
-    : undefined;
+  const controller = new AbortController();
+  const handleCancellation = () => controller.abort();
+  options.signal?.addEventListener("abort", handleCancellation, { once: true });
+  const timeoutTimer =
+    typeof remainingSessionMs === "number"
+      ? setTimeout(() => controller.abort(), remainingSessionMs)
+      : undefined;
   timeoutTimer?.unref?.();
   let response: Response;
 
@@ -1064,10 +1111,14 @@ async function runApiCheck(
       body: request.body ? interpolateEnv(request.body, env) : undefined,
       headers: request.headers,
       method: request.method,
-      signal: controller?.signal,
+      signal: controller.signal,
     });
   } catch (error) {
-    if (controller?.signal.aborted && options.testSessionDeadline) {
+    if (options.signal?.aborted) {
+      throw new TestSessionCancelledError();
+    }
+
+    if (controller.signal.aborted && options.testSessionDeadline) {
       throw new TestSessionTimeoutError(options.testSessionDeadline.timeoutMs);
     }
 
@@ -1076,6 +1127,8 @@ async function runApiCheck(
     if (timeoutTimer) {
       clearTimeout(timeoutTimer);
     }
+
+    options.signal?.removeEventListener("abort", handleCancellation);
   }
   const responseBody = await response.text();
   const body =
@@ -1107,6 +1160,16 @@ function assertTestSessionDeadline(
   getTestSessionRemainingMs(deadline);
 }
 
+function assertTestSessionActive(
+  options: Pick<RunChecksOptions, "signal" | "testSessionDeadline">,
+): void {
+  if (options.signal?.aborted) {
+    throw new TestSessionCancelledError();
+  }
+
+  assertTestSessionDeadline(options.testSessionDeadline);
+}
+
 function getTestSessionRemainingMs(
   deadline?: RunChecksOptions["testSessionDeadline"],
 ): number | undefined {
@@ -1129,6 +1192,7 @@ async function runProcess({
   env,
   processEnv,
   rootDir,
+  signal,
   timeout,
 }: {
   args: string[];
@@ -1136,11 +1200,13 @@ async function runProcess({
   env: EnvVar[];
   processEnv?: Record<string, string>;
   rootDir: string;
+  signal?: AbortSignal;
   timeout?: {
     ms: number;
     source: string;
   };
 }): Promise<{
+  cancelled: boolean;
   exitCode: number;
   output: string;
   signal?: NodeJS.Signals | null;
@@ -1161,6 +1227,7 @@ async function runProcess({
     });
     const chunks: Buffer[] = [];
     let killTimer: NodeJS.Timeout | undefined;
+    let cancelled = false;
     let resolved = false;
     let timedOut = false;
     let timeoutTimer: NodeJS.Timeout | undefined;
@@ -1181,8 +1248,10 @@ async function runProcess({
       }
 
       resolved = true;
+      signal?.removeEventListener("abort", handleCancellation);
       cleanupTimers();
       resolve({
+        cancelled,
         exitCode: result.exitCode,
         output: Buffer.concat(chunks).toString("utf8"),
         signal: result.signal,
@@ -1191,6 +1260,24 @@ async function runProcess({
         timeoutSource: timeout?.source,
       });
     }
+
+    const handleCancellation = () => {
+      if (resolved || cancelled) {
+        return;
+      }
+
+      cancelled = true;
+      if (timeoutTimer) {
+        clearTimeout(timeoutTimer);
+        timeoutTimer = undefined;
+      }
+      chunks.push(Buffer.from("\nTest session was cancelled.\n"));
+      signalChildProcess(child, "SIGTERM");
+      killTimer = setTimeout(() => {
+        signalChildProcess(child, "SIGKILL");
+      }, BROWSER_RUN_TIMEOUT_KILL_GRACE_MS);
+      killTimer.unref?.();
+    };
 
     if (timeout && timeout.ms > 0) {
       timeoutTimer = setTimeout(() => {
@@ -1211,6 +1298,12 @@ async function runProcess({
       timeoutTimer.unref?.();
     }
 
+    signal?.addEventListener("abort", handleCancellation, { once: true });
+
+    if (signal?.aborted) {
+      handleCancellation();
+    }
+
     child.stdout.on("data", (chunk: Buffer) => chunks.push(chunk));
     child.stderr.on("data", (chunk: Buffer) => chunks.push(chunk));
     child.on("error", (error) => {
@@ -1219,10 +1312,10 @@ async function runProcess({
         exitCode: 1,
       });
     });
-    child.on("close", (exitCode, signal) => {
+    child.on("close", (exitCode, processSignal) => {
       resolveOnce({
         exitCode: exitCode ?? (timedOut ? BROWSER_RUN_TIMEOUT_EXIT_CODE : 1),
-        signal,
+        signal: processSignal,
       });
     });
   });
@@ -1630,9 +1723,15 @@ function interpolateEnv(value: string, env: Record<string, string>): string {
   });
 }
 
-function summarizeStatus(results: RunCheckResult[]): "PASSED" | "FAILED" | "TIMED_OUT" {
+function summarizeStatus(
+  results: RunCheckResult[],
+): "PASSED" | "FAILED" | "TIMED_OUT" | "CANCELLED" {
   if (results.every((result) => result.status === "passed")) {
     return "PASSED";
+  }
+
+  if (results.some((result) => result.status === "cancelled")) {
+    return "CANCELLED";
   }
 
   return results.some((result) => result.status === "timed_out")
@@ -1640,9 +1739,15 @@ function summarizeStatus(results: RunCheckResult[]): "PASSED" | "FAILED" | "TIME
     : "FAILED";
 }
 
-function toPrismaRunStatus(status: CheckRunStatus): "PASSED" | "FAILED" | "TIMED_OUT" {
+function toPrismaRunStatus(
+  status: CheckRunStatus,
+): "PASSED" | "FAILED" | "TIMED_OUT" | "CANCELLED" {
   if (status === "passed") {
     return "PASSED";
+  }
+
+  if (status === "cancelled") {
+    return "CANCELLED";
   }
 
   return status === "timed_out" ? "TIMED_OUT" : "FAILED";

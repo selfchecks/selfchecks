@@ -1,18 +1,26 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  checkRunUpdateMany: vi.fn(),
+  testSessionUpdateMany: vi.fn(),
   testSessionFindUnique: vi.fn(),
+  transaction: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
+    $transaction: mocks.transaction,
+    checkRun: {
+      updateMany: mocks.checkRunUpdateMany,
+    },
     testSession: {
       findUnique: mocks.testSessionFindUnique,
+      updateMany: mocks.testSessionUpdateMany,
     },
   },
 }));
 
-import { GET } from "./route";
+import { DELETE, GET } from "./route";
 
 function createRequest(token = "api-token") {
   return new Request("http://localhost/api/cli/test-sessions/session_1", {
@@ -72,6 +80,43 @@ describe("CLI test session status route", () => {
         sessionId: "session_1",
         skipped: 0,
         total: 1,
+      },
+    });
+  });
+
+  it("cancels an active test session and its unfinished runs", async () => {
+    vi.stubEnv("SELFCHECKS_API_TOKEN", "api-token");
+    mocks.testSessionFindUnique.mockResolvedValue({
+      id: "session_1",
+      kind: "TEST",
+    });
+
+    const response = await DELETE(createRequest(), {
+      params: Promise.resolve({ sessionId: "session_1" }),
+    });
+
+    await expect(response.json()).resolves.toEqual({
+      sessionId: "session_1",
+      status: "cancelled",
+    });
+    expect(mocks.transaction).toHaveBeenCalledWith([undefined, undefined]);
+    expect(mocks.testSessionUpdateMany).toHaveBeenCalledWith({
+      data: { status: "CANCELLED" },
+      where: {
+        id: "session_1",
+        kind: "TEST",
+        status: { in: ["QUEUED", "RUNNING"] },
+      },
+    });
+    expect(mocks.checkRunUpdateMany).toHaveBeenCalledWith({
+      data: {
+        errorMessage: "Test session was cancelled by the client.",
+        finishedAt: expect.any(Date),
+        status: "CANCELLED",
+      },
+      where: {
+        status: { in: ["QUEUED", "RUNNING"] },
+        testSessionId: "session_1",
       },
     });
   });

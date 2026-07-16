@@ -429,6 +429,102 @@ describe("runCheckById", () => {
     );
   });
 
+  it("terminates Playwright when a test session is cancelled", async () => {
+    const rootDir = await createTempProject();
+    const runId = "run_1";
+    const controller = new AbortController();
+    let child:
+      | (EventEmitter & {
+          kill: (signal: NodeJS.Signals) => boolean;
+          stderr: EventEmitter;
+          stdout: EventEmitter;
+        })
+      | undefined;
+    const kill = vi.fn((signal: NodeJS.Signals) => {
+      child?.emit("close", null, signal);
+      return true;
+    });
+    let resolveSpawned: () => void = () => {};
+    const spawned = new Promise<void>((resolve) => {
+      resolveSpawned = resolve;
+    });
+
+    mocks.testSessionFindUnique.mockResolvedValue({
+      id: "session_1",
+      kind: "TEST",
+      projectId: "project_1",
+      status: "RUNNING",
+    });
+    mocks.testSessionUpdate.mockResolvedValue({
+      id: "session_1",
+      kind: "TEST",
+      projectId: "project_1",
+      status: "RUNNING",
+    });
+    mocks.checkRunFindFirst.mockResolvedValue({ id: runId });
+    mocks.checkRunUpdate.mockImplementation(async (args) => ({
+      id: args.where.id,
+      ...args.data,
+    }));
+    mocks.artifactDeleteMany.mockResolvedValue({ count: 0 });
+    mocks.artifactCreateMany.mockResolvedValue({ count: 0 });
+    mocks.spawn.mockImplementation(() => {
+      child = new EventEmitter() as EventEmitter & {
+        kill: (signal: NodeJS.Signals) => boolean;
+        stderr: EventEmitter;
+        stdout: EventEmitter;
+      };
+      child.stderr = new EventEmitter();
+      child.stdout = new EventEmitter();
+      child.kill = kill;
+      resolveSpawned();
+
+      return child;
+    });
+
+    const runPromise = runTestSessionCheck({
+      check: {
+        enabled: true,
+        entrypoint: "homepage.spec.ts",
+        key: "homepage",
+        name: "Homepage",
+        tags: ["app", "core"],
+        type: "browser",
+      },
+      env: [{ name: "ENVIRONMENT_URL", value: "https://example.test" }],
+      existingRunId: runId,
+      existingTestSessionId: "session_1",
+      projectSlug: "account",
+      reporter: "list",
+      rootDir,
+      signal: controller.signal,
+      testSessionDeadline: {
+        at: Date.now() + 30 * 60_000,
+        timeoutMs: 30 * 60_000,
+      },
+    });
+
+    await spawned;
+    controller.abort();
+
+    await expect(runPromise).resolves.toMatchObject({
+      checkKey: "homepage",
+      errorMessage: "Test session was cancelled.",
+      runId,
+      status: "cancelled",
+    });
+    expect(kill).toHaveBeenCalledWith("SIGTERM");
+    expect(mocks.checkRunUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          errorMessage: "Test session was cancelled.",
+          status: "CANCELLED",
+        }),
+        where: { id: runId },
+      }),
+    );
+  });
+
   it("records failed retry attempts as separate runs before returning a passing retry", async () => {
     const runId = "run_1";
 

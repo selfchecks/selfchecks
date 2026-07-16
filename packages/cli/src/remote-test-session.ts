@@ -92,7 +92,76 @@ export async function runRemoteTestSession(
     throw new Error(readApiError(session, "Unable to create remote test session."));
   }
 
-  return pollTestSession(apiUrl, options.apiToken, session);
+  const unregisterSignalHandlers = registerCancellationSignalHandlers(
+    apiUrl,
+    options.apiToken,
+    session.sessionId,
+  );
+
+  try {
+    return await pollTestSession(apiUrl, options.apiToken, session);
+  } finally {
+    unregisterSignalHandlers();
+  }
+}
+
+export async function cancelRemoteTestSession(
+  apiUrlValue: string,
+  apiToken: string,
+  sessionId: string,
+): Promise<void> {
+  const apiUrl = normalizeApiUrl(apiUrlValue);
+  const response = await fetch(
+    `${apiUrl}/api/cli/test-sessions/${encodeURIComponent(sessionId)}`,
+    {
+      headers: createAuthorizationHeaders(apiToken),
+      method: "DELETE",
+      signal: AbortSignal.timeout(10_000),
+    },
+  );
+
+  if (!response.ok) {
+    const body = await readJsonResponse<unknown>(response);
+
+    throw new Error(readApiError(body, "Unable to cancel remote test session."));
+  }
+}
+
+function registerCancellationSignalHandlers(
+  apiUrl: string,
+  apiToken: string,
+  sessionId: string,
+) {
+  let cancelling = false;
+  const handlers = new Map<NodeJS.Signals, () => void>();
+  const unregister = () => {
+    handlers.forEach((handler, signal) => process.off(signal, handler));
+  };
+
+  for (const signal of ["SIGINT", "SIGTERM"] as const) {
+    const handler = () => {
+      if (cancelling) {
+        return;
+      }
+
+      cancelling = true;
+      void cancelRemoteTestSession(apiUrl, apiToken, sessionId)
+        .catch((error) => {
+          const message = error instanceof Error ? error.message : String(error);
+
+          process.stderr.write(`${message}\n`);
+        })
+        .finally(() => {
+          unregister();
+          process.kill(process.pid, signal);
+        });
+    };
+
+    handlers.set(signal, handler);
+    process.once(signal, handler);
+  }
+
+  return unregister;
 }
 
 export async function createRemoteBundleFormData(

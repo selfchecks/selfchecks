@@ -16,12 +16,19 @@ const mocks = vi.hoisted(() => ({
   runChecks: vi.fn(),
   runTestSessionCheck: vi.fn(),
   spawn: vi.fn(),
+  testSessionFindUnique: vi.fn(),
   testSessionUpdate: vi.fn(),
   testSessionUpdateMany: vi.fn(),
   TestSessionTimeoutError: class TestSessionTimeoutError extends Error {
     constructor(timeoutMs: number) {
       super(`Test session timed out after ${timeoutMs} ms.`);
       this.name = "TestSessionTimeoutError";
+    }
+  },
+  TestSessionCancelledError: class TestSessionCancelledError extends Error {
+    constructor() {
+      super("Test session was cancelled.");
+      this.name = "TestSessionCancelledError";
     }
   },
   transaction: vi.fn(),
@@ -38,6 +45,7 @@ vi.mock("@selfchecks/cli/runner", () => ({
   runCheckById: mocks.runCheckById,
   runChecks: mocks.runChecks,
   runTestSessionCheck: mocks.runTestSessionCheck,
+  TestSessionCancelledError: mocks.TestSessionCancelledError,
   TestSessionTimeoutError: mocks.TestSessionTimeoutError,
 }));
 
@@ -69,6 +77,7 @@ vi.mock("@selfchecks/db", () => ({
       updateMany: mocks.checkRunUpdateMany,
     },
     testSession: {
+      findUnique: mocks.testSessionFindUnique,
       update: mocks.testSessionUpdate,
       updateMany: mocks.testSessionUpdateMany,
     },
@@ -87,6 +96,7 @@ describe("handleCheckJob", () => {
   beforeEach(() => {
     mocks.checkRunFindFirst.mockResolvedValue(null);
     mocks.checkRunFindMany.mockResolvedValue([]);
+    mocks.testSessionFindUnique.mockResolvedValue({ status: "RUNNING" });
     mocks.readPerformanceRuntimeSettings.mockResolvedValue({
       failedArtifactRetentionDays: 14,
       historyRetentionDays: 180,
@@ -532,6 +542,50 @@ describe("handleCheckJob", () => {
         },
       },
     });
+  });
+
+  it("does not start a queued check after its test session is cancelled", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    mocks.checkRunFindUnique.mockResolvedValue({
+      checkSnapshotKey: "homepage",
+      checkSnapshotName: "Homepage",
+      durationMs: null,
+      id: "run_1",
+      status: "QUEUED",
+      testSessionId: "session_1",
+    });
+    mocks.testSessionFindUnique.mockResolvedValue({ status: "CANCELLED" });
+
+    await expect(
+      handleTestSessionCheckJob({
+        data: {
+          check: {
+            enabled: true,
+            entrypoint: "homepage.spec.ts",
+            key: "homepage",
+            name: "Homepage",
+            tags: [],
+            type: "browser",
+          },
+          env: [],
+          existingRunId: "run_1",
+          kind: "test-session-check",
+          projectSlug: "account",
+          reporter: "github",
+          rootDir: "/runtime/test-sessions/session_1",
+          sessionId: "session_1",
+          testSessionDeadline: {
+            at: Date.now() + 30 * 60_000,
+            timeoutMs: 30 * 60_000,
+          },
+        },
+      }),
+    ).resolves.toMatchObject({
+      runId: "run_1",
+      status: "cancelled",
+    });
+
+    expect(mocks.runTestSessionCheck).not.toHaveBeenCalled();
   });
 
   it("keeps a test session active while another check is queued", async () => {

@@ -7,6 +7,8 @@ import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
 
+const activeStatuses = ["QUEUED", "RUNNING"] as const;
+
 type RouteContext = {
   params: Promise<{
     sessionId: string;
@@ -57,6 +59,60 @@ export async function GET(request: Request, context: RouteContext) {
     status,
     ...(isTerminalStatus(status) ? { summary: buildSummary(session) } : {}),
   });
+}
+
+export async function DELETE(request: Request, context: RouteContext) {
+  if (!(await isCliRequestAuthorized(request))) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  const { sessionId } = await context.params;
+  const session = await prisma.testSession.findUnique({
+    select: {
+      id: true,
+      kind: true,
+    },
+    where: {
+      id: sessionId,
+      kind: "TEST",
+    },
+  });
+
+  if (!session) {
+    return NextResponse.json({ error: "Test session was not found." }, { status: 404 });
+  }
+
+  const finishedAt = new Date();
+
+  await prisma.$transaction([
+    prisma.testSession.updateMany({
+      data: {
+        status: "CANCELLED",
+      },
+      where: {
+        id: session.id,
+        kind: "TEST",
+        status: {
+          in: [...activeStatuses],
+        },
+      },
+    }),
+    prisma.checkRun.updateMany({
+      data: {
+        errorMessage: "Test session was cancelled by the client.",
+        finishedAt,
+        status: "CANCELLED",
+      },
+      where: {
+        status: {
+          in: [...activeStatuses],
+        },
+        testSessionId: session.id,
+      },
+    }),
+  ]);
+
+  return NextResponse.json({ sessionId: session.id, status: "cancelled" });
 }
 
 function buildSummary(session: {

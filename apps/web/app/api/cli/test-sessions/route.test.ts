@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   apiKeyFindUnique: vi.fn(),
   checkRunCreate: vi.fn(),
+  checkRunUpdateMany: vi.fn(),
   getRunEnvironment: vi.fn(),
   importCheckDefinitions: vi.fn(),
   queueAdd: vi.fn(),
@@ -14,6 +15,8 @@ const mocks = vi.hoisted(() => ({
   queueConstructor: vi.fn(),
   projectUpsert: vi.fn(),
   testSessionCreate: vi.fn(),
+  testSessionFindMany: vi.fn(),
+  testSessionUpdateMany: vi.fn(),
   transaction: vi.fn(),
 }));
 
@@ -107,13 +110,21 @@ describe("CLI test session upload route", () => {
       ],
     });
     mocks.testSessionCreate.mockResolvedValue({ id: "session_1" });
+    mocks.testSessionFindMany.mockResolvedValue([]);
     mocks.checkRunCreate.mockResolvedValue({ id: "run_1" });
     mocks.projectUpsert.mockResolvedValue({ id: "project_1" });
     mocks.transaction.mockImplementation((callback) =>
       callback({
-        checkRun: { create: mocks.checkRunCreate },
+        checkRun: {
+          create: mocks.checkRunCreate,
+          updateMany: mocks.checkRunUpdateMany,
+        },
         project: { upsert: mocks.projectUpsert },
-        testSession: { create: mocks.testSessionCreate },
+        testSession: {
+          create: mocks.testSessionCreate,
+          findMany: mocks.testSessionFindMany,
+          updateMany: mocks.testSessionUpdateMany,
+        },
       }),
     );
   });
@@ -181,5 +192,42 @@ describe("CLI test session upload route", () => {
     await expect(response.json()).resolves.toEqual({ error: "Unauthorized." });
     expect(response.status).toBe(401);
     expect(mocks.importCheckDefinitions).not.toHaveBeenCalled();
+  });
+
+  it("cancels an older active session for the same repository and ref", async () => {
+    mocks.testSessionFindMany.mockResolvedValue([{ id: "session_old" }]);
+
+    const response = await POST(createRequest());
+
+    expect(response.status).toBe(202);
+    expect(mocks.testSessionFindMany).toHaveBeenCalledWith({
+      select: { id: true },
+      where: {
+        commitSha: { not: "abc123def456" },
+        kind: "TEST",
+        projectId: "project_1",
+        ref: "release/1.2.3",
+        repository: "sendsay-ru/frontend/account",
+        status: { in: ["QUEUED", "RUNNING"] },
+      },
+    });
+    expect(mocks.testSessionUpdateMany).toHaveBeenCalledWith({
+      data: { status: "CANCELLED" },
+      where: {
+        id: { in: ["session_old"] },
+        status: { in: ["QUEUED", "RUNNING"] },
+      },
+    });
+    expect(mocks.checkRunUpdateMany).toHaveBeenCalledWith({
+      data: {
+        errorMessage: "Superseded by commit abc123def456.",
+        finishedAt: expect.any(Date),
+        status: "CANCELLED",
+      },
+      where: {
+        status: { in: ["QUEUED", "RUNNING"] },
+        testSessionId: { in: ["session_old"] },
+      },
+    });
   });
 });

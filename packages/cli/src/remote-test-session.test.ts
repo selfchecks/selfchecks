@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  cancelRemoteTestSession,
   collectBundleFiles,
   fetchRemoteStatus,
   runRemoteTestSession,
@@ -51,6 +52,34 @@ afterEach(async () => {
 });
 
 describe("remote test sessions", () => {
+  it("cancels a remote session without polling for completion", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ sessionId: "session_1", status: "cancelled" })),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      cancelRemoteTestSession(
+        "https://checks.example.test/",
+        "secret-token",
+        "session_1",
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://checks.example.test/api/cli/test-sessions/session_1",
+      expect.objectContaining({
+        headers: {
+          Authorization: "Bearer secret-token",
+        },
+        method: "DELETE",
+      }),
+    );
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
   it("retries transient remote status responses", async () => {
     vi.useFakeTimers();
     const fetchMock = vi
