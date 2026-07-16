@@ -33,6 +33,6 @@ export default withAuth({
 
 export const config = {
   matcher: [
-    "/((?!api/auth|api/setup|api/cli|setup|login|trace-viewer|_next/static|_next/image|favicon.ico).*)",
+    "/((?!api/auth|api/setup|api/cli|setup|login|getting-started|trace-viewer|_next/static|_next/image|favicon.ico).*)",
   ],
 };

@@ -320,11 +320,12 @@ the server, and ports `80` and `443` must be reachable from the internet.
 
 Pushes to `stable` run `.github/workflows/deploy.yml`. The workflow runs the
 same repository checks as CI, builds `ghcr.io/selfchecks/selfchecks-web:stable`
-and `ghcr.io/selfchecks/selfchecks-worker:stable`, then connects to the
-production server over SSH, syncs only the Compose file and bootstrap templates,
-uploads `.env`, pulls the fresh GHCR images, runs `prisma migrate deploy`
-through the production `migrate` service, and then starts the production Compose
-stack.
+and `ghcr.io/selfchecks/selfchecks-worker:stable`, and publishes the multi-arch
+remote client as `ghcr.io/selfchecks/selfchecks-cli:stable`. It then connects to
+the production server over SSH, syncs only the Compose file and bootstrap
+templates, uploads `.env`, pulls the fresh GHCR images, runs
+`prisma migrate deploy` through the production `migrate` service, and starts the
+production Compose stack.
 
 Configure these GitHub Actions repository variables:
 
@@ -379,10 +380,10 @@ The deploy workflow sets `SELFCHECKS_CADDY_ADMIN_ORIGIN` to
 unless you also change the Caddy admin listen address.
 
 The GHCR packages are intended to be public. If GitHub creates the first package
-as private, switch `selfchecks-web` and `selfchecks-worker` to public in the
-organization package settings. The deploy workflow still logs in with the
-short-lived workflow `GITHUB_TOKEN` before pulling images, so deploys can proceed
-while visibility is being corrected.
+as private, switch `selfchecks-web`, `selfchecks-worker`, and `selfchecks-cli` to
+public in the organization package settings. The deploy workflow still logs in
+with the short-lived workflow `GITHUB_TOKEN` before pulling images, so deploys
+can proceed while visibility is being corrected.
 
 Useful commands:
 

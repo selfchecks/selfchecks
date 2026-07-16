@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  BookOpenText,
   ChartNoAxesColumnIncreasing,
   FlaskConical,
   History,
@@ -16,6 +17,7 @@ import { ServiceMark } from "@/components/service-mark";
 import { cn } from "@/lib/utils";
 
 export type AppSidebarItem =
+  | "getting-started"
   | "home"
   | "journal"
   | "queue"
@@ -32,6 +34,12 @@ type SidebarEntry = {
 
 const sidebarItems: SidebarEntry[] = [
   { href: "/", icon: Home, id: "home", label: "Home" },
+  {
+    href: "/getting-started",
+    icon: BookOpenText,
+    id: "getting-started",
+    label: "Getting started",
+  },
   { href: "/queue", icon: ListChecks, id: "queue", label: "Queue" },
   { href: "/journal", icon: History, id: "journal", label: "Journal" },
   {

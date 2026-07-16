@@ -27,6 +27,9 @@ describe("AppSidebar", () => {
 
     expect(screen.getByRole("button", { name: /SelfChecks/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Home" })).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: "Getting started" }).getAttribute("href"),
+    ).toBe("/getting-started");
     expect(screen.getByRole("link", { name: "Queue" }).getAttribute("href")).toBe(
       "/queue",
     );
