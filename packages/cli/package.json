@@ -2,6 +2,7 @@
   "name": "@selfchecks/cli",
   "version": "0.0.0",
   "private": true,
+  "license": "Elastic-2.0",
   "type": "module",
   "bin": {
     "selfchecks": "./dist/index.js"

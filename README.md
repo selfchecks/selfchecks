@@ -263,3 +263,10 @@ Workspace layout:
 - `packages/create-selfchecks` — public starter project generator;
 - `packages/core` — manifest importer and shared domain types;
 - `packages/db` — Prisma schema and database client.
+
+## License
+
+Selfchecks is licensed under the [Elastic License 2.0](LICENSE). You may use,
+modify, and redistribute the software subject to its terms. The license does not
+permit providing Selfchecks to third parties as a hosted or managed service that
+exposes a substantial set of the software's features or functionality.
