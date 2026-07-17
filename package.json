@@ -12,6 +12,7 @@
   ],
   "scripts": {
     "build": "yarn workspace @selfchecks/core build && yarn workspace @selfchecks/db build && yarn workspace @selfchecks/cli build && yarn workspace @selfchecks/selfchecks-cli build && yarn workspace @selfchecks/selfchecks build && yarn workspace create-selfchecks build && yarn workspace @selfchecks/worker build && yarn workspace @selfchecks/web build",
+    "build:bootstrap": "bash scripts/build-bootstrap.sh output/bootstrap",
     "build:npm-packages": "yarn workspace @selfchecks/core build && yarn workspace @selfchecks/selfchecks-cli build && yarn workspace @selfchecks/selfchecks build && yarn workspace create-selfchecks build",
     "db:generate": "yarn workspace @selfchecks/db prisma generate",
     "db:migrate": "yarn workspace @selfchecks/db prisma migrate dev",
@@ -29,11 +30,13 @@
     "prod:infra:migrate": "docker compose --env-file .env.production -f docker-compose.prod.yml up --force-recreate --abort-on-container-exit --exit-code-from migrate migrate",
     "prod:infra:pull": "docker compose --env-file .env.production -f docker-compose.prod.yml pull",
     "prod:infra:down": "docker compose --env-file .env.production -f docker-compose.prod.yml down",
+    "release:version": "node scripts/bump-npm-package-versions.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint apps packages --max-warnings=0",
     "postinstall": "yarn db:generate",
     "test": "vitest run",
+    "test:bootstrap": "yarn build:bootstrap && bash scripts/smoke-bootstrap.sh output/bootstrap",
     "typecheck": "yarn workspace @selfchecks/core typecheck && yarn workspace @selfchecks/db typecheck && yarn workspace @selfchecks/cli typecheck && yarn workspace @selfchecks/selfchecks-cli typecheck && yarn workspace @selfchecks/selfchecks typecheck && yarn workspace create-selfchecks typecheck && yarn workspace @selfchecks/worker typecheck && yarn workspace @selfchecks/web typecheck"
   },
   "devDependencies": {

@@ -16,6 +16,7 @@ coverage/
 .next/
 out/
 output/playwright/
+output/bootstrap/
 
 .selfchecks/
 runtime/

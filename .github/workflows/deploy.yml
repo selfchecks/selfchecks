@@ -58,11 +58,90 @@ jobs:
       - name: Build
         run: yarn build
 
+      - name: Build and smoke-test bootstrap installer
+        run: yarn test:bootstrap
+
       - name: Validate production compose
         run: docker compose --env-file .env.production.example -f docker-compose.prod.yml config
 
-  build-images:
+  prepare-release:
     needs: repo-checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      release_sha: ${{ steps.release.outputs.release_sha }}
+      release_version: ${{ steps.release.outputs.release_version }}
+
+    steps:
+      - name: Checkout deploy source with the release key
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+          ssh-key: ${{ secrets.RELEASE_DEPLOY_KEY }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+
+      - name: Create or reuse release commit
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git fetch origin stable
+          remote_sha="$(git rev-parse FETCH_HEAD)"
+
+          if [ "${remote_sha}" != "${GITHUB_SHA}" ]; then
+            parent_sha="$(git show -s --format=%P "${remote_sha}")"
+
+            if [ "${parent_sha}" != "${GITHUB_SHA}" ]; then
+              echo "stable moved to ${remote_sha}; a newer workflow must release it" >&2
+              exit 1
+            fi
+
+            git checkout --detach "${remote_sha}"
+            release_version="$(node -p "require('./packages/checkly-compat/package.json').version")"
+            release_subject="$(git show -s --format=%s "${remote_sha}")"
+            expected_subject="chore(release): v${release_version} [skip ci]"
+
+            if [ "${release_subject}" != "${expected_subject}" ]; then
+              echo "stable moved to a commit that is not this workflow's release commit" >&2
+              exit 1
+            fi
+
+            echo "Reusing ${expected_subject} (${remote_sha})"
+            echo "release_sha=${remote_sha}" >> "${GITHUB_OUTPUT}"
+            echo "release_version=${release_version}" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          release_version="$(node scripts/bump-npm-package-versions.mjs)"
+
+          git diff --check
+          git diff --exit-code -- yarn.lock
+          git add \
+            packages/checkly-compat/package.json \
+            packages/create-selfchecks/package.json \
+            packages/create-selfchecks/src/templates.ts \
+            packages/npm-cli/package.json \
+            packages/npm-cli/src/version.ts
+          git diff --cached --check
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(release): v${release_version} [skip ci]"
+
+          release_sha="$(git rev-parse HEAD)"
+          git push origin HEAD:stable
+
+          echo "release_sha=${release_sha}" >> "${GITHUB_OUTPUT}"
+          echo "release_version=${release_version}" >> "${GITHUB_OUTPUT}"
+
+  build-images:
+    needs: prepare-release
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -72,6 +151,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare-release.outputs.release_sha }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
@@ -96,7 +177,7 @@ jobs:
           provenance: false
           tags: |
             ${{ env.WEB_IMAGE }}:${{ env.IMAGE_TAG }}
-            ${{ env.WEB_IMAGE }}:sha-${{ github.sha }}
+            ${{ env.WEB_IMAGE }}:sha-${{ needs.prepare-release.outputs.release_sha }}
           labels: |
             org.opencontainers.image.source=https://github.com/selfchecks/selfchecks
             org.opencontainers.image.description=Selfchecks web runtime image
@@ -113,7 +194,7 @@ jobs:
           provenance: false
           tags: |
             ${{ env.WORKER_IMAGE }}:${{ env.IMAGE_TAG }}
-            ${{ env.WORKER_IMAGE }}:sha-${{ github.sha }}
+            ${{ env.WORKER_IMAGE }}:sha-${{ needs.prepare-release.outputs.release_sha }}
           labels: |
             org.opencontainers.image.source=https://github.com/selfchecks/selfchecks
             org.opencontainers.image.description=Selfchecks worker runtime image
@@ -131,15 +212,57 @@ jobs:
           provenance: false
           tags: |
             ${{ env.CLI_IMAGE }}:${{ env.IMAGE_TAG }}
-            ${{ env.CLI_IMAGE }}:sha-${{ github.sha }}
+            ${{ env.CLI_IMAGE }}:sha-${{ needs.prepare-release.outputs.release_sha }}
           labels: |
             org.opencontainers.image.source=https://github.com/selfchecks/selfchecks
             org.opencontainers.image.description=Selfchecks remote CLI image
           cache-from: type=gha,scope=selfchecks-cli
           cache-to: type=gha,mode=max,scope=selfchecks-cli
 
+  publish-bootstrap:
+    needs:
+      - build-images
+      - prepare-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare-release.outputs.release_sha }}
+
+      - name: Build bootstrap installer
+        run: bash scripts/build-bootstrap.sh output/bootstrap
+
+      - name: Smoke-test bootstrap installer
+        run: bash scripts/smoke-bootstrap.sh output/bootstrap
+
+      - name: Publish rolling bootstrap release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          release_tag="bootstrap"
+
+          if ! gh release view "${release_tag}" >/dev/null 2>&1; then
+            gh release create "${release_tag}" \
+              --target "${{ needs.prepare-release.outputs.release_sha }}" \
+              --title "Selfchecks bootstrap installer" \
+              --notes "Rolling installer assets generated from the stable branch."
+          fi
+
+          gh release upload "${release_tag}" \
+            output/bootstrap/bootstrap.sh \
+            output/bootstrap/selfchecks-bootstrap.tar.gz \
+            --clobber
+
   publish-packages:
-    needs: repo-checks
+    needs: prepare-release
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -149,6 +272,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare-release.outputs.release_sha }}
 
       - name: Setup Node.js for npm
         uses: actions/setup-node@v6
@@ -188,13 +313,17 @@ jobs:
           done
 
   smoke-create-selfchecks:
-    needs: publish-packages
+    needs:
+      - prepare-release
+      - publish-packages
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare-release.outputs.release_sha }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -202,10 +331,31 @@ jobs:
           node-version: 20
           registry-url: https://registry.npmjs.org
 
-      - name: Create starter project
+      - name: Wait for published packages
+        env:
+          RELEASE_VERSION: ${{ needs.prepare-release.outputs.release_version }}
         run: |
-          creator_version="$(node -p "require('./packages/create-selfchecks/package.json').version")"
-          npx --yes "create-selfchecks@${creator_version}" "${RUNNER_TEMP}/selfchecks-starter"
+          set -euo pipefail
+
+          for package_name in @selfchecks/selfchecks @selfchecks/selfchecks-cli create-selfchecks; do
+            for attempt in {1..12}; do
+              if npm view "${package_name}@${RELEASE_VERSION}" version >/dev/null 2>&1; then
+                break
+              fi
+
+              if [ "${attempt}" = "12" ]; then
+                echo "${package_name}@${RELEASE_VERSION} is not available from npm" >&2
+                exit 1
+              fi
+
+              sleep 5
+            done
+          done
+
+      - name: Create starter project from the release version
+        env:
+          RELEASE_VERSION: ${{ needs.prepare-release.outputs.release_version }}
+        run: npx --yes "create-selfchecks@${RELEASE_VERSION}" "${RUNNER_TEMP}/selfchecks-starter"
 
       - name: Typecheck starter project
         working-directory: ${{ runner.temp }}/selfchecks-starter
@@ -222,6 +372,8 @@ jobs:
   deploy:
     needs:
       - build-images
+      - prepare-release
+      - publish-bootstrap
       - smoke-create-selfchecks
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -257,6 +409,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare-release.outputs.release_sha }}
 
       - name: Validate deployment configuration
         shell: bash

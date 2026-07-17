@@ -100,8 +100,8 @@ construct package under the local dependency name `checkly`:
 ```json
 {
   "devDependencies": {
-    "@selfchecks/selfchecks-cli": "0.1.0",
-    "checkly": "npm:@selfchecks/selfchecks@0.1.0"
+    "@selfchecks/selfchecks-cli": "latest",
+    "checkly": "npm:@selfchecks/selfchecks@latest"
   },
   "scripts": {
     "selfchecks": "selfchecks"
@@ -191,37 +191,44 @@ jobs:
 
 ## Run your own server
 
-Prerequisites are Docker with the Compose plugin and a Linux host reachable on ports
-80 and 443.
+Prerequisites are a Linux host with root or sudo access, `curl`, and inbound ports 80
+and 443. The installer adds Docker Engine and the Compose plugin when they are missing.
 
 ```bash
-git clone https://github.com/selfchecks/selfchecks.git
-cd selfchecks
-sudo bash scripts/install-selfchecks.sh --source-dir .
+curl -fsSL https://github.com/selfchecks/selfchecks/releases/download/bootstrap/bootstrap.sh | sudo bash
 ```
 
-The installer prepares `/opt/selfchecks`, generates secrets, starts PostgreSQL, Redis,
-the web app, worker, and Caddy, and prints the first-run setup details. Point DNS at the
-server, open `/setup`, and enter the token from `/opt/selfchecks/.env`.
+Every deploy publishes the installer together with a bootstrap archive containing the
+production Compose file, templates, and installer source. The script prepares
+`/opt/selfchecks`, generates secrets, starts PostgreSQL, Redis, the web app, worker,
+and Caddy, and prints the first-run setup URL and token. Point DNS at the server, open
+`/setup`, and enter the printed token.
+
+Run the same command again to update the deployment files and container images. The
+existing `.env` and runtime configuration are preserved.
 
 For manual upgrades:
 
 ```bash
-docker compose --env-file .env.production -f docker-compose.prod.yml pull
-docker compose --env-file .env.production -f docker-compose.prod.yml up \
+cd /opt/selfchecks
+sudo docker compose --env-file .env -f docker-compose.prod.yml pull
+sudo docker compose --env-file .env -f docker-compose.prod.yml up \
   --force-recreate --abort-on-container-exit --exit-code-from migrate migrate
-docker compose --env-file .env.production -f docker-compose.prod.yml up -d
+sudo docker compose --env-file .env -f docker-compose.prod.yml up -d
 ```
 
 ## npm publishing
 
-Deploys from `stable` build and publish `@selfchecks/selfchecks`,
-`@selfchecks/selfchecks-cli`, and `create-selfchecks` from
-`.github/workflows/deploy.yml`. The workflow uses the `NPM_TOKEN` repository secret,
-public package access, and npm provenance. It then generates a project through the
-published `create-selfchecks` package and runs its typecheck and browser test. A package
-version that already exists is skipped; bump the package version before the next npm
-release.
+Deploys from `stable` increment the shared patch version for `@selfchecks/selfchecks`,
+`@selfchecks/selfchecks-cli`, and `create-selfchecks`. The workflow commits the version
+change back to `stable` through the write-enabled deploy key stored in
+`RELEASE_DEPLOY_KEY`; the release commit includes `[skip ci]` to avoid starting another
+deploy. Every downstream job checks out that release commit.
+
+Publishing uses the `NPM_TOKEN` repository secret, public package access, and npm
+provenance. The smoke job waits for the exact release version to become available,
+generates a project through that version of `create-selfchecks`, and runs its typecheck
+and browser test.
 
 ## Development
 

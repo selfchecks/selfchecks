@@ -1,3 +1,5 @@
+export const SELFCHECKS_PACKAGE_VERSION = "0.1.0";
+
 export const starterFiles = {
   ".gitignore": `node_modules/
 playwright-report/
@@ -97,8 +99,8 @@ export function createPackageJson(projectName: string): string {
         "@playwright/test": "1.58.2",
       },
       devDependencies: {
-        "@selfchecks/selfchecks": "0.1.0",
-        "@selfchecks/selfchecks-cli": "0.1.0",
+        "@selfchecks/selfchecks": SELFCHECKS_PACKAGE_VERSION,
+        "@selfchecks/selfchecks-cli": SELFCHECKS_PACKAGE_VERSION,
         "@types/node": "^20.19.1",
         typescript: "^5.8.3",
       },

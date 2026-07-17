@@ -4,10 +4,11 @@ set -euo pipefail
 
 INSTALL_DIR="/opt/selfchecks"
 SOURCE_DIR=""
-ARCHIVE_URL="${SELFCHECKS_ARCHIVE_URL:-}"
+DEFAULT_ARCHIVE_URL="https://github.com/selfchecks/selfchecks/releases/download/bootstrap/selfchecks-bootstrap.tar.gz"
+ARCHIVE_URL="${SELFCHECKS_ARCHIVE_URL:-${DEFAULT_ARCHIVE_URL}}"
 SKIP_SYSTEM_INSTALL="0"
 SKIP_START="0"
-SERVER_IP=""
+SERVER_IP="${SELFCHECKS_SERVER_IP:-}"
 
 log() {
   printf '\033[1;36m[selfchecks-install]\033[0m %s\n' "$*"
@@ -128,6 +129,10 @@ PY
 }
 
 detect_server_ip() {
+  if [ -n "${SERVER_IP}" ]; then
+    return
+  fi
+
   if need_cmd curl; then
     SERVER_IP="$(curl -fsSL https://api64.ipify.org || true)"
   fi

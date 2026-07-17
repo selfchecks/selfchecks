@@ -5,6 +5,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { createSelfchecksProject } from "./index.js";
+import { SELFCHECKS_PACKAGE_VERSION } from "./templates.js";
 
 describe("createSelfchecksProject", () => {
   it("creates a runnable starter project", async () => {
@@ -14,7 +15,11 @@ describe("createSelfchecksProject", () => {
     const result = await createSelfchecksProject({ install: false, targetDir });
     const packageJson = JSON.parse(
       await readFile(path.join(targetDir, "package.json"), "utf8"),
-    ) as { name: string; scripts: Record<string, string> };
+    ) as {
+      devDependencies: Record<string, string>;
+      name: string;
+      scripts: Record<string, string>;
+    };
     const spec = await readFile(
       path.join(targetDir, "checks/homepage.spec.ts"),
       "utf8",
@@ -30,6 +35,12 @@ describe("createSelfchecksProject", () => {
       targetDir,
     });
     expect(packageJson.scripts.test).toBe("playwright test");
+    expect(packageJson.devDependencies).toEqual(
+      expect.objectContaining({
+        "@selfchecks/selfchecks": SELFCHECKS_PACKAGE_VERSION,
+        "@selfchecks/selfchecks-cli": SELFCHECKS_PACKAGE_VERSION,
+      }),
+    );
     expect(spec).toContain("https://selfchecks.github.io/");
     expect(manifest).toContain('new BrowserCheck("selfchecks-homepage"');
   });

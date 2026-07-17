@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createRemoteSelfchecksProgram } from "./program.js";
+import { SELFCHECKS_CLI_VERSION } from "./version.js";
 
 const successfulSummary = {
   durationMs: 100,
@@ -12,6 +13,12 @@ const successfulSummary = {
 };
 
 describe("createRemoteSelfchecksProgram", () => {
+  it("reports the published package version", () => {
+    const program = createRemoteSelfchecksProgram({ write: vi.fn() });
+
+    expect(program.version()).toBe(SELFCHECKS_CLI_VERSION);
+  });
+
   it("passes CI selectors and metadata to a remote test session", async () => {
     const runChecksRemotely = vi.fn().mockResolvedValue(successfulSummary);
     const write = vi.fn();

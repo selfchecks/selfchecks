@@ -14,6 +14,7 @@ import {
   runRemoteTrigger,
   type RemoteTriggerOptions,
 } from "../../cli/src/remote-trigger.js";
+import { SELFCHECKS_CLI_VERSION } from "./version.js";
 
 export type CheckType = "api" | "browser";
 
@@ -194,7 +195,7 @@ export function createRemoteSelfchecksProgram(
   program
     .name("selfchecks")
     .description("Remote client for the Selfchecks synthetic checks service.")
-    .version("0.1.0");
+    .version(SELFCHECKS_CLI_VERSION);
 
   program
     .command("deploy")

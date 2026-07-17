@@ -35,6 +35,7 @@ export default defineConfig({
       "packages/**/*.test.tsx",
       "apps/**/*.test.ts",
       "apps/**/*.test.tsx",
+      "scripts/**/*.test.ts",
     ],
     setupFiles: ["./vitest.setup.ts"],
   },
