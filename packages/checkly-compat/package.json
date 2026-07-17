@@ -1,6 +1,6 @@
 {
   "name": "@selfchecks/selfchecks",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Checkly-compatible constructs supported by Selfchecks",
   "type": "module",
   "files": [
