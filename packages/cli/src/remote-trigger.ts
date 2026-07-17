@@ -1,10 +1,10 @@
-import type { RunChecksSummary } from "./runner.js";
 import {
   createAuthorizationHeaders,
   fetchRemoteStatus,
   normalizeApiUrl,
   readApiError,
   readJsonResponse,
+  type RunChecksSummary,
 } from "./remote-test-session.js";
 
 export type RemoteTriggerOptions = {

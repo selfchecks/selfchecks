@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "outDir": "dist",
+    "rootDir": "..",
+    "tsBuildInfoFile": "dist/.tsbuildinfo"
+  },
+  "include": [
+    "src/**/*.ts",
+    "../cli/src/remote-deploy.ts",
+    "../cli/src/remote-test-session.ts",
+    "../cli/src/remote-trigger.ts"
+  ],
+  "exclude": ["src/**/*.test.ts"]
+}

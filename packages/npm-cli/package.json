@@ -1,0 +1,45 @@
+{
+  "name": "@selfchecks/selfchecks-cli",
+  "version": "0.1.0",
+  "description": "Remote CLI for Selfchecks",
+  "type": "module",
+  "files": [
+    "dist/**/*.d.ts",
+    "dist/**/*.d.ts.map",
+    "dist/**/*.js"
+  ],
+  "bin": {
+    "selfchecks": "./dist/npm-cli/src/bin.js"
+  },
+  "main": "./dist/npm-cli/src/index.js",
+  "types": "./dist/npm-cli/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/npm-cli/src/index.d.ts",
+      "import": "./dist/npm-cli/src/index.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/selfchecks/selfchecks.git",
+    "directory": "packages/npm-cli"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node -e \"require('node:fs').chmodSync('dist/npm-cli/src/bin.js', 0o755)\"",
+    "test": "vitest run --root ../.. packages/npm-cli/src/program.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "commander": "^14.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}

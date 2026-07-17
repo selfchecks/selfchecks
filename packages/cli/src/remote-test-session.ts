@@ -1,15 +1,35 @@
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 
-import type { CheckDefinition } from "@selfchecks/core";
+export type EnvVar = {
+  name: string;
+  value: string;
+};
 
-import type { EnvVar, RunChecksSummary } from "./runner.js";
+export type RemoteCheckType = "api" | "browser";
+
+export type RunChecksSummary = {
+  durationMs: number;
+  failed: number;
+  passed: number;
+  results: Array<{
+    checkKey: string;
+    checkName: string;
+    durationMs: number;
+    errorMessage?: string;
+    runId?: string;
+    status: "cancelled" | "failed" | "passed" | "queued" | "running" | "timed_out";
+  }>;
+  sessionId?: string;
+  skipped: number;
+  total: number;
+};
 
 export type RemoteTestSessionOptions = {
   apiToken: string;
   apiUrl: string;
   checkKeys: string[];
-  checkTypes: CheckDefinition["type"][];
+  checkTypes: RemoteCheckType[];
   commitSha?: string;
   env: EnvVar[];
   jobUrl?: string;

@@ -1,5 +1,3 @@
-import type { DeploySummary } from "@selfchecks/core";
-
 import {
   createAuthorizationHeaders,
   createRemoteBundleFormData,
@@ -8,6 +6,40 @@ import {
   readApiError,
   readJsonResponse,
 } from "./remote-test-session.js";
+
+export type DeploySummary = {
+  checks: Array<{
+    enabled: boolean;
+    entrypoint?: string;
+    frequency?: { intervalMinutes: number };
+    groupKey?: string;
+    groupName?: string;
+    key: string;
+    name: string;
+    request?: {
+      assertions: Array<{ operator: string; source: string; target?: unknown }>;
+      body?: string;
+      headers: Record<string, string>;
+      method: string;
+      url: string;
+    };
+    retryStrategy?: {
+      baseBackoffSeconds?: number;
+      maxDurationSeconds?: number;
+      maxRetries?: number;
+      onlyOn?: string[];
+      sameRegion?: boolean;
+      type: "EXPONENTIAL" | "FIXED" | "LINEAR" | "NO_RETRIES";
+    };
+    tags: string[];
+    type: "api" | "browser";
+  }>;
+  created: number;
+  projectSlug: string;
+  removed: number;
+  updated: number;
+  warnings: string[];
+};
 
 export type RemoteDeployOptions = {
   allowRemovals: boolean;

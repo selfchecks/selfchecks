@@ -1,0 +1,50 @@
+{
+  "name": "@selfchecks/selfchecks",
+  "version": "0.1.0",
+  "description": "Checkly-compatible constructs supported by Selfchecks",
+  "type": "module",
+  "files": [
+    "dist/**/*.d.ts",
+    "dist/**/*.d.ts.map",
+    "dist/**/*.js"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./constructs": {
+      "types": "./dist/constructs.d.ts",
+      "import": "./dist/constructs.js"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "constructs": [
+        "dist/constructs.d.ts"
+      ]
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/selfchecks/selfchecks.git",
+    "directory": "packages/checkly-compat"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run --root ../.. packages/checkly-compat/src/index.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}

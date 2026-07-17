@@ -11,7 +11,8 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "yarn workspace @selfchecks/core build && yarn workspace @selfchecks/db build && yarn workspace @selfchecks/cli build && yarn workspace @selfchecks/worker build && yarn workspace @selfchecks/web build",
+    "build": "yarn workspace @selfchecks/core build && yarn workspace @selfchecks/db build && yarn workspace @selfchecks/cli build && yarn workspace @selfchecks/selfchecks-cli build && yarn workspace @selfchecks/selfchecks build && yarn workspace create-selfchecks build && yarn workspace @selfchecks/worker build && yarn workspace @selfchecks/web build",
+    "build:npm-packages": "yarn workspace @selfchecks/core build && yarn workspace @selfchecks/selfchecks-cli build && yarn workspace @selfchecks/selfchecks build && yarn workspace create-selfchecks build",
     "db:generate": "yarn workspace @selfchecks/db prisma generate",
     "db:migrate": "yarn workspace @selfchecks/db prisma migrate dev",
     "db:migrate:deploy": "yarn workspace @selfchecks/db prisma migrate deploy",
@@ -33,7 +34,7 @@
     "lint": "eslint apps packages --max-warnings=0",
     "postinstall": "yarn db:generate",
     "test": "vitest run",
-    "typecheck": "yarn workspace @selfchecks/core typecheck && yarn workspace @selfchecks/db typecheck && yarn workspace @selfchecks/cli typecheck && yarn workspace @selfchecks/worker typecheck && yarn workspace @selfchecks/web typecheck"
+    "typecheck": "yarn workspace @selfchecks/core typecheck && yarn workspace @selfchecks/db typecheck && yarn workspace @selfchecks/cli typecheck && yarn workspace @selfchecks/selfchecks-cli typecheck && yarn workspace @selfchecks/selfchecks typecheck && yarn workspace create-selfchecks typecheck && yarn workspace @selfchecks/worker typecheck && yarn workspace @selfchecks/web typecheck"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.5",

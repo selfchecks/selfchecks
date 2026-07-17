@@ -1,264 +1,231 @@
-# selfchecks
+# Selfchecks
 
-`selfchecks` is a self-hosted synthetic checks runner and dashboard for projects
-that already describe monitoring as code. The first target is compatibility with
-the current Checkly-style setup used in `config/checkly`: `.check.ts` manifests,
-Playwright `.spec.ts` browser checks, API checks, tags, groups, schedules,
-artifacts, and CI reports.
+Selfchecks is a self-hosted synthetic monitoring service for browser and API checks.
+Checks live with application code, run on your own worker, and keep logs, screenshots,
+traces, videos, request/response data, and CI metadata in one dashboard.
 
-The goal is not to clone the whole Checkly product. The goal is to keep the
-existing repository workflow familiar while replacing the cloud service with a
-small self-hosted service that runs on our own server.
+Public documentation: [selfchecks.github.io](https://selfchecks.github.io/getting-started.html)
 
-Public documentation: [Getting started](https://selfchecks.github.io/getting-started.html).
+## Install
 
-## Product Idea
-
-The first version should provide:
-
-- a thin CLI/shim with Checkly-like commands and flags;
-- upload/deploy of fresh check definitions from CI/CD;
-- local execution of checks on the same server;
-- a React dashboard with authentication;
-- check list, groups, status, and historical statistics;
-- run details with logs, screenshots, traces, videos, and API request/response
-  data;
-- webhook-based notifications for failures and recoveries, with Rocket.Chat as
-  the first concrete integration.
-
-Explicitly out of scope for the first iteration:
-
-- maintenance windows;
-- public status pages and status page services;
-- heartbeat checks;
-- third-party integrations beyond generic webhooks and Rocket.Chat;
-- distributed public/private locations;
-- full Checkly Cloud API compatibility.
-
-## Compatibility Strategy
-
-Use source-level compatibility first, not full API emulation.
-
-The CLI should accept the subset of commands already used in CI:
+The constructs and CLI packages are published under the `@selfchecks` npm
+organization. The starter generator is available as `create-selfchecks` so it can be
+run directly with `npx`:
 
 ```bash
-selfchecks deploy
-selfchecks test --tags app,smoke,pr --tags transport,smoke,pr -e ENVIRONMENT_URL=... --reporter=github --record
-selfchecks trigger --reporter=github --retries=1 --record --test-session-name="Deploy v1.2.3"
+npx create-selfchecks my-checks
+
+# Or install the packages manually
+npm install --save-dev @selfchecks/selfchecks @selfchecks/selfchecks-cli @playwright/test
 ```
 
-When `SELFCHECKS_URL` and `SELFCHECKS_API_TOKEN` are set, all three commands use
-the authenticated HTTP API. Deploy and test package the selected project root,
-upload it to the server, and wait for the remote worker result; trigger queues
-the latest deployed checks. Bundles exclude local secrets, dependencies,
-reports, and previous test artifacts and are limited to 40 MB.
+- `create-selfchecks` creates a minimal project and installs its dependencies.
+- `@selfchecks/selfchecks-cli` provides the `selfchecks` command for remote
+  `deploy`, `test`, and `trigger` operations.
+- `@selfchecks/selfchecks` provides the supported checks-as-code constructs.
 
-The CLI can also be exposed through a `checkly` alias later if we want smaller
-CI diffs, but the implementation should stay ours.
+The npm CLI is the recommended CI client. The container images are still used to run
+the Selfchecks server and worker, but projects do not need a Selfchecks Docker image
+just to upload or trigger checks.
 
-The runner should understand the current Checkly construct style:
+## Quick start
 
-- `ApiCheck`
-- `BrowserCheck`
-- `CheckGroupV2`
-- `Frequency`
-- tags and grouped checks
-- Playwright entrypoints
-- API request assertions
+Generate a ready-to-run project containing one browser check for
+`https://selfchecks.github.io/`:
 
-The first parser can be intentionally narrow: support the constructs and helper
-patterns already present in the account repository before expanding to more
-Checkly features.
-
-## Proposed Architecture
-
-Use a small monorepo:
-
-```text
-apps/web        Next.js dashboard and API routes
-apps/worker     check scheduler and executor
-packages/cli    selfchecks CLI
-packages/core   shared types, parser, result model
-packages/db     Prisma schema and database client
+```bash
+npx create-selfchecks my-checks
+cd my-checks
+npx playwright install chromium
+npm test
 ```
 
-Suggested stack:
+Without a directory argument, `npx create-selfchecks` creates
+`./selfchecks-project`. Pass `--skip-install` when only the files are needed.
 
-- Runtime: Node.js 20+
-- Package manager: Yarn 4 with `nodeLinker: node-modules` and no PnP
-- Web: Next.js App Router + React
-- Auth: NextAuth/Auth.js credentials provider with login/password first
-- UI: shadcn/ui + Tailwind CSS + Radix primitives
-- Tables: TanStack Table
-- Charts: Recharts or Tremor-style charts built on top of Recharts
-- Database: PostgreSQL
-- Queue: BullMQ + Redis
-- Artifacts: local filesystem first
-- Browser runner: Playwright
-- API runner: native `fetch`/Undici plus assertion engine
-- Notifications: generic webhook abstraction, with Rocket.Chat as the first
-  adapter
+Set the URL and API token issued by your Selfchecks server:
 
-## UI Kit Recommendation
+```bash
+export SELFCHECKS_URL=https://checks.example.com
+export SELFCHECKS_API_TOKEN=replace-with-a-ci-secret
+```
 
-Use `shadcn/ui`.
+Create a browser check:
 
-Reasoning:
+```ts
+// checks/homepage.check.ts
+import { BrowserCheck, Frequency } from "@selfchecks/selfchecks/constructs";
 
-- it works well with Next.js and Tailwind;
-- components are copied into the app, so we can own and tune the final design;
-- Radix-based primitives give good accessibility foundations;
-- dark mode is straightforward with `next-themes`;
-- the dashboard needs dense operational UI, not a marketing look;
-- it avoids the heavy visual opinion of Ant Design or MUI while still giving us
-  buttons, dialogs, dropdowns, forms, tabs, tables, toasts, tooltips, and
-  navigation primitives.
+new BrowserCheck("homepage", {
+  name: "Homepage",
+  activated: true,
+  frequency: Frequency.EVERY_15M,
+  tags: ["smoke", "browser"],
+  code: {
+    entrypoint: "homepage.spec.ts",
+  },
+});
+```
 
-Default visual direction:
+The entrypoint is a normal Playwright Test file:
 
-- dark-first operational dashboard;
-- compact rows and filters;
-- status colors: green, red, amber, neutral gray;
-- no decorative landing page;
-- primary screen is the check list and health summary.
+```ts
+// checks/homepage.spec.ts
+import { expect, test } from "@playwright/test";
 
-## Data Model Draft
+test("homepage is available", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("main")).toBeVisible();
+});
+```
 
-Core entities:
+Deploy and run it:
 
-- `Project`
-- `Deployment`
-- `CheckGroup`
-- `Check`
-- `CheckRun`
-- `TestSession`
-- `Artifact`
-- `Notification`
-- `RuntimeEnvironment`
-- `Secret`
+```bash
+npx selfchecks deploy --project my-project --root .
+npx selfchecks test --project my-project --root . --record \
+  --tags smoke,browser -e ENVIRONMENT_URL=https://app.example.com
+npx selfchecks trigger --project my-project --record
+```
 
-Useful derived metrics:
+`deploy` and `test` upload a source bundle to the authenticated HTTP API. The bundle
+excludes dependencies, local secrets, reports, and previous artifacts and is limited
+to 10,000 files and 40 MB.
 
-- latest status;
-- pass percentage for selected period;
-- average duration;
-- p95 duration;
-- failure streak;
-- last failure reason;
-- last successful run;
-- degraded runs by response time threshold;
-- run sparkline for dashboard rows.
+## Migrating from Checkly
 
-## MVP Development Plan
+Existing repositories do not have to rewrite every import. Install the Selfchecks
+construct package under the local dependency name `checkly`:
 
-### Phase 0: Foundation
+```json
+{
+  "devDependencies": {
+    "@selfchecks/selfchecks-cli": "0.1.0",
+    "checkly": "npm:@selfchecks/selfchecks@0.1.0"
+  },
+  "scripts": {
+    "selfchecks": "selfchecks"
+  }
+}
+```
 
-- Create the monorepo structure.
-- Configure Yarn 4 without PnP and base TypeScript config.
-- Add linting, formatting, and test setup.
-- Add Docker Compose for Postgres and optional Redis.
-- Define database schema and migrations.
+These imports then continue to work:
 
-### Phase 1: CLI and Manifest Import
+```ts
+import { defineConfig } from "checkly";
+import {
+  ApiCheck,
+  AssertionBuilder,
+  BrowserCheck,
+  CheckGroupV2,
+  Frequency,
+  RetryStrategyBuilder,
+} from "checkly/constructs";
+```
 
-- Implement `selfchecks deploy`.
-- Load a `checkly.config.ts`-compatible config.
-- Discover `.check.ts` files.
-- Parse or execute supported check definitions in a controlled import context.
-- Store projects, groups, checks, tags, frequency, type, entrypoints, and API
-  request definitions.
-- Generate a deploy summary and diff.
+Compatibility is intentionally limited. The npm package exposes only this
+source-compatible subset:
 
-### Phase 2: Local Runner
+| Import                    | Supported API                                                                                        |
+| ------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `checkly`                 | `defineConfig`                                                                                       |
+| checks                    | `ApiCheck`, `BrowserCheck`                                                                           |
+| groups                    | `CheckGroup`, `CheckGroupV2`                                                                         |
+| frequency                 | `EVERY_10M`, `EVERY_15M`, `EVERY_30M`, `EVERY_2H`, `EVERY_3H`, `EVERY_6H`, `EVERY_12H`, `EVERY_24H`  |
+| assertions                | `statusCode()`, `textBody()`, `jsonBody(path)` with `equals`, `contains`, `isEmpty`, and `isNotNull` |
+| retries                   | `noRetries`, `fixedStrategy`, `linearStrategy`, `exponentialStrategy`                                |
+| source-compatible helpers | `AlertEscalationBuilder.runBasedEscalation`, `WebhookAlertChannel`                                   |
+| TypeScript types          | `ApiCheckProps`, `BrowserCheckProps`, `CheckGroupV2Props`, `Request`, `RetryStrategy`                |
 
-- Implement `selfchecks test` for ad-hoc CI runs.
-- Implement `selfchecks trigger` for deployed checks.
-- Run API checks locally and store request/response/assertion data.
-- Run Browser checks through Playwright and store trace, screenshots, video,
-  stdout/stderr, and result JSON.
-- Produce `checkly-github-report.md` compatible enough for existing GitLab
-  scripts.
+Assertion builder expressions, alert channels, and escalation objects are accepted so
+existing manifests compile, but the current importer does not deploy Checkly
+assertions or alert configuration. Configure API validation and notifications in
+Selfchecks instead. Other Checkly constructs, CLI commands, cloud APIs, and runtime
+features are not compatibility targets and must not be assumed to work.
 
-### Phase 3: Dashboard
+Selfchecks also recognizes the local `createApiCheck`, `createBrowserCheck`, and
+`createCheckGroup` wrapper patterns used by the account project.
 
-- Add Next.js app shell and NextAuth.
-- Build the checks list with status summary, filters, groups, tags, and search.
-- Build check detail page with history and run list.
-- Build run detail page with artifacts and logs.
-- Add basic admin settings for projects, secrets, and webhook integrations.
+## CI examples
 
-### Phase 4: Scheduling and Notifications
+GitLab:
 
-- Add scheduler based on check frequency.
-- Add run queue and concurrency limits.
-- Send webhook notifications on failure and recovery.
-- Add retention policy for artifacts and run history.
+```yaml
+selfchecks:test:
+  image: node:20.19
+  before_script:
+    - corepack enable
+    - yarn install --immutable
+  script:
+    - yarn selfchecks test --project "$CI_PROJECT_PATH_SLUG" --root . --record \
+      --repository "$CI_PROJECT_PATH" \
+      --ref "$CI_COMMIT_REF_NAME" \
+      --commit-sha "$CI_COMMIT_SHA" \
+      --pipeline-url "$CI_PIPELINE_URL" \
+      --job-url "$CI_JOB_URL"
+```
 
-### Phase 5: Hardening
+GitHub Actions:
 
-- Isolate execution per deployment.
-- Add cleanup jobs for old workdirs and artifacts.
-- Add secret masking in logs.
-- Add basic RBAC if needed.
-- Add backup/restore notes.
-- Add upgrade/migration process.
+```yaml
+name: Selfchecks
 
-## Project Decisions
+on:
+  pull_request:
 
-1. Repository visibility: public GitHub repository under
-   `selfchecks/selfchecks`.
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx selfchecks test --project "$GITHUB_REPOSITORY" --root . --record
+        env:
+          SELFCHECKS_URL: ${{ vars.SELFCHECKS_URL }}
+          SELFCHECKS_API_TOKEN: ${{ secrets.SELFCHECKS_API_TOKEN }}
+```
 
-2. Main branch name: `stable`.
+## Run your own server
 
-3. Package manager: Yarn 4 with `nodeLinker: node-modules` and no PnP.
+Prerequisites are Docker with the Compose plugin and a Linux host reachable on ports
+80 and 443.
 
-4. App framework: Next.js App Router.
+```bash
+git clone https://github.com/selfchecks/selfchecks.git
+cd selfchecks
+sudo bash scripts/install-selfchecks.sh --source-dir .
+```
 
-5. Auth provider: NextAuth/Auth.js credentials provider with login/password
-   first.
+The installer prepares `/opt/selfchecks`, generates secrets, starts PostgreSQL, Redis,
+the web app, worker, and Caddy, and prints the first-run setup details. Point DNS at the
+server, open `/setup`, and enter the token from `/opt/selfchecks/.env`.
 
-6. Database: PostgreSQL.
+For manual upgrades:
 
-7. Queue: BullMQ + Redis for predictable background execution.
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml pull
+docker compose --env-file .env.production -f docker-compose.prod.yml up \
+  --force-recreate --abort-on-container-exit --exit-code-from migrate migrate
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d
+```
 
-8. Artifact storage: local filesystem for MVP.
+## npm publishing
 
-9. Runner isolation: run checks in a separate container.
-
-10. CI command naming: use explicit `selfchecks ...` commands first.
-
-11. Checkly construct compatibility target: support only the constructs and
-    helper patterns used by the account repository in the first iteration.
-
-12. API compatibility target: do not implement full Checkly API compatibility in
-    MVP. Implement only our own API plus optional compatibility endpoints when a
-    concrete client needs them.
-
-13. Dashboard language: English UI labels first, with an i18n-ready structure so
-    other languages can be added later.
-
-14. Notification behavior: support a generic webhook abstraction. Rocket.Chat is
-    a concrete webhook adapter, not the core notification contract.
-
-15. Retention: keep run metadata for 90 days and heavy artifacts for 14 days.
-
-16. Concurrency: one browser check at a time and several API checks in parallel.
-
-17. Visual regression policy: keep Playwright snapshots compatible,
-    generate/update baselines only in Linux runner environment.
-
-18. Secrets model: store encrypted secrets in DB or read from server env in MVP,
-    never commit real webhook URLs or account credentials.
+Deploys from `stable` build and publish `@selfchecks/selfchecks`,
+`@selfchecks/selfchecks-cli`, and `create-selfchecks` from
+`.github/workflows/deploy.yml`. The workflow uses the `NPM_TOKEN` repository secret,
+public package access, and npm provenance. It then generates a project through the
+published `create-selfchecks` package and runs its typecheck and browser test. A package
+version that already exists is skipped; bump the package version before the next npm
+release.
 
 ## Development
 
-Prerequisites:
-
-- Node.js 20+
-- Corepack enabled
-- Docker or a compatible container runtime for PostgreSQL and Redis
-
-Initial setup:
+Requirements: Node.js 20+, Corepack, Docker, and Yarn 4.
 
 ```bash
 corepack enable
@@ -266,183 +233,26 @@ yarn install
 cp .env.example .env
 yarn dev:infra
 yarn db:migrate
-```
-
-The dev Compose stack uses project-specific names and non-default host ports so
-it does not collide with other local projects:
-
-- containers: `selfchecks-dev-postgres`, `selfchecks-dev-redis`
-- network: `selfchecks-dev-network`
-- volumes: `selfchecks-dev-postgres-data`, `selfchecks-dev-redis-data`
-- host ports: `15432` for PostgreSQL and `16379` for Redis
-
-Production infrastructure uses a separate Compose file and separate resource
-names. PostgreSQL and Redis are only exposed inside the Compose network by
-default. The production stack also includes the web app, worker, migration job,
-and Caddy reverse proxy:
-
-```bash
-cp .env.production.example .env.production
-mkdir -p runtime
-cp bootstrap/selfchecks.config.template.json runtime/selfchecks.config.json
-cp bootstrap/Caddyfile.template runtime/Caddyfile
-docker compose --env-file .env.production -f docker-compose.prod.yml pull
-docker compose --env-file .env.production -f docker-compose.prod.yml up --force-recreate --abort-on-container-exit --exit-code-from migrate migrate
-docker compose --env-file .env.production -f docker-compose.prod.yml up -d
-```
-
-The `yarn prod:infra` helper runs the same migration job before starting the
-production stack, so pending Prisma migrations are applied automatically during
-manual deploys too.
-
-Production resource names:
-
-- containers: `selfchecks-prod-web`, `selfchecks-prod-worker`,
-  `selfchecks-prod-caddy`, `selfchecks-prod-postgres`, `selfchecks-prod-redis`
-- network: `selfchecks-prod-network`
-- volumes: `selfchecks-prod-postgres-data`, `selfchecks-prod-redis-data`
-
-For a fresh server install, run:
-
-```bash
-yarn install:server
-```
-
-The installer prepares `/opt/selfchecks`, installs Docker and the Compose plugin
-when missing, generates `.env` secrets, seeds `runtime/selfchecks.config.json`
-and `runtime/Caddyfile`, then starts the production stack. Open
-`http://<server-ip>/setup`, enter the setup token from `/opt/selfchecks/.env`,
-then configure the domain, certificate email, admin login, and admin password.
-
-After setup, Caddy reloads its generated config and requests a public TLS
-certificate for the configured domain. DNS for that domain must already point to
-the server, and ports `80` and `443` must be reachable from the internet.
-
-## CI/CD
-
-Pushes to `stable` run `.github/workflows/deploy.yml`. The workflow runs the
-same repository checks as CI, builds `ghcr.io/selfchecks/selfchecks-web:stable`
-and `ghcr.io/selfchecks/selfchecks-worker:stable`, and publishes the multi-arch
-remote client as `ghcr.io/selfchecks/selfchecks-cli:stable`. It then connects to
-the production server over SSH, syncs only the Compose file and bootstrap
-templates, uploads `.env`, pulls the fresh GHCR images, runs
-`prisma migrate deploy` through the production `migrate` service, and starts the
-production Compose stack.
-
-Configure these GitHub Actions repository variables:
-
-- `DEPLOY_HOST`: production server hostname or IP.
-- `DEPLOY_USER`: SSH user for deployment.
-- `DEPLOY_PATH`: install path on the server, for example `/opt/selfchecks`.
-- `DEPLOY_PORT`: optional SSH port, defaults to `22`.
-- `POSTGRES_DB`: optional database name, defaults to `selfchecks`.
-- `POSTGRES_USER`: optional database user, defaults to `selfchecks`.
-- `NEXTAUTH_URL`: public dashboard URL after DNS is ready.
-- `SELFCHECKS_CHECKS_ROOT`: optional source root override available inside the
-  web and worker containers.
-- `SELFCHECKS_DEPLOYMENTS_DIR`: uploaded deployment storage, defaults to
-  `/app/runtime/deployments`.
-- `SELFCHECKS_QUEUE_NAME`: optional queue name, defaults to `selfchecks-checks`.
-- `SELFCHECKS_QUEUED_RUN_TIMEOUT_MINUTES`: optional timeout for queued runs,
-  defaults to `30`.
-- `SELFCHECKS_RUNNING_RUN_TIMEOUT_MINUTES`: optional timeout for running checks
-  that never finish, defaults to `120`.
-- `SELFCHECKS_SCHEDULER_ENABLED`: optional worker scheduler toggle, defaults to
-  `1`.
-- `SELFCHECKS_SCHEDULER_INTERVAL_MS`: optional worker scheduler poll interval,
-  defaults to `60000`.
-- `SELFCHECKS_SCHEDULER_REPORTER`: optional reporter for scheduled browser
-  checks, defaults to `list`.
-- `SELFCHECKS_WEBHOOK_TIMEOUT_MS`: optional webhook timeout, defaults to `5000`.
-- `SELFCHECKS_API_TOKEN`: bearer token accepted by remote CLI endpoints. Deploy
-  preserves the current token or generates one automatically.
-
-Configure these GitHub Actions repository secrets:
-
-- `DEPLOY_SSH_KEY`: private SSH key accepted by the production server.
-- `DEPLOY_KNOWN_HOSTS`: optional pinned `known_hosts` entry. If omitted, the
-  workflow uses `ssh-keyscan`.
-- `POSTGRES_PASSWORD`: PostgreSQL password used by the Compose stack.
-- `NEXTAUTH_SECRET`: session secret.
-- `SELFCHECKS_ADMIN_LOGIN` and `SELFCHECKS_ADMIN_PASSWORD`: optional initial
-  admin credentials. When both are configured, `/login` can be used before the
-  first-launch setup writes runtime admin credentials.
-- `SELFCHECKS_SETUP_TOKEN`: optional first-launch setup token override. If
-  omitted, deploy preserves the current server token or generates one on first
-  deploy.
-- `SELFCHECKS_API_TOKEN`: optional remote CLI token override. Copy the resulting
-  server value to CI as a protected secret named `SELFCHECKS_API_TOKEN`.
-
-`DATABASE_URL` is generated by the deploy workflow from `POSTGRES_DB`,
-`POSTGRES_USER`, and `POSTGRES_PASSWORD` so it cannot drift from the bundled
-PostgreSQL container credentials.
-
-The deploy workflow sets `SELFCHECKS_CADDY_ADMIN_ORIGIN` to
-`http://0.0.0.0:2019` for Caddy's local admin API origin checks. Keep this value
-unless you also change the Caddy admin listen address.
-
-The GHCR packages are intended to be public. If GitHub creates the first package
-as private, switch `selfchecks-web`, `selfchecks-worker`, and `selfchecks-cli` to
-public in the organization package settings. The deploy workflow still logs in
-with the short-lived workflow `GITHUB_TOKEN` before pulling images, so deploys
-can proceed while visibility is being corrected.
-
-Useful commands:
-
-```bash
-yarn dev:infra
-yarn dev:infra:down
 yarn dev:web
-yarn dev:worker
-yarn workspace @selfchecks/cli dev --help
-yarn workspace @selfchecks/cli dev deploy --dry-run --root .
-yarn checks:deploy:account
-yarn checks:test:account
-yarn checks:test:account:signin
-yarn typecheck
+```
+
+Useful checks:
+
+```bash
+yarn format:check
 yarn lint
+yarn typecheck
 yarn test
+yarn build
 ```
-
-Local end-to-end smoke flow with the current account checks:
-
-```bash
-yarn dev:infra
-yarn checks:deploy:account
-yarn checks:test:account
-yarn checks:test:account:signin
-yarn dev:web
-```
-
-`selfchecks deploy` applies pending Prisma migrations before writing imported
-checks. Set `SELFCHECKS_AUTO_MIGRATE=0` only when migrations are managed by a
-separate deployment step. By default, deploy refuses to remove checks that are
-missing from the imported manifest; rerun with `--force` only after verifying
-the deploy root and parsed summary. Forced removals disable stale checks instead
-of deleting their run history.
-
-Open `http://localhost:3000`, sign in with the local admin credentials from
-`.env`, and the dashboard will read imported checks and recorded runs from the
-local database. Imported checks without a run are shown as degraded until they
-are executed.
 
 Workspace layout:
 
-- `apps/web`: Next.js dashboard, shadcn/ui component setup, and credentials auth.
-- `apps/worker`: BullMQ worker entrypoint for queued check execution.
-- `packages/cli`: `selfchecks` command parser for deploy, test, and trigger.
-- `packages/core`: shared domain types, validation, and the first narrow
-  Checkly-style manifest importer.
-- `packages/db`: Prisma schema and database client.
-
-## First Implementation Slice
-
-The smallest useful milestone:
-
-- `selfchecks deploy` imports the existing account `config/checkly` tree.
-- Dashboard lists imported checks grouped like Checkly.
-- `selfchecks test --tags ... --record --reporter=github` runs a small selected
-  subset and writes a GitHub/GitLab-compatible Markdown report.
-- Failed browser run exposes trace, screenshot, and console/log output in the UI.
-- A configured webhook integration receives one failure notification with a link
-  to the run page.
+- `apps/web` — dashboard and HTTP API;
+- `apps/worker` — scheduler and check execution;
+- `packages/cli` — internal server-side CLI and runner;
+- `packages/npm-cli` — public remote-only npm CLI;
+- `packages/checkly-compat` — public Checkly-compatible constructs;
+- `packages/create-selfchecks` — public starter project generator;
+- `packages/core` — manifest importer and shared domain types;
+- `packages/db` — Prisma schema and database client.

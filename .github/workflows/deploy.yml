@@ -138,8 +138,91 @@ jobs:
           cache-from: type=gha,scope=selfchecks-cli
           cache-to: type=gha,mode=max,scope=selfchecks-cli
 
+  publish-packages:
+    needs: repo-checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js for npm
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+          scope: "@selfchecks"
+
+      - name: Enable Corepack
+        run: |
+          corepack enable
+          corepack prepare yarn@4.13.0 --activate
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Build npm packages
+        run: yarn build:npm-packages
+
+      - name: Publish new package versions
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          for package_dir in packages/checkly-compat packages/npm-cli packages/create-selfchecks; do
+            package_name="$(node -p "require('./${package_dir}/package.json').name")"
+            package_version="$(node -p "require('./${package_dir}/package.json').version")"
+
+            if npm view "${package_name}@${package_version}" version >/dev/null 2>&1; then
+              echo "${package_name}@${package_version} is already published"
+              continue
+            fi
+
+            npm publish "./${package_dir}" --access public --provenance
+          done
+
+  smoke-create-selfchecks:
+    needs: publish-packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Create starter project
+        run: |
+          creator_version="$(node -p "require('./packages/create-selfchecks/package.json').version")"
+          npx --yes "create-selfchecks@${creator_version}" "${RUNNER_TEMP}/selfchecks-starter"
+
+      - name: Typecheck starter project
+        working-directory: ${{ runner.temp }}/selfchecks-starter
+        run: npm run typecheck
+
+      - name: Install Chromium
+        working-directory: ${{ runner.temp }}/selfchecks-starter
+        run: npx playwright install chromium
+
+      - name: Run starter check
+        working-directory: ${{ runner.temp }}/selfchecks-starter
+        run: npm test
+
   deploy:
-    needs: build-images
+    needs:
+      - build-images
+      - smoke-create-selfchecks
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
