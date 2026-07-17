@@ -320,11 +320,6 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.prepare-release.outputs.release_sha }}
-
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
@@ -332,6 +327,7 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: Wait for published packages
+        working-directory: ${{ runner.temp }}
         env:
           RELEASE_VERSION: ${{ needs.prepare-release.outputs.release_version }}
         run: |
@@ -379,6 +375,7 @@ jobs:
           done
 
       - name: Create starter project from the release version
+        working-directory: ${{ runner.temp }}
         env:
           RELEASE_VERSION: ${{ needs.prepare-release.outputs.release_version }}
         run: npx --yes "create-selfchecks@${RELEASE_VERSION}" "${RUNNER_TEMP}/selfchecks-starter"
