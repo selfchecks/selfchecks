@@ -317,7 +317,7 @@ jobs:
       - prepare-release
       - publish-packages
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -337,19 +337,36 @@ jobs:
         run: |
           set -euo pipefail
 
-          for package_name in @selfchecks/selfchecks @selfchecks/selfchecks-cli create-selfchecks; do
-            for attempt in {1..12}; do
-              if npm view "${package_name}@${RELEASE_VERSION}" version >/dev/null 2>&1; then
-                break
-              fi
+          packages=(
+            @selfchecks/selfchecks
+            @selfchecks/selfchecks-cli
+            create-selfchecks
+          )
 
-              if [ "${attempt}" = "12" ]; then
-                echo "${package_name}@${RELEASE_VERSION} is not available from npm" >&2
-                exit 1
-              fi
+          for attempt in {1..60}; do
+            missing_packages=()
 
-              sleep 5
+            for package_name in "${packages[@]}"; do
+              if ! npm view "${package_name}@${RELEASE_VERSION}" version \
+                --prefer-online \
+                --cache "${RUNNER_TEMP}/npm-view-cache-${attempt}" \
+                >/dev/null 2>&1; then
+                missing_packages+=("${package_name}@${RELEASE_VERSION}")
+              fi
             done
+
+            if [ "${#missing_packages[@]}" -eq 0 ]; then
+              echo "All release packages are available from npm"
+              break
+            fi
+
+            if [ "${attempt}" = "60" ]; then
+              echo "Packages are not available from npm: ${missing_packages[*]}" >&2
+              exit 1
+            fi
+
+            echo "Waiting for npm registry: ${missing_packages[*]} (attempt ${attempt}/60)"
+            sleep 5
           done
 
       - name: Create starter project from the release version
