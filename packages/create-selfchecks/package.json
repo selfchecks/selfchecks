@@ -8,7 +8,9 @@
     "dist/**/*.d.ts.map",
     "dist/**/*.js"
   ],
-  "bin": "./dist/bin.js",
+  "bin": {
+    "create-selfchecks": "./dist/bin.js"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

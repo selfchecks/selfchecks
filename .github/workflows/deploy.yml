@@ -356,8 +356,17 @@ jobs:
             done
 
             if [ "${#missing_packages[@]}" -eq 0 ]; then
-              echo "All release packages are available from npm"
-              break
+              npm_exec_cache="${RUNNER_TEMP}/npm-exec-cache-${attempt}"
+
+              if NPM_CONFIG_CACHE="${npm_exec_cache}" \
+                npx --yes "create-selfchecks@${RELEASE_VERSION}" --help \
+                >/dev/null 2>&1; then
+                echo "NPM_CONFIG_CACHE=${npm_exec_cache}" >> "${GITHUB_ENV}"
+                echo "All release packages and the create-selfchecks executable are available from npm"
+                break
+              fi
+
+              missing_packages+=("create-selfchecks@${RELEASE_VERSION} executable")
             fi
 
             if [ "${attempt}" = "60" ]; then
