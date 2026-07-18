@@ -12,6 +12,7 @@ import {
   normalizeTags,
   retryStrategySchema,
   summarizeTerminalRunStatuses,
+  webhookAlertChannelSchema,
 } from "./index.js";
 
 describe("summarizeTerminalRunStatuses", () => {
@@ -123,6 +124,38 @@ describe("retryStrategySchema", () => {
         type: "FIXED",
       }),
     ).toThrow();
+  });
+});
+
+describe("webhookAlertChannelSchema", () => {
+  it("normalizes Checkly webhook channel defaults", () => {
+    expect(
+      webhookAlertChannelSchema.parse({
+        logicalId: "RocketChatFail",
+        name: "RocketChatFail",
+        url: "https://chat.example.test/hooks/unit-test",
+      }),
+    ).toEqual({
+      adapter: "generic",
+      logicalId: "RocketChatFail",
+      method: "POST",
+      name: "RocketChatFail",
+      sendDegraded: false,
+      sendFailure: true,
+      sendRecovery: true,
+      sslExpiry: false,
+      url: "https://chat.example.test/hooks/unit-test",
+    });
+  });
+
+  it("rejects non-HTTP webhook URLs", () => {
+    expect(() =>
+      webhookAlertChannelSchema.parse({
+        logicalId: "unsafe",
+        name: "Unsafe",
+        url: "file:///tmp/webhook",
+      }),
+    ).toThrow("Webhook URLs must use HTTP or HTTPS.");
   });
 });
 

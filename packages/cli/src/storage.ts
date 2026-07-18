@@ -1,4 +1,11 @@
-import type { CheckDefinition, DeploySummary } from "@selfchecks/core";
+import {
+  encryptSecretValue,
+  toDeploySummary,
+  type CheckDefinition,
+  type DeploySummary,
+  type ManifestImportResult,
+  type WebhookAlertChannelDefinition,
+} from "@selfchecks/core";
 import { prisma, Prisma } from "@selfchecks/db";
 
 type PrismaTransaction = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
@@ -9,7 +16,14 @@ export type PersistDeployOptions = {
   projectSlug: string;
   rootDir: string;
   source?: string;
-  summary: DeploySummary;
+  summary: ManifestImportResult;
+};
+
+type PersistedGroupDefinition = Pick<
+  CheckDefinition,
+  "alertChannelLogicalIds" | "groupKey" | "groupName"
+> & {
+  groupKey: string;
 };
 
 export async function persistDeploySummary({
@@ -45,6 +59,7 @@ export async function persistDeploySummary({
     const existingKeys = new Set(existingChecks.map((check) => check.key));
     const nextKeys = new Set(summary.checks.map((check) => check.key));
     const removed = [...existingKeys].filter((key) => !nextKeys.has(key));
+    const publicSummary = toDeploySummary(summary);
 
     if (removed.length > 0 && !allowRemovals) {
       const preview = removed.slice(0, 10).join(", ");
@@ -60,12 +75,25 @@ export async function persistDeploySummary({
         deployedBy,
         projectId: project.id,
         source,
-        summary: summary as unknown as Prisma.InputJsonValue,
+        summary: publicSummary as unknown as Prisma.InputJsonValue,
       },
     });
 
+    const webhookEndpoints = await upsertManifestWebhookEndpoints(
+      tx,
+      project.id,
+      summary.alertChannels,
+    );
+    const groupIds = new Map<string, string>();
+
+    for (const group of collectGroupDefinitions(summary.checks)) {
+      const groupId = await upsertCheckGroup(tx, project.id, group, webhookEndpoints);
+
+      groupIds.set(group.groupKey, groupId);
+    }
+
     for (const check of summary.checks) {
-      const groupId = await upsertCheckGroup(tx, project.id, check);
+      const groupId = check.groupKey ? groupIds.get(check.groupKey) : undefined;
 
       await tx.check.upsert({
         create: {
@@ -129,7 +157,7 @@ export async function persistDeploySummary({
     });
 
     return {
-      ...summary,
+      ...publicSummary,
       created: summary.checks.filter((check) => !existingKeys.has(check.key)).length,
       removed: removed.length,
       updated: summary.checks.filter((check) => existingKeys.has(check.key)).length,
@@ -137,32 +165,162 @@ export async function persistDeploySummary({
   });
 }
 
+function collectGroupDefinitions(
+  checks: CheckDefinition[],
+): PersistedGroupDefinition[] {
+  const groups = new Map<string, PersistedGroupDefinition>();
+
+  for (const check of checks) {
+    if (!check.groupKey) {
+      continue;
+    }
+
+    const existing = groups.get(check.groupKey);
+
+    groups.set(check.groupKey, {
+      alertChannelLogicalIds: [
+        ...new Set([
+          ...(existing?.alertChannelLogicalIds ?? []),
+          ...check.alertChannelLogicalIds,
+        ]),
+      ],
+      groupKey: check.groupKey,
+      groupName: check.groupName ?? existing?.groupName,
+    });
+  }
+
+  return [...groups.values()];
+}
+
+async function upsertManifestWebhookEndpoints(
+  tx: PrismaTransaction,
+  projectId: string,
+  channels: WebhookAlertChannelDefinition[],
+): Promise<Map<string, string>> {
+  const endpoints = new Map<string, string>();
+
+  for (const channel of channels) {
+    const endpoint = await tx.webhookEndpoint.upsert({
+      create: {
+        adapter: toPrismaWebhookAdapter(channel.adapter),
+        enabled: true,
+        logicalId: channel.logicalId,
+        method: channel.method,
+        name: channel.name,
+        projectId,
+        sendDegraded: channel.sendDegraded,
+        sendFailure: channel.sendFailure,
+        sendRecovery: channel.sendRecovery,
+        source: "MANIFEST",
+        sslExpiry: channel.sslExpiry,
+        template: channel.template,
+        urlCiphertext: encryptSecretValue(channel.url),
+      },
+      update: {
+        adapter: toPrismaWebhookAdapter(channel.adapter),
+        enabled: true,
+        method: channel.method,
+        name: channel.name,
+        sendDegraded: channel.sendDegraded,
+        sendFailure: channel.sendFailure,
+        sendRecovery: channel.sendRecovery,
+        source: "MANIFEST",
+        sslExpiry: channel.sslExpiry,
+        template: channel.template,
+        urlCiphertext: encryptSecretValue(channel.url),
+      },
+      where: {
+        projectId_logicalId: {
+          logicalId: channel.logicalId,
+          projectId,
+        },
+      },
+    });
+
+    endpoints.set(channel.logicalId, endpoint.id);
+  }
+
+  await tx.webhookEndpoint.updateMany({
+    data: {
+      enabled: false,
+    },
+    where: {
+      projectId,
+      source: "MANIFEST",
+      ...(channels.length > 0
+        ? {
+            logicalId: {
+              notIn: channels.map((channel) => channel.logicalId),
+            },
+          }
+        : {}),
+    },
+  });
+
+  return endpoints;
+}
+
+function toPrismaWebhookAdapter(
+  adapter: WebhookAlertChannelDefinition["adapter"],
+): Prisma.WebhookEndpointCreateInput["adapter"] {
+  return adapter === "rocket-chat" ? "ROCKET_CHAT" : "GENERIC";
+}
+
 async function upsertCheckGroup(
   tx: PrismaTransaction,
   projectId: string,
-  check: CheckDefinition,
-): Promise<string | undefined> {
-  if (!check.groupKey) {
-    return undefined;
-  }
-
+  groupDefinition: PersistedGroupDefinition,
+  webhookEndpoints: Map<string, string>,
+): Promise<string> {
   const group = await tx.checkGroup.upsert({
     create: {
-      key: check.groupKey,
-      name: check.groupName ?? check.groupKey,
+      key: groupDefinition.groupKey,
+      name: groupDefinition.groupName ?? groupDefinition.groupKey,
       projectId,
       tags: [],
     },
     update: {
-      name: check.groupName ?? check.groupKey,
+      name: groupDefinition.groupName ?? groupDefinition.groupKey,
     },
     where: {
       projectId_key: {
-        key: check.groupKey,
+        key: groupDefinition.groupKey,
         projectId,
       },
     },
   });
+
+  const endpointIds = groupDefinition.alertChannelLogicalIds.flatMap((logicalId) => {
+    const endpointId = webhookEndpoints.get(logicalId);
+
+    return endpointId ? [endpointId] : [];
+  });
+
+  await tx.checkGroupWebhookEndpoint.deleteMany({
+    where: {
+      checkGroupId: group.id,
+      webhookEndpoint: {
+        source: "MANIFEST",
+      },
+      ...(endpointIds.length > 0
+        ? {
+            webhookEndpointId: {
+              notIn: endpointIds,
+            },
+          }
+        : {}),
+    },
+  });
+
+  if (endpointIds.length > 0) {
+    await tx.checkGroupWebhookEndpoint.createMany({
+      data: endpointIds.map((webhookEndpointId) => ({
+        checkGroupId: group.id,
+        webhookEndpointId,
+      })),
+      skipDuplicates: true,
+    });
+  }
 
   return group.id;
 }

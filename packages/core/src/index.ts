@@ -90,6 +90,28 @@ export const webhookEvents = [
 ] as const;
 export type WebhookEvent = (typeof webhookEvents)[number];
 
+export const webhookMethods = ["DELETE", "GET", "PATCH", "POST", "PUT"] as const;
+export type WebhookMethod = (typeof webhookMethods)[number];
+
+export const webhookAlertChannelSchema = z.object({
+  adapter: z.enum(webhookAdapters).default("generic"),
+  logicalId: z.string().min(1),
+  method: z.enum(webhookMethods).default("POST"),
+  name: z.string().min(1),
+  sendDegraded: z.boolean().default(false),
+  sendFailure: z.boolean().default(true),
+  sendRecovery: z.boolean().default(true),
+  sslExpiry: z.boolean().default(false),
+  template: z.string().optional(),
+  url: z
+    .string()
+    .url()
+    .refine((value) => value.startsWith("http://") || value.startsWith("https://"), {
+      message: "Webhook URLs must use HTTP or HTTPS.",
+    }),
+});
+export type WebhookAlertChannelDefinition = z.infer<typeof webhookAlertChannelSchema>;
+
 export const frequencySchema = z.object({
   intervalMinutes: z.number().int().positive(),
 });
@@ -131,6 +153,7 @@ export type ApiRequest = z.infer<typeof apiRequestSchema>;
 
 export const checkDefinitionSchema = z
   .object({
+    alertChannelLogicalIds: z.array(z.string().min(1)).default([]),
     enabled: z.boolean().default(true),
     entrypoint: z.string().optional(),
     frequency: frequencySchema.optional(),
@@ -196,7 +219,14 @@ export {
   importCheckDefinitions,
   parseCheckManifestFile,
   parseCheckManifestSource,
+  toDeploySummary,
   type ManifestImportOptions,
   type ManifestImportResult,
   type ParsedManifestFile,
 } from "./manifest-import.js";
+
+export {
+  decryptSecretValue,
+  encryptSecretValue,
+  type SecretStoreEnv,
+} from "./secret-store.js";

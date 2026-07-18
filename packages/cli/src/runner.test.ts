@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   checkRunCreate: vi.fn(),
   checkRunFindFirst: vi.fn(),
   checkRunUpdate: vi.fn(),
+  deliverRunNotifications: vi.fn(),
   projectFindUnique: vi.fn().mockResolvedValue({ id: "project_1" }),
   projectUpsert: vi.fn().mockResolvedValue({ id: "project_1" }),
   spawn: vi.fn(),
@@ -58,6 +59,10 @@ vi.mock("@selfchecks/db", () => ({
 
 vi.mock("./ai-analysis.js", () => ({
   analyzeFailedCheck: vi.fn(),
+}));
+
+vi.mock("./notifications.js", () => ({
+  deliverRunNotifications: mocks.deliverRunNotifications,
 }));
 
 import {
@@ -644,6 +649,8 @@ describe("runCheckById", () => {
         },
       }),
     );
+    expect(mocks.deliverRunNotifications).toHaveBeenCalledTimes(1);
+    expect(mocks.deliverRunNotifications).toHaveBeenCalledWith("run_2");
   });
 
   it("keeps a manual rerun attached to its existing test session", async () => {

@@ -9,6 +9,7 @@ import {
 
 export type DeploySummary = {
   checks: Array<{
+    alertChannelLogicalIds: string[];
     enabled: boolean;
     entrypoint?: string;
     frequency?: { intervalMinutes: number };

@@ -4,7 +4,9 @@ import { Command } from "commander";
 
 import {
   type CheckDefinition,
+  type DeploySummary,
   importCheckDefinitions,
+  toDeploySummary,
   normalizeTags,
 } from "@selfchecks/core";
 
@@ -26,7 +28,7 @@ export type DeployCommandOutput = {
   projectSlug: string;
   rootDir: string;
   status: "deployed" | "parsed";
-  summary: Awaited<ReturnType<typeof importCheckDefinitions>>;
+  summary: DeploySummary;
 };
 
 export type TestCommandOutput = {
@@ -204,7 +206,9 @@ export function createSelfchecksProgram(
       );
       const summary = await (async () => {
         if (commandOptions.dryRun) {
-          return importCheckDefinitions({ projectSlug, rootDir });
+          return toDeploySummary(
+            await importCheckDefinitions({ projectSlug, rootDir }),
+          );
         }
 
         if (hasRemoteConfig) {

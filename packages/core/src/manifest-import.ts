@@ -7,12 +7,17 @@ import {
   type CheckDefinition,
   checkDefinitionSchema,
   type CheckType,
+  deploySummarySchema,
   type DeploySummary,
   type RetryStrategy,
   type RetryStrategyType,
+  type WebhookAlertChannelDefinition,
+  webhookAlertChannelSchema,
 } from "./index.js";
 
-export type ManifestImportResult = DeploySummary;
+export type ManifestImportResult = DeploySummary & {
+  alertChannels: WebhookAlertChannelDefinition[];
+};
 
 export type ManifestImportOptions = {
   projectSlug: string;
@@ -33,18 +38,24 @@ type ParsedCheck = {
 type RequestFactoryKind = "api" | "bff" | "unknown";
 
 type GroupDefinition = {
+  alertChannelLogicalIds: string[];
   key: string;
   name?: string;
   retryStrategy?: RetryStrategy;
 };
 
 type GroupFactoryDefinition = {
+  alertChannelLogicalIds: string[];
   retryStrategy?: RetryStrategy;
 };
 
 type ManifestImportContext = {
+  alertChannelCollections: Map<string, string[]>;
+  alertChannels: Map<string, WebhookAlertChannelDefinition>;
   groups: Map<string, GroupDefinition>;
   retryStrategies: Map<string, RetryStrategy>;
+  stringConstants: Map<string, string>;
+  warnings: string[];
 };
 
 type ParseContext = {
@@ -76,9 +87,13 @@ export async function importCheckDefinitions(
     ),
   );
   const checks = parsedFiles.flatMap((file) => file.checks);
-  const warnings = parsedFiles.flatMap((file) => file.warnings);
+  const warnings = [
+    ...importContext.warnings,
+    ...parsedFiles.flatMap((file) => file.warnings),
+  ];
 
   return {
+    alertChannels: uniqueAlertChannels(importContext.alertChannels),
     checks,
     created: checks.length,
     projectSlug: options.projectSlug,
@@ -86,6 +101,21 @@ export async function importCheckDefinitions(
     updated: 0,
     warnings,
   };
+}
+
+export function toDeploySummary(summary: DeploySummary): DeploySummary {
+  return deploySummarySchema.parse(
+    JSON.parse(
+      JSON.stringify({
+        checks: summary.checks,
+        created: summary.created,
+        projectSlug: summary.projectSlug,
+        removed: summary.removed,
+        updated: summary.updated,
+        warnings: summary.warnings,
+      }),
+    ),
+  );
 }
 
 export async function findCheckManifestFiles(rootDir: string): Promise<string[]> {
@@ -154,8 +184,12 @@ function isManifestSupportSource(fileName: string): boolean {
 
 function createEmptyManifestImportContext(): ManifestImportContext {
   return {
+    alertChannelCollections: new Map(),
+    alertChannels: new Map(),
     groups: new Map(),
     retryStrategies: new Map(),
+    stringConstants: new Map(),
+    warnings: [],
   };
 }
 
@@ -184,12 +218,25 @@ async function buildManifestImportContext(
   const context = createEmptyManifestImportContext();
 
   for (const parsedFile of parsedFiles) {
+    collectStringConstants(parsedFile.sourceFile, context.stringConstants);
+  }
+
+  for (const parsedFile of parsedFiles) {
     collectRetryStrategies(
       parsedFile.sourceFile,
       parsedFile.filePath,
       context.retryStrategies,
     );
   }
+
+  for (const parsedFile of parsedFiles) {
+    collectWebhookAlertChannels(parsedFile.sourceFile, parsedFile.filePath, context);
+  }
+
+  collectWebhookAlertChannelCollections(
+    parsedFiles.map((parsedFile) => parsedFile.sourceFile),
+    context,
+  );
 
   const groupFactories = new Map<string, GroupFactoryDefinition>();
 
@@ -198,6 +245,8 @@ async function buildManifestImportContext(
       parsedFile.sourceFile,
       parsedFile.filePath,
       context.retryStrategies,
+      context.alertChannels,
+      context.alertChannelCollections,
       groupFactories,
     );
   }
@@ -234,6 +283,8 @@ export async function parseCheckManifestFile(
 
       return {
         ...check,
+        alertChannelLogicalIds:
+          groupDefinition?.alertChannelLogicalIds ?? check.alertChannelLogicalIds ?? [],
         entrypoint: normalizeEntrypoint(rootDir, relativePath, check.entrypoint),
         groupKey: group?.key ?? groupDefinition?.key ?? check.groupKey,
         groupName: group?.name ?? groupDefinition?.name ?? check.groupName,
@@ -329,17 +380,248 @@ function collectRetryStrategies(
   visit(sourceFile);
 }
 
+function collectStringConstants(
+  sourceFile: ts.SourceFile,
+  stringConstants: Map<string, string>,
+): void {
+  function visit(node: ts.Node): void {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer
+    ) {
+      const value = extractStringValue(node.initializer, sourceFile.fileName);
+
+      if (value !== undefined) {
+        stringConstants.set(node.name.text, value);
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+}
+
+function collectWebhookAlertChannels(
+  sourceFile: ts.SourceFile,
+  filePath: string,
+  context: ManifestImportContext,
+): void {
+  function visit(node: ts.Node): void {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer &&
+      ts.isNewExpression(node.initializer) &&
+      getExpressionName(node.initializer.expression) === "WebhookAlertChannel"
+    ) {
+      const parsed = parseWebhookAlertChannel(
+        node.initializer,
+        filePath,
+        context.stringConstants,
+      );
+
+      if (parsed.success) {
+        context.alertChannels.set(node.name.text, parsed.channel);
+        context.alertChannels.set(parsed.channel.logicalId, parsed.channel);
+      } else {
+        context.warnings.push(
+          `${filePath}: skipped WebhookAlertChannel ${node.name.text} because ${parsed.error}`,
+        );
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+}
+
+function parseWebhookAlertChannel(
+  expression: ts.NewExpression,
+  filePath: string,
+  stringConstants: Map<string, string>,
+):
+  | { channel: WebhookAlertChannelDefinition; success: true }
+  | { error: string; success: false } {
+  const args = expression.arguments ? [...expression.arguments] : [];
+  const logicalId = args[0]
+    ? extractStaticStringValue(args[0], filePath, stringConstants)
+    : undefined;
+  const config = args[1];
+
+  if (!logicalId || !config || !ts.isObjectLiteralExpression(config)) {
+    return {
+      error: "its logical ID and configuration must be static",
+      success: false,
+    };
+  }
+
+  const urlProperty = getPropertyAssignment(config, "url");
+  const url = urlProperty
+    ? extractWebhookUrl(urlProperty.initializer, filePath, stringConstants)
+    : undefined;
+  const method = (
+    getStaticStringProperty(config, "method", filePath, stringConstants) ?? "POST"
+  ).toUpperCase();
+  const candidate = {
+    adapter: "generic" as const,
+    logicalId,
+    method,
+    name:
+      getStaticStringProperty(config, "name", filePath, stringConstants) ?? logicalId,
+    sendDegraded: getBooleanProperty(config, "sendDegraded") ?? false,
+    sendFailure: getBooleanProperty(config, "sendFailure") ?? true,
+    sendRecovery: getBooleanProperty(config, "sendRecovery") ?? true,
+    sslExpiry: getBooleanProperty(config, "sslExpiry") ?? false,
+    template: getStaticStringProperty(config, "template", filePath, stringConstants),
+    url,
+  };
+  const validation = webhookAlertChannelSchema.safeParse(candidate);
+
+  return validation.success
+    ? { channel: validation.data, success: true }
+    : {
+        error: validation.error.issues.map((issue) => issue.message).join("; "),
+        success: false,
+      };
+}
+
+function extractWebhookUrl(
+  expression: ts.Expression,
+  filePath: string,
+  stringConstants: Map<string, string>,
+): string | undefined {
+  if (
+    ts.isNewExpression(expression) &&
+    getExpressionName(expression.expression) === "URL"
+  ) {
+    const value = expression.arguments?.[0];
+
+    return value
+      ? extractStaticStringValue(value, filePath, stringConstants)
+      : undefined;
+  }
+
+  return extractStaticStringValue(expression, filePath, stringConstants);
+}
+
+function collectWebhookAlertChannelCollections(
+  sourceFiles: ts.SourceFile[],
+  context: ManifestImportContext,
+): void {
+  const declarations: Array<{ expression: ts.Expression; name: string }> = [];
+
+  for (const sourceFile of sourceFiles) {
+    function visit(node: ts.Node): void {
+      if (
+        ts.isVariableDeclaration(node) &&
+        ts.isIdentifier(node.name) &&
+        node.initializer
+      ) {
+        declarations.push({ expression: node.initializer, name: node.name.text });
+      }
+
+      ts.forEachChild(node, visit);
+    }
+
+    visit(sourceFile);
+  }
+
+  for (let pass = 0; pass < declarations.length; pass += 1) {
+    let changed = false;
+
+    for (const declaration of declarations) {
+      const logicalIds = resolveAlertChannelLogicalIds(
+        declaration.expression,
+        context.alertChannels,
+        context.alertChannelCollections,
+      );
+
+      if (
+        logicalIds.length > 0 &&
+        !sameStringArray(
+          context.alertChannelCollections.get(declaration.name),
+          logicalIds,
+        )
+      ) {
+        context.alertChannelCollections.set(declaration.name, logicalIds);
+        changed = true;
+      }
+    }
+
+    if (!changed) {
+      break;
+    }
+  }
+}
+
+function resolveAlertChannelLogicalIds(
+  expression: ts.Expression,
+  alertChannels: Map<string, WebhookAlertChannelDefinition>,
+  collections: Map<string, string[]>,
+): string[] {
+  if (ts.isIdentifier(expression)) {
+    const channel = alertChannels.get(expression.text);
+
+    return channel ? [channel.logicalId] : (collections.get(expression.text) ?? []);
+  }
+
+  if (!ts.isArrayLiteralExpression(expression)) {
+    return [];
+  }
+
+  return uniqueStrings(
+    expression.elements.flatMap((element) =>
+      ts.isSpreadElement(element)
+        ? resolveAlertChannelLogicalIds(element.expression, alertChannels, collections)
+        : resolveAlertChannelLogicalIds(element, alertChannels, collections),
+    ),
+  );
+}
+
+function uniqueAlertChannels(
+  alertChannels: Map<string, WebhookAlertChannelDefinition>,
+): WebhookAlertChannelDefinition[] {
+  return [
+    ...new Map(
+      [...alertChannels.values()].map((channel) => [channel.logicalId, channel]),
+    ).values(),
+  ].sort((left, right) => left.logicalId.localeCompare(right.logicalId));
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values)];
+}
+
+function sameStringArray(left: string[] | undefined, right: string[]): boolean {
+  return Boolean(
+    left &&
+    left.length === right.length &&
+    left.every((value, index) => value === right[index]),
+  );
+}
+
 function collectGroupFactoryDefinitions(
   sourceFile: ts.SourceFile,
   filePath: string,
   retryStrategies: Map<string, RetryStrategy>,
+  alertChannels: Map<string, WebhookAlertChannelDefinition>,
+  alertChannelCollections: Map<string, string[]>,
   groupFactories: Map<string, GroupFactoryDefinition>,
 ): void {
   function recordFactory(name: string, body: ts.Node): void {
     const retryStrategy = findCheckGroupRetryStrategy(body, filePath, retryStrategies);
+    const alertChannelLogicalIds = findCheckGroupAlertChannelLogicalIds(
+      body,
+      alertChannels,
+      alertChannelCollections,
+    );
 
-    if (retryStrategy) {
+    if (retryStrategy || alertChannelLogicalIds.length > 0) {
       groupFactories.set(name, {
+        alertChannelLogicalIds,
         retryStrategy,
       });
     }
@@ -382,6 +664,8 @@ function collectGroupDefinitions(
         node.initializer,
         filePath,
         context.retryStrategies,
+        context.alertChannels,
+        context.alertChannelCollections,
         groupFactories,
       );
 
@@ -400,14 +684,29 @@ function parseGroupDefinition(
   expression: ts.Expression,
   filePath: string,
   retryStrategies: Map<string, RetryStrategy>,
+  alertChannels: Map<string, WebhookAlertChannelDefinition>,
+  alertChannelCollections: Map<string, string[]>,
   groupFactories: Map<string, GroupFactoryDefinition>,
 ): GroupDefinition | undefined {
   if (ts.isCallExpression(expression)) {
-    return parseGroupFactoryCall(expression, filePath, retryStrategies, groupFactories);
+    return parseGroupFactoryCall(
+      expression,
+      filePath,
+      retryStrategies,
+      alertChannels,
+      alertChannelCollections,
+      groupFactories,
+    );
   }
 
   if (ts.isNewExpression(expression)) {
-    return parseCheckGroupNewExpression(expression, filePath, retryStrategies);
+    return parseCheckGroupNewExpression(
+      expression,
+      filePath,
+      retryStrategies,
+      alertChannels,
+      alertChannelCollections,
+    );
   }
 
   return undefined;
@@ -417,6 +716,8 @@ function parseGroupFactoryCall(
   expression: ts.CallExpression,
   filePath: string,
   retryStrategies: Map<string, RetryStrategy>,
+  alertChannels: Map<string, WebhookAlertChannelDefinition>,
+  alertChannelCollections: Map<string, string[]>,
   groupFactories: Map<string, GroupFactoryDefinition>,
 ): GroupDefinition | undefined {
   const factory = groupFactories.get(getExpressionName(expression.expression) ?? "");
@@ -436,6 +737,14 @@ function parseGroupFactoryCall(
     optionsArg && ts.isObjectLiteralExpression(optionsArg) ? optionsArg : undefined;
 
   return {
+    alertChannelLogicalIds:
+      (options
+        ? getAlertChannelLogicalIdsProperty(
+            options,
+            alertChannels,
+            alertChannelCollections,
+          )
+        : undefined) ?? factory.alertChannelLogicalIds,
     key: slugify(name),
     name,
     retryStrategy:
@@ -449,6 +758,8 @@ function parseCheckGroupNewExpression(
   expression: ts.NewExpression,
   filePath: string,
   retryStrategies: Map<string, RetryStrategy>,
+  alertChannels: Map<string, WebhookAlertChannelDefinition>,
+  alertChannelCollections: Map<string, string[]>,
 ): GroupDefinition | undefined {
   if (!isCheckGroupConstructName(getExpressionName(expression.expression))) {
     return undefined;
@@ -471,6 +782,13 @@ function parseCheckGroupNewExpression(
   }
 
   return {
+    alertChannelLogicalIds: config
+      ? (getAlertChannelLogicalIdsProperty(
+          config,
+          alertChannels,
+          alertChannelCollections,
+        ) ?? [])
+      : [],
     key: key ?? slugify(name ?? ""),
     name,
     retryStrategy: config
@@ -524,6 +842,45 @@ function findCheckGroupRetryStrategy(
   visit(node);
 
   return retryStrategy;
+}
+
+function findCheckGroupAlertChannelLogicalIds(
+  node: ts.Node,
+  alertChannels: Map<string, WebhookAlertChannelDefinition>,
+  alertChannelCollections: Map<string, string[]>,
+): string[] {
+  let logicalIds: string[] = [];
+
+  function visit(currentNode: ts.Node): void {
+    if (logicalIds.length > 0) {
+      return;
+    }
+
+    if (
+      ts.isNewExpression(currentNode) &&
+      isCheckGroupConstructName(getExpressionName(currentNode.expression))
+    ) {
+      const args = currentNode.arguments ? [...currentNode.arguments] : [];
+      const config = args.find((arg): arg is ts.ObjectLiteralExpression =>
+        ts.isObjectLiteralExpression(arg),
+      );
+
+      if (config) {
+        logicalIds =
+          getAlertChannelLogicalIdsProperty(
+            config,
+            alertChannels,
+            alertChannelCollections,
+          ) ?? [];
+      }
+    }
+
+    ts.forEachChild(currentNode, visit);
+  }
+
+  visit(node);
+
+  return logicalIds;
 }
 
 function isCheckGroupConstructName(name: string | undefined): boolean {
@@ -806,6 +1163,19 @@ function getStringProperty(
   return property ? extractStringValue(property.initializer, filePath) : undefined;
 }
 
+function getStaticStringProperty(
+  objectLiteral: ts.ObjectLiteralExpression,
+  propertyName: string,
+  filePath: string,
+  stringConstants: Map<string, string>,
+): string | undefined {
+  const property = getPropertyAssignment(objectLiteral, propertyName);
+
+  return property
+    ? extractStaticStringValue(property.initializer, filePath, stringConstants)
+    : undefined;
+}
+
 function getBooleanProperty(
   objectLiteral: ts.ObjectLiteralExpression,
   propertyName: string,
@@ -866,6 +1236,22 @@ function getRetryStrategyProperty(
 
   return property
     ? resolveRetryStrategyExpression(property.initializer, filePath, retryStrategies)
+    : undefined;
+}
+
+function getAlertChannelLogicalIdsProperty(
+  objectLiteral: ts.ObjectLiteralExpression,
+  alertChannels: Map<string, WebhookAlertChannelDefinition>,
+  alertChannelCollections: Map<string, string[]>,
+): string[] | undefined {
+  const property = getPropertyAssignment(objectLiteral, "alertChannels");
+
+  return property
+    ? resolveAlertChannelLogicalIds(
+        property.initializer,
+        alertChannels,
+        alertChannelCollections,
+      )
     : undefined;
 }
 
@@ -1229,6 +1615,18 @@ function extractStringValue(
   }
 
   return undefined;
+}
+
+function extractStaticStringValue(
+  expression: ts.Expression,
+  filePath: string,
+  stringConstants: Map<string, string>,
+): string | undefined {
+  if (ts.isIdentifier(expression)) {
+    return stringConstants.get(expression.text);
+  }
+
+  return extractStringValue(expression, filePath);
 }
 
 function isPathJoinCall(expression: ts.CallExpression): boolean {

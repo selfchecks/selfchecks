@@ -18,6 +18,7 @@ import {
   collectBrowserPerformanceFromArtifacts,
   collectBrowserPerformanceFromDirectory,
 } from "./browser-performance.js";
+import { deliverRunNotifications } from "./notifications.js";
 
 export type EnvVar = {
   name: string;
@@ -571,6 +572,10 @@ async function runCheck(
         },
       });
       await recordRunArtifacts(run.id, result.artifacts ?? []);
+
+      if (!shouldRetry && options.runMode === "monitoring") {
+        await deliverRunNotifications(run.id);
+      }
     }
 
     lastResult = {

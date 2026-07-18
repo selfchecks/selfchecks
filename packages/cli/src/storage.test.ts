@@ -1,15 +1,19 @@
-import type { DeploySummary } from "@selfchecks/core";
+import type { ManifestImportResult } from "@selfchecks/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   checkFindMany: vi.fn(),
   checkGroupDeleteMany: vi.fn(),
+  checkGroupWebhookCreateMany: vi.fn(),
+  checkGroupWebhookDeleteMany: vi.fn(),
   checkUpdateMany: vi.fn(),
   checkGroupUpsert: vi.fn(),
   checkUpsert: vi.fn(),
   deploymentCreate: vi.fn(),
   projectUpsert: vi.fn(),
   transaction: vi.fn(),
+  webhookEndpointUpdateMany: vi.fn(),
+  webhookEndpointUpsert: vi.fn(),
 }));
 
 vi.mock("@selfchecks/db", () => ({
@@ -33,11 +37,19 @@ describe("persistDeploySummary", () => {
         deleteMany: mocks.checkGroupDeleteMany,
         upsert: mocks.checkGroupUpsert,
       },
+      checkGroupWebhookEndpoint: {
+        createMany: mocks.checkGroupWebhookCreateMany,
+        deleteMany: mocks.checkGroupWebhookDeleteMany,
+      },
       deployment: {
         create: mocks.deploymentCreate,
       },
       project: {
         upsert: mocks.projectUpsert,
+      },
+      webhookEndpoint: {
+        updateMany: mocks.webhookEndpointUpdateMany,
+        upsert: mocks.webhookEndpointUpsert,
       },
     };
 
@@ -60,6 +72,12 @@ describe("persistDeploySummary", () => {
     mocks.checkGroupUpsert.mockResolvedValue({
       id: "group_api",
     });
+    mocks.webhookEndpointUpsert.mockResolvedValue({
+      id: "webhook_1",
+    });
+    mocks.webhookEndpointUpdateMany.mockResolvedValue({ count: 0 });
+    mocks.checkGroupWebhookCreateMany.mockResolvedValue({ count: 1 });
+    mocks.checkGroupWebhookDeleteMany.mockResolvedValue({ count: 0 });
     mocks.checkUpsert.mockResolvedValue({});
     mocks.checkUpdateMany.mockResolvedValue({
       count: 1,
@@ -74,9 +92,24 @@ describe("persistDeploySummary", () => {
   });
 
   it("upserts project checks, disables stale checks when allowed, and returns fresh counters", async () => {
-    const summary: DeploySummary = {
+    const summary: ManifestImportResult = {
+      alertChannels: [
+        {
+          adapter: "generic",
+          logicalId: "RocketChatFail",
+          method: "POST",
+          name: "RocketChatFail",
+          sendDegraded: false,
+          sendFailure: true,
+          sendRecovery: false,
+          sslExpiry: false,
+          template: '{"text":"{{ALERT_TITLE}}"}',
+          url: "https://chat.example.test/hooks/unit-test",
+        },
+      ],
       checks: [
         {
+          alertChannelLogicalIds: ["RocketChatFail"],
           enabled: true,
           frequency: {
             intervalMinutes: 5,
@@ -95,6 +128,7 @@ describe("persistDeploySummary", () => {
           type: "api",
         },
         {
+          alertChannelLogicalIds: [],
           enabled: false,
           entrypoint: "checks/homepage.spec.ts",
           key: "homepage",
@@ -142,7 +176,49 @@ describe("persistDeploySummary", () => {
         deployedBy: "ci",
         projectId: "project_1",
         source: "git:abc123",
-        summary,
+        summary: {
+          checks: summary.checks,
+          created: 0,
+          projectSlug: "account",
+          removed: 0,
+          updated: 0,
+          warnings: [],
+        },
+      },
+    });
+    expect(JSON.stringify(mocks.deploymentCreate.mock.calls[0]?.[0])).not.toContain(
+      "chat.example.test",
+    );
+    expect(mocks.webhookEndpointUpsert).toHaveBeenCalledWith({
+      create: expect.objectContaining({
+        logicalId: "RocketChatFail",
+        projectId: "project_1",
+        source: "MANIFEST",
+        urlCiphertext: expect.stringMatching(/^v1:/),
+      }),
+      update: expect.objectContaining({
+        enabled: true,
+        sendFailure: true,
+        sendRecovery: false,
+        urlCiphertext: expect.stringMatching(/^v1:/),
+      }),
+      where: {
+        projectId_logicalId: {
+          logicalId: "RocketChatFail",
+          projectId: "project_1",
+        },
+      },
+    });
+    expect(mocks.webhookEndpointUpdateMany).toHaveBeenCalledWith({
+      data: {
+        enabled: false,
+      },
+      where: {
+        logicalId: {
+          notIn: ["RocketChatFail"],
+        },
+        projectId: "project_1",
+        source: "MANIFEST",
       },
     });
     expect(mocks.checkGroupUpsert).toHaveBeenCalledWith({
@@ -161,6 +237,26 @@ describe("persistDeploySummary", () => {
           projectId: "project_1",
         },
       },
+    });
+    expect(mocks.checkGroupWebhookDeleteMany).toHaveBeenCalledWith({
+      where: {
+        checkGroupId: "group_api",
+        webhookEndpoint: {
+          source: "MANIFEST",
+        },
+        webhookEndpointId: {
+          notIn: ["webhook_1"],
+        },
+      },
+    });
+    expect(mocks.checkGroupWebhookCreateMany).toHaveBeenCalledWith({
+      data: [
+        {
+          checkGroupId: "group_api",
+          webhookEndpointId: "webhook_1",
+        },
+      ],
+      skipDuplicates: true,
     });
     expect(mocks.checkUpsert).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -220,9 +316,11 @@ describe("persistDeploySummary", () => {
   });
 
   it("refuses to remove stale checks by default", async () => {
-    const summary: DeploySummary = {
+    const summary: ManifestImportResult = {
+      alertChannels: [],
       checks: [
         {
+          alertChannelLogicalIds: [],
           enabled: true,
           frequency: {
             intervalMinutes: 5,

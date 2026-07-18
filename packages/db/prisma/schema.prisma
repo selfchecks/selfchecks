@@ -47,6 +47,11 @@ enum WebhookAdapter {
   ROCKET_CHAT
 }
 
+enum WebhookEndpointSource {
+  MANIFEST
+  MANUAL
+}
+
 enum TestSessionKind {
   TEST
   TRIGGER
@@ -66,6 +71,7 @@ model Project {
   runtimeEnvironments RuntimeEnvironment[]
   secrets             Secret[]
   webhookEndpoints    WebhookEndpoint[]
+  notifications       Notification[]
   testSessions        TestSession[]
   runs                CheckRun[]
 }
@@ -97,15 +103,16 @@ model Deployment {
 }
 
 model CheckGroup {
-  id        String   @id @default(cuid())
-  projectId String
-  key       String
-  name      String
-  tags      String[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  checks    Check[]
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id               String                      @id @default(cuid())
+  projectId        String
+  key              String
+  name             String
+  tags             String[]
+  createdAt        DateTime                    @default(now())
+  updatedAt        DateTime                    @updatedAt
+  checks           Check[]
+  webhookEndpoints CheckGroupWebhookEndpoint[]
+  project          Project                     @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, key])
 }
@@ -182,6 +189,7 @@ model CheckRun {
   checkSnapshotProjectSlug String?
   createdAt                DateTime        @default(now())
   artifacts                Artifact[]
+  notifications            Notification[]
   check                    Check?          @relation(fields: [checkId], references: [id], onDelete: Cascade)
   testSession              TestSession?    @relation(fields: [testSessionId], references: [id], onDelete: SetNull)
   project                  Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -207,26 +215,61 @@ model Artifact {
 }
 
 model WebhookEndpoint {
-  id            String         @id @default(cuid())
+  id            String                      @id @default(cuid())
   projectId     String
+  logicalId     String
   name          String
-  adapter       WebhookAdapter @default(GENERIC)
+  adapter       WebhookAdapter              @default(GENERIC)
+  source        WebhookEndpointSource       @default(MANUAL)
+  method        String                      @default("POST")
   urlCiphertext String
-  enabled       Boolean        @default(true)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  template      String?
+  sendFailure   Boolean                     @default(true)
+  sendRecovery  Boolean                     @default(true)
+  sendDegraded  Boolean                     @default(false)
+  sslExpiry     Boolean                     @default(false)
+  enabled       Boolean                     @default(true)
+  createdAt     DateTime                    @default(now())
+  updatedAt     DateTime                    @updatedAt
+  project       Project                     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  checkGroups   CheckGroupWebhookEndpoint[]
+  notifications Notification[]
+
+  @@unique([projectId, logicalId])
+  @@index([projectId, enabled])
+}
+
+model CheckGroupWebhookEndpoint {
+  checkGroupId      String
+  webhookEndpointId String
+  createdAt         DateTime        @default(now())
+  checkGroup        CheckGroup      @relation(fields: [checkGroupId], references: [id], onDelete: Cascade)
+  webhookEndpoint   WebhookEndpoint @relation(fields: [webhookEndpointId], references: [id], onDelete: Cascade)
+
+  @@id([checkGroupId, webhookEndpointId])
+  @@index([webhookEndpointId])
 }
 
 model Notification {
-  id             String             @id @default(cuid())
-  webhookName    String?
-  event          String
-  status         NotificationStatus @default(PENDING)
-  payload        Json
-  responseStatus Int?
-  error          String?
-  createdAt      DateTime           @default(now())
+  id                String             @id @default(cuid())
+  projectId         String?
+  webhookEndpointId String?
+  runId             String?
+  webhookName       String?
+  event             String
+  status            NotificationStatus @default(PENDING)
+  payload           Json
+  responseStatus    Int?
+  error             String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  project           Project?           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  run               CheckRun?          @relation(fields: [runId], references: [id], onDelete: Cascade)
+  webhookEndpoint   WebhookEndpoint?   @relation(fields: [webhookEndpointId], references: [id], onDelete: SetNull)
+
+  @@unique([webhookEndpointId, runId, event])
+  @@index([projectId, status, createdAt])
+  @@index([runId])
 }
 
 model AiSettings {

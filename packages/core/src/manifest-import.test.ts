@@ -7,6 +7,7 @@ import {
   findCheckManifestFiles,
   importCheckDefinitions,
   parseCheckManifestSource,
+  toDeploySummary,
 } from "./manifest-import.js";
 
 const tempDirs: string[] = [];
@@ -497,5 +498,115 @@ describe("importCheckDefinitions", () => {
       ],
       warnings: [],
     });
+  });
+
+  it("imports webhook alert channels and attaches them through a group factory", async () => {
+    const rootDir = await createTempProject();
+    const checksDir = path.join(rootDir, "src/__checks__/UI/App/smoke");
+
+    await mkdir(path.join(rootDir, "src/channels"), { recursive: true });
+    await mkdir(path.join(rootDir, "src/utils"), { recursive: true });
+    await mkdir(checksDir, { recursive: true });
+    await writeFile(
+      path.join(rootDir, "src/channels/rocketchat.ts"),
+      `
+        const WEBHOOK_URL = 'https://chat.example.test/hooks/unit-test';
+        const RocketChatFail = new WebhookAlertChannel('RocketChatFail', {
+          name: 'RocketChatFail',
+          method: 'POST',
+          url: new URL(WEBHOOK_URL),
+          sendFailure: true,
+          sendRecovery: false,
+          template: '{ "text": "{{GROUP_NAME}} / {{ALERT_TITLE}}" }',
+        });
+        const RocketChatRecover = new WebhookAlertChannel('RocketChatRecover', {
+          name: 'RocketChatRecover',
+          method: 'POST',
+          url: new URL(WEBHOOK_URL),
+          sendFailure: false,
+          sendRecovery: true,
+        });
+        export const RocketChatChannel = [
+          RocketChatFail,
+          RocketChatRecover,
+        ];
+      `,
+    );
+    await writeFile(
+      path.join(rootDir, "src/utils/checkGroup.ts"),
+      `
+        export const createCheckGroup = (name: string, options: object) =>
+          new CheckGroupV2(name, {
+            name,
+            alertChannels: [...RocketChatChannel],
+            ...options,
+          });
+      `,
+    );
+    await writeFile(
+      path.join(checksDir, "group.ts"),
+      `
+        export const smokeCheckGroup = createCheckGroup('App / Smoke', {});
+      `,
+    );
+    await writeFile(
+      path.join(checksDir, "homepage.check.ts"),
+      `
+        createBrowserCheck('Homepage', './homepage.spec.ts', {
+          group: smokeCheckGroup,
+        });
+      `,
+    );
+
+    const result = await importCheckDefinitions({
+      projectSlug: "account",
+      rootDir,
+    });
+
+    expect(result.alertChannels).toEqual([
+      expect.objectContaining({
+        logicalId: "RocketChatFail",
+        sendFailure: true,
+        sendRecovery: false,
+        url: "https://chat.example.test/hooks/unit-test",
+      }),
+      expect.objectContaining({
+        logicalId: "RocketChatRecover",
+        sendFailure: false,
+        sendRecovery: true,
+        url: "https://chat.example.test/hooks/unit-test",
+      }),
+    ]);
+    expect(result.checks[0]).toMatchObject({
+      alertChannelLogicalIds: ["RocketChatFail", "RocketChatRecover"],
+      groupKey: "app-smoke",
+    });
+    expect(JSON.stringify(toDeploySummary(result))).not.toContain("chat.example.test");
+  });
+
+  it("warns and skips webhook channels whose URL is not static", async () => {
+    const rootDir = await createTempProject();
+
+    await writeFile(
+      path.join(rootDir, "invalid-channel.ts"),
+      `
+        const InvalidChannel = new WebhookAlertChannel('InvalidChannel', {
+          name: 'Invalid channel',
+          method: 'POST',
+          url: new URL(process.env.WEBHOOK_URL),
+        });
+      `,
+    );
+
+    const result = await importCheckDefinitions({
+      projectSlug: "account",
+      rootDir,
+    });
+
+    expect(result.alertChannels).toEqual([]);
+    expect(result.warnings).toEqual([
+      expect.stringContaining("skipped WebhookAlertChannel InvalidChannel"),
+    ]);
+    expect(result.warnings[0]).not.toContain("WEBHOOK_URL");
   });
 });

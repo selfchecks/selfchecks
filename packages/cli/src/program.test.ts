@@ -185,6 +185,7 @@ describe("createSelfchecksProgram", () => {
         summary: {
           checks: [
             {
+              alertChannelLogicalIds: [],
               enabled: true,
               entrypoint: "homepage.spec.ts",
               key: "homepage",
