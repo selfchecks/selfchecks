@@ -1,5 +1,6 @@
 import { ArrowRight, ExternalLink, ScrollText } from "lucide-react";
 import Link from "next/link";
+import { Suspense, use } from "react";
 
 import { AppSidebar } from "@/components/app-sidebar";
 import { ServiceMark } from "@/components/service-mark";
@@ -12,11 +13,15 @@ import type { DashboardStatus } from "@/lib/dashboard-types";
 import { getDashboardSettingsData } from "@/lib/settings-data";
 import { cn } from "@/lib/utils";
 
+import { StatusLogsContentSkeleton } from "./logs-skeleton";
+
 export const dynamic = "force-dynamic";
 
 type LogsPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
+
+type StatusLogsDataPromise = ReturnType<typeof getStatusLogsData>;
 
 const statusLabels: Record<DashboardStatus, string> = {
   degraded: "Degraded",
@@ -26,18 +31,17 @@ const statusLabels: Record<DashboardStatus, string> = {
 
 export default async function LogsPage({ searchParams }: LogsPageProps) {
   const params = searchParams ? await searchParams : {};
-  const data = await getStatusLogsData("default", {
-    page: readNumberParam(params.page),
-    pageSize: readNumberParam(params.pageSize),
-  });
-  const settings = await getDashboardSettingsData(data.projectSlug);
+  const page = readNumberParam(params.page);
+  const pageSize = readNumberParam(params.pageSize);
+  const dataPromise = getStatusLogsData("default", { page, pageSize });
+  const settings = await getDashboardSettingsData("all");
 
   return (
     <main className="min-h-screen bg-[#0d1117] text-slate-200">
       <AppSidebar
         accountLabel={settings.basic.login || "Admin"}
         activeItem="logs"
-        projectSlug={data.projectSlug}
+        projectSlug="all"
       />
 
       <div className="min-h-screen xl:pl-72">
@@ -67,11 +71,26 @@ export default async function LogsPage({ searchParams }: LogsPageProps) {
             </p>
           </div>
 
-          <StatusLogsTable logs={data.logs} />
-          <StatusLogsPagination data={data} />
+          <Suspense
+            fallback={<StatusLogsContentSkeleton />}
+            key={`${page ?? 1}:${pageSize ?? 20}`}
+          >
+            <StatusLogsContent dataPromise={dataPromise} />
+          </Suspense>
         </section>
       </div>
     </main>
+  );
+}
+
+function StatusLogsContent({ dataPromise }: { dataPromise: StatusLogsDataPromise }) {
+  const data = use(dataPromise);
+
+  return (
+    <>
+      <StatusLogsTable logs={data.logs} />
+      <StatusLogsPagination data={data} />
+    </>
   );
 }
 

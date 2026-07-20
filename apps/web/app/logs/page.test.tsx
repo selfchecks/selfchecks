@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -63,14 +63,16 @@ describe("LogsPage", () => {
       },
     });
 
-    render(
-      await LogsPage({
-        searchParams: Promise.resolve({
-          page: "1",
-          pageSize: "1",
-        }),
+    const page = await LogsPage({
+      searchParams: Promise.resolve({
+        page: "1",
+        pageSize: "1",
       }),
-    );
+    });
+
+    await act(async () => {
+      render(page);
+    });
 
     expect(mocks.getStatusLogsData).toHaveBeenCalledWith("default", {
       page: 1,
@@ -96,5 +98,24 @@ describe("LogsPage", () => {
     expect(screen.getByRole("link", { name: "Next" }).getAttribute("href")).toBe(
       "/logs?page=2&pageSize=1",
     );
+  });
+
+  it("renders the page shell and table skeleton while logs are loading", async () => {
+    mocks.getStatusLogsData.mockReturnValue(new Promise(() => undefined));
+    mocks.getDashboardSettingsData.mockResolvedValue({
+      basic: {
+        login: "admin@example.com",
+      },
+    });
+
+    const page = await LogsPage({});
+
+    await act(async () => {
+      render(page);
+    });
+
+    expect(screen.getByRole("heading", { name: "Logs" })).toBeTruthy();
+    expect(screen.getByLabelText("Loading status changes")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "BFF health" })).toBeNull();
   });
 });
