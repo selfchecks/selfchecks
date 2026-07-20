@@ -56,6 +56,7 @@ export type TestSessionRunCountSummary = {
   failed: number;
   passed: number;
   queued: number;
+  regress: number;
   running: number;
   total: number;
 };
@@ -123,6 +124,7 @@ export type TestSessionCheckRow = {
   groupName: string;
   latestRunHref: string;
   latestRunOccurredAt: string;
+  isRegress: boolean;
   runCount: number;
   runState: DashboardRunState;
   status: DashboardStatus;
@@ -394,6 +396,15 @@ type TestSessionWithRuns = {
   source: string | null;
   status: string;
   targetUrl: string | null;
+};
+type DashboardBaselineCheck = {
+  key: string;
+  project: {
+    slug: string;
+  };
+  runs: Array<{
+    status: string;
+  }>;
 };
 type RunCheckSnapshot = {
   entrypoint: string | null;
@@ -893,6 +904,8 @@ export async function getTestSessionsData(
       take: filters.pageSize,
       where,
     });
+    const typedSessions = sessions as TestSessionWithRuns[];
+    const dashboardStatuses = await loadLatestDashboardStatuses(typedSessions);
 
     return {
       filters: {
@@ -911,8 +924,8 @@ export async function getTestSessionsData(
       },
       projectSlug: "all",
       projects,
-      sessions: sessions.map((session) =>
-        mapTestSession(session as TestSessionWithRuns, timeZone),
+      sessions: typedSessions.map((session) =>
+        mapTestSession(session, timeZone, dashboardStatuses),
       ),
     };
   } catch (error) {
@@ -983,7 +996,9 @@ export async function getTestSessionData(
       return undefined;
     }
 
-    const mappedSession = mapTestSession(session as TestSessionWithRuns, timeZone);
+    const typedSession = session as TestSessionWithRuns;
+    const dashboardStatuses = await loadLatestDashboardStatuses([typedSession]);
+    const mappedSession = mapTestSession(typedSession, timeZone, dashboardStatuses);
     const runs = session.runs as TestSessionRunWithCheck[];
     return {
       projectSlug:
@@ -991,7 +1006,13 @@ export async function getTestSessionData(
         (runs[0] ? getRunCheckSnapshot(runs[0]).projectSlug : "default"),
       session: {
         ...mappedSession,
-        checks: mapTestSessionChecks(runs, session.id, timeZone),
+        checks: mapTestSessionChecks(
+          runs,
+          session.id,
+          timeZone,
+          getTestSessionProjectSlug(typedSession),
+          dashboardStatuses,
+        ),
       },
     };
   } catch (error) {
@@ -1085,6 +1106,9 @@ export async function getTestSessionCheckData(
 
     const check = getRunCheckSnapshot(firstRun);
 
+    const typedSession = session as TestSessionWithRuns;
+    const dashboardStatuses = await loadLatestDashboardStatuses([typedSession]);
+
     return {
       check: {
         id: check.id,
@@ -1100,7 +1124,7 @@ export async function getTestSessionCheckData(
         ...mapRun(run, timeZone),
         runHref: buildRunHref(getRunCheckSnapshot(run).id, run.id),
       })),
-      session: mapTestSession(session as TestSessionWithRuns, timeZone),
+      session: mapTestSession(typedSession, timeZone, dashboardStatuses),
     };
   } catch (error) {
     console.warn("Unable to load test session check data.", error);
@@ -1441,10 +1465,15 @@ function buildDashboardVisibleRunWhere(): Prisma.CheckRunWhereInput {
 function mapTestSession(
   session: TestSessionWithRuns,
   timeZone: string,
+  dashboardStatuses: Map<string, string>,
 ): TestSessionRow {
   const runs = session.runs;
   const latestRuns = getLatestRunsByCheck(runs);
-  const summary = summarizeTestSessionRuns(latestRuns);
+  const summary = summarizeTestSessionRuns(
+    latestRuns,
+    getTestSessionProjectSlug(session),
+    dashboardStatuses,
+  );
   const status = resolveTestSessionStatus(session.status, latestRuns);
 
   return {
@@ -1494,6 +1523,8 @@ function mapTestSessionChecks(
   runs: TestSessionRunWithCheck[],
   sessionId: string,
   timeZone: string,
+  projectSlug: string,
+  dashboardStatuses: Map<string, string>,
 ): TestSessionCheckRow[] {
   const runsByCheck = new Map<string, TestSessionRunWithCheck[]>();
 
@@ -1507,6 +1538,12 @@ function mapTestSessionChecks(
     .map((checkRuns) => {
       const latestRun = getLatestRun(checkRuns);
       const check = getRunCheckSnapshot(latestRun);
+      const isRegress = isRegression(
+        latestRun,
+        projectSlug,
+        check.key,
+        dashboardStatuses,
+      );
 
       return {
         aiAnalysis: formatAiAnalysis(latestRun.result),
@@ -1519,6 +1556,7 @@ function mapTestSessionChecks(
         checkType: check.type.toLowerCase() as DashboardCheckRow["type"],
         duration: formatDuration(latestRun.durationMs ?? undefined),
         groupName: check.groupName,
+        isRegress,
         latestRunHref: buildRunHref(check.id, latestRun.id),
         latestRunOccurredAt: formatBarTimestamp(latestRun, timeZone),
         runCount: checkRuns.length,
@@ -1594,18 +1632,109 @@ function getLatestRun(runs: TestSessionRunWithCheck[]): TestSessionRunWithCheck 
   );
 }
 
+async function loadLatestDashboardStatuses(
+  sessions: TestSessionWithRuns[],
+): Promise<Map<string, string>> {
+  const identities = new Map<string, { key: string; projectSlug: string }>();
+
+  for (const session of sessions) {
+    const projectSlug = getTestSessionProjectSlug(session);
+
+    for (const run of getLatestRunsByCheck(session.runs)) {
+      if (run.status !== "FAILED") {
+        continue;
+      }
+
+      const key = getRunCheckSnapshot(run).key;
+      identities.set(getTestIdentity(projectSlug, key), { key, projectSlug });
+    }
+  }
+
+  if (identities.size === 0) {
+    return new Map();
+  }
+
+  const checks = (await prisma.check.findMany({
+    select: {
+      key: true,
+      project: {
+        select: {
+          slug: true,
+        },
+      },
+      runs: {
+        orderBy: {
+          createdAt: "desc",
+        },
+        select: {
+          status: true,
+        },
+        take: 1,
+        where: buildDashboardVisibleRunWhere(),
+      },
+    },
+    where: {
+      enabled: true,
+      OR: [...identities.values()].map(({ key, projectSlug }) => ({
+        key,
+        project: {
+          slug: projectSlug,
+        },
+      })),
+    },
+  })) as DashboardBaselineCheck[];
+
+  return new Map(
+    checks.flatMap((check) => {
+      const latestRun = check.runs[0];
+
+      return latestRun
+        ? [[getTestIdentity(check.project.slug, check.key), latestRun.status] as const]
+        : [];
+    }),
+  );
+}
+
+function getTestSessionProjectSlug(session: TestSessionWithRuns): string {
+  return (
+    session.project?.slug ??
+    (session.runs[0] ? getRunCheckSnapshot(session.runs[0]).projectSlug : "default")
+  );
+}
+
+function getTestIdentity(projectSlug: string, checkKey: string): string {
+  return `${projectSlug}\u0000${checkKey}`;
+}
+
+function isRegression(
+  run: TestSessionRunWithCheck,
+  projectSlug: string,
+  checkKey: string,
+  dashboardStatuses: Map<string, string>,
+): boolean {
+  return (
+    run.status === "FAILED" &&
+    dashboardStatuses.get(getTestIdentity(projectSlug, checkKey)) === "PASSED"
+  );
+}
+
 function summarizeTestSessionRuns(
   runs: TestSessionRunWithCheck[],
+  projectSlug: string,
+  dashboardStatuses: Map<string, string>,
 ): TestSessionRunCountSummary {
   return runs.reduce<TestSessionRunCountSummary>(
     (summary, run) => {
       const runState = mapRunState(run.status);
       const status = mapRunStatus(run.status);
+      const check = getRunCheckSnapshot(run);
+      const isRegress = isRegression(run, projectSlug, check.key, dashboardStatuses);
 
       return {
-        failed: summary.failed + (status === "failing" ? 1 : 0),
+        failed: summary.failed + (status === "failing" && !isRegress ? 1 : 0),
         passed: summary.passed + (status === "passing" ? 1 : 0),
         queued: summary.queued + (runState === "queued" ? 1 : 0),
+        regress: summary.regress + (isRegress ? 1 : 0),
         running: summary.running + (runState === "running" ? 1 : 0),
         total: summary.total + 1,
       };
@@ -1614,6 +1743,7 @@ function summarizeTestSessionRuns(
       failed: 0,
       passed: 0,
       queued: 0,
+      regress: 0,
       running: 0,
       total: 0,
     },

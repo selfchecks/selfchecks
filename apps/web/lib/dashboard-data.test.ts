@@ -104,6 +104,7 @@ function createActiveQueueRun({
 
 describe("dashboard data", () => {
   beforeEach(() => {
+    mocks.checkFindMany.mockResolvedValue([]);
     mocks.checkRunCount.mockResolvedValue(0);
     mocks.checkRunFindMany.mockResolvedValue([]);
     mocks.checkRunUpdateMany.mockResolvedValue({ count: 0 });
@@ -1399,6 +1400,19 @@ describe("dashboard data", () => {
   });
 
   it("includes the latest failed run AI analysis in test session rows", async () => {
+    mocks.checkFindMany.mockResolvedValue([
+      {
+        key: "signin",
+        project: {
+          slug: "account",
+        },
+        runs: [
+          {
+            status: "PASSED",
+          },
+        ],
+      },
+    ]);
     mocks.testSessionFindFirst.mockResolvedValue({
       commitSha: "c05713df",
       createdAt: new Date("2026-07-05T11:20:00.000Z"),
@@ -1455,8 +1469,34 @@ describe("dashboard data", () => {
       },
       checkKey: "signin",
       checkName: "Sign in",
+      isRegress: true,
       latestRunOccurredAt: expect.any(String),
       runState: "failed",
+    });
+    expect(data?.session.summary).toMatchObject({
+      failed: 0,
+      regress: 1,
+    });
+    expect(mocks.checkFindMany).toHaveBeenCalledWith({
+      select: expect.objectContaining({
+        runs: expect.objectContaining({
+          take: 1,
+          where: expect.objectContaining({
+            OR: expect.any(Array),
+          }),
+        }),
+      }),
+      where: {
+        enabled: true,
+        OR: [
+          {
+            key: "signin",
+            project: {
+              slug: "account",
+            },
+          },
+        ],
+      },
     });
   });
 
@@ -1547,6 +1587,19 @@ describe("dashboard data", () => {
   });
 
   it("loads CLI test sessions with target URLs and test summaries", async () => {
+    mocks.checkFindMany.mockResolvedValue([
+      {
+        key: "signin",
+        project: {
+          slug: "default",
+        },
+        runs: [
+          {
+            status: "PASSED",
+          },
+        ],
+      },
+    ]);
     mocks.checkRunUpdateMany.mockResolvedValue({ count: 0 });
     mocks.projectFindUnique.mockResolvedValue({
       id: "project_1",
@@ -1700,9 +1753,10 @@ describe("dashboard data", () => {
       source: "/repo/config/checkly",
       status: "failing",
       summary: {
-        failed: 1,
+        failed: 0,
         passed: 1,
         queued: 0,
+        regress: 1,
         running: 0,
         total: 2,
       },

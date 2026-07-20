@@ -196,6 +196,7 @@ function TestSessionsTable({
               <th className="px-4 py-3">Total</th>
               <th className="px-4 py-3">Passed</th>
               <th className="px-4 py-3">Failed</th>
+              <th className="px-4 py-3">Regress</th>
               <th className="px-4 py-3">Running</th>
               <th className="px-4 py-3">Queued</th>
               <th className="px-4 py-3">Duration</th>
@@ -213,7 +214,7 @@ function TestSessionsTable({
               ))
             ) : (
               <tr>
-                <td className="px-4 py-8 text-center text-slate-500" colSpan={10}>
+                <td className="px-4 py-8 text-center text-slate-500" colSpan={11}>
                   No test sessions match the current filters.
                 </td>
               </tr>
@@ -276,6 +277,9 @@ function TestSessionTableRow({
       </td>
       <td className="px-4 py-3">
         <span className="font-semibold text-red-300">{session.summary.failed}</span>
+      </td>
+      <td className="px-4 py-3">
+        <span className="font-semibold text-red-300">{session.summary.regress}</span>
       </td>
       <td className="px-4 py-3">
         <span className="font-semibold text-blue-300">{session.summary.running}</span>

@@ -30,6 +30,7 @@ const failedCheck: TestSessionCheckRow = {
   checkType: "browser",
   duration: "1.2 s",
   groupName: "App",
+  isRegress: false,
   latestRunHref: "/checks/signin/runs/run_1",
   latestRunOccurredAt: "Jul 15 11:56",
   runCount: 3,

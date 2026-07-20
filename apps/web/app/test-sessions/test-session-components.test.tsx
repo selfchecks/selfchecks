@@ -17,6 +17,13 @@ describe("test session components", () => {
     expect(badge.className).toContain("shrink-0");
   });
 
+  it("renders failed regressions with a distinct label", () => {
+    render(<RunStateBadge isRegress runState="failed" status="failing" />);
+
+    expect(screen.getByText("Regress").className).toContain("text-red-300");
+    expect(screen.queryByText("Failed")).toBeNull();
+  });
+
   it("renders summary counters", () => {
     render(
       <SummaryPills
@@ -24,6 +31,7 @@ describe("test session components", () => {
           failed: 1,
           passed: 2,
           queued: 3,
+          regress: 1,
           running: 4,
           total: 10,
         }}
@@ -35,7 +43,8 @@ describe("test session components", () => {
     expect(screen.getByText("Passed")).toBeTruthy();
     expect(screen.getByText("2")).toBeTruthy();
     expect(screen.getByText("Failed")).toBeTruthy();
-    expect(screen.getByText("1")).toBeTruthy();
+    expect(screen.getAllByText("1")).toHaveLength(2);
+    expect(screen.getByText("Regress")).toBeTruthy();
   });
 
   it("summarizes artifacts and hides overflow behind a counter", () => {

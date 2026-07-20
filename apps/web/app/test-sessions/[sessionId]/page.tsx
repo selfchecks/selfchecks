@@ -219,7 +219,11 @@ function SessionCheckTableRow({
         </Link>
       </td>
       <td className="px-4 py-3">
-        <RunStateBadge runState={check.runState} status={check.status} />
+        <RunStateBadge
+          isRegress={check.isRegress}
+          runState={check.runState}
+          status={check.status}
+        />
       </td>
       <td className="max-w-[28rem] px-4 py-3">
         <span className="line-clamp-2 text-slate-300" title={check.target}>

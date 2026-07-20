@@ -79,6 +79,7 @@ const checkDetailFixture: TestSessionCheckDetailData = {
       failed: 1,
       passed: 0,
       queued: 0,
+      regress: 0,
       running: 0,
       total: 1,
     },

@@ -40,9 +40,11 @@ const artifactIcons: Record<DashboardArtifactType, LucideIcon> = {
 };
 
 export function RunStateBadge({
+  isRegress = false,
   runState,
   status,
 }: {
+  isRegress?: boolean;
   runState: DashboardRunState;
   status: DashboardStatus;
 }) {
@@ -56,7 +58,7 @@ export function RunStateBadge({
       )}
     >
       <RunStateIcon runState={runState} status={status} />
-      {runStateLabels[runState]}
+      {isRegress ? "Regress" : runStateLabels[runState]}
     </span>
   );
 }
@@ -104,6 +106,7 @@ export function SummaryPills({ summary }: { summary: TestSessionRunCountSummary 
     { className: "text-slate-300", label: "Total", value: summary.total },
     { className: "text-emerald-300", label: "Passed", value: summary.passed },
     { className: "text-red-300", label: "Failed", value: summary.failed },
+    { className: "text-red-300", label: "Regress", value: summary.regress },
     { className: "text-blue-300", label: "Running", value: summary.running },
     { className: "text-amber-300", label: "Queued", value: summary.queued },
   ];

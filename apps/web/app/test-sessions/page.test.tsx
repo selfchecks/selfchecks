@@ -49,9 +49,10 @@ const testSessionsFixture: TestSessionsData = {
       source: "selfchecks test --project default",
       status: "failing",
       summary: {
-        failed: 1,
+        failed: 0,
         passed: 2,
         queued: 0,
+        regress: 1,
         running: 0,
         total: 3,
       },
@@ -130,6 +131,7 @@ describe("TestSessionsPage", () => {
     expect(screen.getByRole("columnheader", { name: "Total" })).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "Passed" })).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "Failed" })).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Regress" })).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "Running" })).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "Queued" })).toBeTruthy();
     expect(
@@ -141,6 +143,7 @@ describe("TestSessionsPage", () => {
       "Total",
       "Passed",
       "Failed",
+      "Regress",
       "Running",
       "Queued",
       "Duration",
@@ -160,7 +163,7 @@ describe("TestSessionsPage", () => {
     expect(within(sessionRow).getByRole("cell", { name: "3" })).toBeTruthy();
     expect(within(sessionRow).getByRole("cell", { name: "2" })).toBeTruthy();
     expect(within(sessionRow).getByRole("cell", { name: "1" })).toBeTruthy();
-    expect(within(sessionRow).getAllByRole("cell", { name: "0" })).toHaveLength(2);
+    expect(within(sessionRow).getAllByRole("cell", { name: "0" })).toHaveLength(3);
     expect(screen.getByText("2.4 s")).toBeTruthy();
     expect(screen.getByText("Page 2 of 2")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Previous" }).getAttribute("href")).toBe(

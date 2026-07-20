@@ -43,6 +43,7 @@ const sessionDetailFixture: TestSessionDetailData = {
         checkType: "browser",
         duration: "1.2 s",
         groupName: "App",
+        isRegress: true,
         latestRunHref: "/checks/check_1/runs/run_1",
         latestRunOccurredAt: "Jul 05 14:20",
         runCount: 2,
@@ -63,9 +64,10 @@ const sessionDetailFixture: TestSessionDetailData = {
       "sendsay-ru/frontend/account | v3.192.41 | c05713df | pipeline https://gitlab.sndsy.ru/sendsay-ru/frontend/account/-/pipelines/6569 | job https://gitlab.sndsy.ru/sendsay-ru/frontend/account/-/jobs/123",
     status: "failing",
     summary: {
-      failed: 1,
+      failed: 0,
       passed: 0,
       queued: 0,
+      regress: 1,
       running: 0,
       total: 1,
     },
@@ -102,6 +104,7 @@ describe("TestSessionPage", () => {
     ).toBe("/test-sessions");
     expect(screen.getByRole("heading", { name: "Nightly regression" })).toBeTruthy();
     expect(screen.getByText("Duration 1.2 s")).toBeTruthy();
+    expect(screen.getAllByText("Regress")).toHaveLength(2);
     expect(screen.getByText("https://example.test")).toBeTruthy();
     expect(screen.getByText("Repository")).toBeTruthy();
     expect(screen.getByText("sendsay-ru/frontend/account")).toBeTruthy();
