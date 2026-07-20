@@ -1093,6 +1093,10 @@ function buildCheckFromConfig({
       : undefined) ??
     (name ? slugify(name) : undefined);
   const check: Partial<CheckDefinition> = {
+    degradedResponseTime:
+      type === "api" && config
+        ? getNumberProperty(config, "degradedResponseTime")
+        : undefined,
     enabled: config
       ? (getBooleanProperty(config, "enabled") ??
         getBooleanProperty(config, "activated") ??

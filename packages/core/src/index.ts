@@ -16,6 +16,7 @@ export {
 
 export const checkTypes = ["api", "browser"] as const;
 export type CheckType = (typeof checkTypes)[number];
+export const defaultDegradedResponseTimeMs = 10_000;
 
 export const checkRunStatuses = [
   "queued",
@@ -154,6 +155,7 @@ export type ApiRequest = z.infer<typeof apiRequestSchema>;
 export const checkDefinitionSchema = z
   .object({
     alertChannelLogicalIds: z.array(z.string().min(1)).default([]),
+    degradedResponseTime: z.number().int().nonnegative().optional(),
     enabled: z.boolean().default(true),
     entrypoint: z.string().optional(),
     frequency: frequencySchema.optional(),

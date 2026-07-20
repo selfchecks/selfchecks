@@ -10,6 +10,7 @@ import {
 export type DeploySummary = {
   checks: Array<{
     alertChannelLogicalIds: string[];
+    degradedResponseTime?: number;
     enabled: boolean;
     entrypoint?: string;
     frequency?: { intervalMinutes: number };

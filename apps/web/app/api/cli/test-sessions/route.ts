@@ -190,6 +190,7 @@ async function createQueuedSession(
     for (const check of checks) {
       const run = await tx.checkRun.create({
         data: {
+          checkSnapshotDegradedResponseTime: check.degradedResponseTime,
           checkSnapshotEntrypoint: check.entrypoint,
           checkSnapshotGroupName: check.groupName,
           checkSnapshotKey: check.key,

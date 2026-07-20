@@ -175,6 +175,7 @@ export async function POST(request: Request, context: RouteContext) {
     checkId: check.id,
     ...(testSession
       ? {
+          checkSnapshotDegradedResponseTime: check.degradedResponseTime,
           checkSnapshotEntrypoint: check.entrypoint,
           checkSnapshotGroupName: check.group?.name,
           checkSnapshotKey: check.key,

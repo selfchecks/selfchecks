@@ -98,6 +98,38 @@ describe("apiRequestSchema", () => {
   });
 });
 
+describe("checkDefinitionSchema", () => {
+  it("accepts a non-negative degraded response time in milliseconds", () => {
+    expect(
+      checkDefinitionSchema.parse({
+        degradedResponseTime: 2500,
+        key: "api-health",
+        name: "API health",
+        request: {
+          method: "GET",
+          url: "https://example.test/health",
+        },
+        type: "api",
+      }),
+    ).toMatchObject({
+      degradedResponseTime: 2500,
+    });
+
+    expect(() =>
+      checkDefinitionSchema.parse({
+        degradedResponseTime: -1,
+        key: "api-health",
+        name: "API health",
+        request: {
+          method: "GET",
+          url: "https://example.test/health",
+        },
+        type: "api",
+      }),
+    ).toThrow();
+  });
+});
+
 describe("retryStrategySchema", () => {
   it("accepts Checkly-style retry strategy options", () => {
     expect(

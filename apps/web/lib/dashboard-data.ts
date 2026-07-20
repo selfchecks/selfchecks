@@ -2,7 +2,10 @@ import path from "node:path";
 import { readFile } from "node:fs/promises";
 
 import type { Prisma } from "@prisma/client";
-import { summarizeTerminalRunStatuses } from "@selfchecks/core";
+import {
+  defaultDegradedResponseTimeMs,
+  summarizeTerminalRunStatuses,
+} from "@selfchecks/core";
 
 import type {
   DashboardAiAnalysis,
@@ -219,6 +222,42 @@ export type JournalData = {
   runs: JournalRunRow[];
 };
 
+export type StatusLogRow = {
+  checkHref: string;
+  checkId: string;
+  checkKey: string;
+  checkName: string;
+  checkType: DashboardCheckRow["type"];
+  createdAt: string;
+  createdAtLabel: string;
+  fromStatus: DashboardStatus;
+  groupName: string;
+  id: string;
+  projectSlug: string;
+  runHref: string;
+  toStatus: DashboardStatus;
+};
+
+export type StatusLogsDataOptions = {
+  page?: number;
+  pageSize?: number;
+};
+
+export type StatusLogsData = {
+  logs: StatusLogRow[];
+  pagination: {
+    from: number;
+    hasNext: boolean;
+    hasPrevious: boolean;
+    page: number;
+    pageSize: number;
+    to: number;
+    total: number;
+    totalPages: number;
+  };
+  projectSlug: string;
+};
+
 export type ProjectFilterOption = {
   name: string;
   slug: string;
@@ -323,6 +362,7 @@ type MappableRun = {
   errorMessage: string | null;
   finishedAt?: Date | null;
   checkId?: string | null;
+  checkSnapshotDegradedResponseTime?: number | null;
   checkSnapshotEntrypoint?: string | null;
   checkSnapshotGroupName?: string | null;
   checkSnapshotKey?: string | null;
@@ -342,6 +382,7 @@ type MappableRun = {
   status: string;
 };
 type CheckWithRuns = {
+  degradedResponseTime: number | null;
   enabled: boolean;
   entrypoint: string | null;
   frequencyMinutes: number | null;
@@ -362,6 +403,7 @@ type CheckWithRuns = {
 };
 type TestSessionRunWithCheck = MappableRun & {
   check: {
+    degradedResponseTime: number | null;
     enabled: boolean;
     entrypoint: string | null;
     frequencyMinutes?: number | null;
@@ -407,6 +449,7 @@ type DashboardBaselineCheck = {
   }>;
 };
 type RunCheckSnapshot = {
+  degradedResponseTime: number | null;
   entrypoint: string | null;
   groupName: string;
   id: string;
@@ -419,6 +462,7 @@ type RunCheckSnapshot = {
 };
 type JournalRunWithCheck = MappableRun & {
   check: {
+    degradedResponseTime: number | null;
     frequencyMinutes: number | null;
     group: {
       name: string;
@@ -465,9 +509,32 @@ type ActiveQueueRunWithCheck = MappableRun & {
     slug: string;
   };
 };
+type StatusLogCheckWithRuns = {
+  degradedResponseTime: number | null;
+  group: {
+    name: string;
+  } | null;
+  id: string;
+  key: string;
+  name: string;
+  project: {
+    slug: string;
+  };
+  runs: Array<{
+    checkSnapshotDegradedResponseTime: number | null;
+    checkSnapshotType: string | null;
+    createdAt: Date;
+    durationMs: number | null;
+    id: string;
+    status: string;
+  }>;
+  type: string;
+};
 
 const JOURNAL_DEFAULT_PAGE_SIZE = 20;
 const JOURNAL_MAX_PAGE_SIZE = 100;
+const STATUS_LOGS_DEFAULT_PAGE_SIZE = 20;
+const STATUS_LOGS_MAX_PAGE_SIZE = 100;
 const TEST_SESSIONS_DEFAULT_PAGE_SIZE = 20;
 const TEST_SESSIONS_MAX_PAGE_SIZE = 100;
 const DASHBOARD_ACTIVE_RUN_STATUSES = ["QUEUED", "RUNNING"] as const;
@@ -534,6 +601,7 @@ export async function getCheckDetailShellData(
   try {
     const check = await prisma.check.findFirst({
       select: {
+        degradedResponseTime: true,
         enabled: true,
         entrypoint: true,
         frequencyMinutes: true,
@@ -569,6 +637,8 @@ export async function getCheckDetailShellData(
                 type: true,
               },
             },
+            checkSnapshotDegradedResponseTime: true,
+            checkSnapshotType: true,
             createdAt: true,
             durationMs: true,
             errorMessage: true,
@@ -595,6 +665,7 @@ export async function getCheckDetailShellData(
     }
 
     const shellCheck: CheckWithRuns = {
+      degradedResponseTime: check.degradedResponseTime,
       enabled: check.enabled,
       entrypoint: check.entrypoint,
       frequencyMinutes: check.frequencyMinutes,
@@ -726,7 +797,7 @@ export async function getRunDetailData(
     const request = formatRunRequest(check.request, run.result);
     const attemptRuns = await fetchRunAttempts(run as MappableRun);
     const attempts = attemptRuns.map((attemptRun) =>
-      mapAttemptNavigationRun(attemptRun, check.id, run.id, timeZone),
+      mapAttemptNavigationRun(attemptRun, check, run.id, timeZone),
     );
     const maxAttempts = Math.max(getRunMaxAttempts(run), attempts.length);
 
@@ -750,7 +821,7 @@ export async function getRunDetailData(
       groupName: check.groupName,
       projectSlug: check.projectSlug,
       run: {
-        ...mapRun(run, timeZone),
+        ...mapRun(run, timeZone, check),
         attemptNumber: getRunAttempt(run),
         attempts,
         aiAnalysis: formatAiAnalysis(run.result),
@@ -848,6 +919,93 @@ export async function getJournalData(
   } catch (error) {
     console.warn("Unable to load journal data.", error);
     return createEmptyJournal(filters, []);
+  }
+}
+
+export async function getStatusLogsData(
+  _projectSlug: string,
+  options: StatusLogsDataOptions = {},
+): Promise<StatusLogsData> {
+  const pageSize = clampInteger(
+    options.pageSize,
+    STATUS_LOGS_DEFAULT_PAGE_SIZE,
+    1,
+    STATUS_LOGS_MAX_PAGE_SIZE,
+  );
+  const requestedPage = clampInteger(options.page, 1, 1, Number.MAX_SAFE_INTEGER);
+  const timeZone = getRuntimeTimeZone();
+
+  try {
+    const checks = (await prisma.check.findMany({
+      orderBy: {
+        name: "asc",
+      },
+      select: {
+        degradedResponseTime: true,
+        group: {
+          select: {
+            name: true,
+          },
+        },
+        id: true,
+        key: true,
+        name: true,
+        project: {
+          select: {
+            slug: true,
+          },
+        },
+        runs: {
+          orderBy: {
+            createdAt: "desc",
+          },
+          select: {
+            checkSnapshotDegradedResponseTime: true,
+            checkSnapshotType: true,
+            createdAt: true,
+            durationMs: true,
+            id: true,
+            status: true,
+          },
+          where: {
+            ...buildDashboardVisibleRunWhere(),
+            status: {
+              notIn: [...DASHBOARD_ACTIVE_RUN_STATUSES],
+            },
+          },
+        },
+        type: true,
+      },
+      where: {
+        enabled: true,
+      },
+    })) as StatusLogCheckWithRuns[];
+    const logs = checks
+      .flatMap((check) => buildStatusLogs(check, timeZone))
+      .sort(compareStatusLogs);
+    const total = logs.length;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const page = Math.min(requestedPage, totalPages);
+    const skip = (page - 1) * pageSize;
+    const pageLogs = logs.slice(skip, skip + pageSize);
+
+    return {
+      logs: pageLogs,
+      pagination: {
+        from: total === 0 ? 0 : skip + 1,
+        hasNext: page < totalPages,
+        hasPrevious: page > 1,
+        page,
+        pageSize,
+        to: skip + pageLogs.length,
+        total,
+        totalPages,
+      },
+      projectSlug: "all",
+    };
+  } catch (error) {
+    console.warn("Unable to load status logs.", error);
+    return createEmptyStatusLogs(requestedPage, pageSize);
   }
 }
 
@@ -1475,6 +1633,10 @@ function mapTestSession(
     dashboardStatuses,
   );
   const status = resolveTestSessionStatus(session.status, latestRuns);
+  const dashboardStatus =
+    status === "PASSED"
+      ? summarizeStatus(latestRuns.map((run) => getRunDashboardStatus(run)))
+      : mapRunStatus(status);
 
   return {
     ...(session.commitSha ? { commitSha: session.commitSha } : {}),
@@ -1493,10 +1655,10 @@ function mapTestSession(
     ...(session.repository ? { repository: session.repository } : {}),
     runState: mapRunState(status),
     source: session.source ?? undefined,
-    status: mapRunStatus(status),
+    status: dashboardStatus,
     summary,
     targetUrl: session.targetUrl ?? undefined,
-    tone: mapRunTone(status),
+    tone: mapRunTone(status, dashboardStatus),
   };
 }
 
@@ -1561,9 +1723,9 @@ function mapTestSessionChecks(
         latestRunOccurredAt: formatBarTimestamp(latestRun, timeZone),
         runCount: checkRuns.length,
         runState: mapRunState(latestRun.status),
-        status: mapRunStatus(latestRun.status),
+        status: getRunDashboardStatus(latestRun),
         target: formatTestRunTarget(latestRun),
-        tone: mapRunTone(latestRun.status),
+        tone: mapRunTone(latestRun.status, getRunDashboardStatus(latestRun)),
       };
     })
     .sort((left, right) => {
@@ -1580,6 +1742,7 @@ function getRunCheckSnapshot(
 ): RunCheckSnapshot {
   if ("check" in run && run.check) {
     return {
+      degradedResponseTime: run.check.degradedResponseTime,
       entrypoint: run.check.entrypoint,
       groupName: run.check.group?.name ?? "Ungrouped",
       id: run.check.id,
@@ -1593,6 +1756,7 @@ function getRunCheckSnapshot(
   }
 
   return {
+    degradedResponseTime: run.checkSnapshotDegradedResponseTime ?? null,
     entrypoint: run.checkSnapshotEntrypoint ?? null,
     groupName: run.checkSnapshotGroupName ?? "Ungrouped",
     id: run.checkSnapshotKey ?? run.checkId ?? run.id,
@@ -1726,13 +1890,13 @@ function summarizeTestSessionRuns(
   return runs.reduce<TestSessionRunCountSummary>(
     (summary, run) => {
       const runState = mapRunState(run.status);
-      const status = mapRunStatus(run.status);
+      const status = getRunDashboardStatus(run);
       const check = getRunCheckSnapshot(run);
       const isRegress = isRegression(run, projectSlug, check.key, dashboardStatuses);
 
       return {
         failed: summary.failed + (status === "failing" && !isRegress ? 1 : 0),
-        passed: summary.passed + (status === "passing" ? 1 : 0),
+        passed: summary.passed + (runState === "passed" ? 1 : 0),
         queued: summary.queued + (runState === "queued" ? 1 : 0),
         regress: summary.regress + (isRegress ? 1 : 0),
         running: summary.running + (runState === "running" ? 1 : 0),
@@ -1821,7 +1985,7 @@ function hasJournalCheck<T extends { check: unknown | null }>(
 
 function mapJournalRun(run: JournalRunWithCheck, timeZone: string): JournalRunRow {
   return {
-    ...mapRun(run, timeZone),
+    ...mapRun(run, timeZone, run.check),
     checkHref: `/checks/${encodeURIComponent(run.check.id)}`,
     checkId: run.check.id,
     checkKey: run.check.key,
@@ -1840,6 +2004,70 @@ function mapJournalRun(run: JournalRunWithCheck, timeZone: string): JournalRunRo
         : "manual",
     sessionName: run.testSession?.name ?? undefined,
   };
+}
+
+function buildStatusLogs(
+  check: StatusLogCheckWithRuns,
+  timeZone: string,
+): StatusLogRow[] {
+  const logs: StatusLogRow[] = [];
+  const terminalRuns = check.runs.filter(
+    (run) =>
+      !DASHBOARD_ACTIVE_RUN_STATUSES.includes(run.status as "QUEUED" | "RUNNING"),
+  );
+
+  for (let index = 0; index < terminalRuns.length - 1; index += 1) {
+    const run = terminalRuns[index];
+    const previousRun = terminalRuns[index + 1];
+
+    if (!run || !previousRun) {
+      continue;
+    }
+
+    const fromStatus = mapRunStatus(previousRun.status, {
+      degradedResponseTime:
+        previousRun.checkSnapshotDegradedResponseTime ?? check.degradedResponseTime,
+      durationMs: previousRun.durationMs,
+      type: previousRun.checkSnapshotType ?? check.type,
+    });
+    const toStatus = mapRunStatus(run.status, {
+      degradedResponseTime:
+        run.checkSnapshotDegradedResponseTime ?? check.degradedResponseTime,
+      durationMs: run.durationMs,
+      type: run.checkSnapshotType ?? check.type,
+    });
+
+    if (fromStatus === toStatus) {
+      continue;
+    }
+
+    logs.push({
+      checkHref: `/checks/${encodeURIComponent(check.id)}`,
+      checkId: check.id,
+      checkKey: check.key,
+      checkName: check.name,
+      checkType: check.type.toLowerCase() as DashboardCheckRow["type"],
+      createdAt: run.createdAt.toISOString(),
+      createdAtLabel: formatRunTimestamp(run.createdAt, timeZone),
+      fromStatus,
+      groupName: check.group?.name ?? "Ungrouped",
+      id: run.id,
+      projectSlug: check.project.slug,
+      runHref: `/checks/${encodeURIComponent(check.id)}/runs/${encodeURIComponent(
+        run.id,
+      )}`,
+      toStatus,
+    });
+  }
+
+  return logs;
+}
+
+function compareStatusLogs(left: StatusLogRow, right: StatusLogRow): number {
+  const createdAtRank =
+    new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
+
+  return createdAtRank || right.id.localeCompare(left.id);
 }
 
 async function fetchChecks() {
@@ -2077,7 +2305,7 @@ function mapCheck(check: CheckWithRuns, timeZone: string): DashboardCheckRow {
   return {
     avg: formatDuration(average(durations)),
     ava: formatAvailability(check.runs),
-    bars: buildBars(check.runs, check.id, timeZone),
+    bars: buildBars(check.runs, check.id, timeZone, check),
     delta: latestRun ? "24 h" : "-",
     hasTrace: Boolean(
       check.runs.some(
@@ -2092,7 +2320,7 @@ function mapCheck(check: CheckWithRuns, timeZone: string): DashboardCheckRow {
     name: check.name,
     p95: formatDuration(percentile(durations, 0.95)),
     runState: mapRunState(latestRun?.status),
-    runs: check.runs.map((run) => mapRun(run, timeZone)),
+    runs: check.runs.map((run) => mapRun(run, timeZone, check)),
     settings: {
       enabled: check.enabled,
       entrypoint: check.entrypoint ?? undefined,
@@ -2110,7 +2338,7 @@ function mapCheck(check: CheckWithRuns, timeZone: string): DashboardCheckRow {
       passedRuns: String(passedRuns),
       totalRuns: String(check.runs.length),
     },
-    status: mapRunStatus(latestRun?.status),
+    status: getRunDashboardStatus(latestRun, check),
     tags: check.tags,
     time: formatRunAge(latestRun, timeZone),
     type: check.type.toLowerCase() as DashboardCheckRow["type"],
@@ -2136,14 +2364,14 @@ function mapFirewatchRow(
 ): DashboardFirewatchRow | undefined {
   const latestRun = check.runs[0];
 
-  if (!latestRun || mapRunStatus(latestRun.status) !== "failing") {
+  if (!latestRun || getRunDashboardStatus(latestRun, check) !== "failing") {
     return undefined;
   }
 
   const failingStreak: CheckWithRuns["runs"] = [];
 
   for (const run of check.runs) {
-    if (mapRunStatus(run.status) !== "failing") {
+    if (getRunDashboardStatus(run, check) !== "failing") {
       break;
     }
 
@@ -2170,8 +2398,13 @@ function mapFirewatchRow(
   };
 }
 
-function mapRun(run: MappableRun, timeZone: string): DashboardRunRow {
+function mapRun(
+  run: MappableRun | TestSessionRunWithCheck,
+  timeZone: string,
+  check?: Pick<CheckWithRuns, "degradedResponseTime" | "type">,
+): DashboardRunRow {
   const maxAttempts = getRunMaxAttempts(run);
+  const status = getRunDashboardStatus(run, check);
 
   return {
     aiAnalysis: formatAiAnalysis(run.result),
@@ -2189,8 +2422,8 @@ function mapRun(run: MappableRun, timeZone: string): DashboardRunRow {
     retryGroupId: run.retryGroupId ?? undefined,
     runner: "Local runner",
     runState: mapRunState(run.status),
-    status: mapRunStatus(run.status),
-    tone: mapRunTone(run.status),
+    status,
+    tone: mapRunTone(run.status, status),
   };
 }
 
@@ -2241,20 +2474,22 @@ async function fetchRunAttempts(run: MappableRun) {
 
 function mapAttemptNavigationRun(
   run: MappableRun,
-  checkId: string,
+  check: Pick<RunCheckSnapshot, "degradedResponseTime" | "id" | "type">,
   currentRunId: string,
   timeZone: string,
 ): RunDetailData["run"]["attempts"][number] {
+  const status = getRunDashboardStatus(run, check);
+
   return {
     createdAtLabel: formatRunTimestamp(run.createdAt, timeZone),
     duration: formatDuration(run.durationMs ?? undefined),
-    href: `/checks/${encodeURIComponent(checkId)}/runs/${encodeURIComponent(run.id)}`,
+    href: `/checks/${encodeURIComponent(check.id)}/runs/${encodeURIComponent(run.id)}`,
     id: run.id,
     isCurrent: run.id === currentRunId,
     label: `Attempt #${getRunAttempt(run)}`,
     runState: mapRunState(run.status),
-    status: mapRunStatus(run.status),
-    tone: mapRunTone(run.status),
+    status,
+    tone: mapRunTone(run.status, status),
   };
 }
 
@@ -2813,8 +3048,27 @@ function summarizeStatus(statuses: DashboardStatus[]): DashboardStatus {
   return "passing";
 }
 
-function mapRunStatus(status: string | undefined): DashboardStatus {
+function mapRunStatus(
+  status: string | undefined,
+  {
+    degradedResponseTime,
+    durationMs,
+    type,
+  }: {
+    degradedResponseTime?: number | null;
+    durationMs?: number | null;
+    type?: string | null;
+  } = {},
+): DashboardStatus {
   if (status === "PASSED") {
+    if (
+      type === "API" &&
+      typeof durationMs === "number" &&
+      durationMs > (degradedResponseTime ?? defaultDegradedResponseTimeMs)
+    ) {
+      return "degraded";
+    }
+
     return "passing";
   }
 
@@ -2823,6 +3077,26 @@ function mapRunStatus(status: string | undefined): DashboardStatus {
   }
 
   return "degraded";
+}
+
+function getRunDashboardStatus(
+  run: MappableRun | TestSessionRunWithCheck | undefined,
+  check?: Pick<CheckWithRuns, "degradedResponseTime" | "type">,
+): DashboardStatus {
+  if (!run) {
+    return mapRunStatus(undefined);
+  }
+
+  const relatedCheck = "check" in run ? run.check : undefined;
+
+  return mapRunStatus(run.status, {
+    degradedResponseTime:
+      run.checkSnapshotDegradedResponseTime ??
+      relatedCheck?.degradedResponseTime ??
+      check?.degradedResponseTime,
+    durationMs: run.durationMs,
+    type: run.checkSnapshotType ?? relatedCheck?.type ?? check?.type,
+  });
 }
 
 function mapRunState(status: string | undefined): DashboardRunState {
@@ -2857,6 +3131,7 @@ function buildBars(
   runs: CheckWithRuns["runs"],
   checkId: string,
   timeZone: string,
+  check: Pick<CheckWithRuns, "degradedResponseTime" | "type">,
 ): DashboardCheckRow["bars"] {
   if (runs.length === 0) {
     return Array.from({ length: 12 }, () => ({
@@ -2880,7 +3155,7 @@ function buildBars(
 
   return [...groupedRuns]
     .reverse()
-    .map((attempts) => mapResultBar(attempts, checkId, maxDurationMs, timeZone));
+    .map((attempts) => mapResultBar(attempts, checkId, maxDurationMs, timeZone, check));
 }
 
 function groupRetryAttempts(runs: CheckWithRuns["runs"]): CheckWithRuns["runs"][] {
@@ -2909,12 +3184,13 @@ function mapResultBar(
   checkId: string,
   maxDurationMs: number,
   timeZone: string,
+  check: Pick<CheckWithRuns, "degradedResponseTime" | "type">,
 ): DashboardCheckRow["bars"][number] {
   const latestAttempt = getLatestAttempt(attempts) ?? attempts[0];
   const hasRetries = attempts.length > 1;
   const hasPassedAttempt = attempts.some((attempt) => attempt.status === "PASSED");
   const runState = hasPassedAttempt ? "passed" : mapRunState(latestAttempt?.status);
-  const status = hasPassedAttempt ? "passing" : mapRunStatus(latestAttempt?.status);
+  const status = getRunDashboardStatus(latestAttempt, check);
   const tone =
     hasRetries && !hasPassedAttempt && status === "failing"
       ? "bad"
@@ -2924,7 +3200,9 @@ function mapResultBar(
   return {
     ...(hasRetries
       ? {
-          attempts: attempts.map((attempt) => mapResultBarAttempt(attempt, timeZone)),
+          attempts: attempts.map((attempt) =>
+            mapResultBarAttempt(attempt, timeZone, check),
+          ),
           hasRetries,
         }
       : {}),
@@ -2944,15 +3222,18 @@ function mapResultBar(
 function mapResultBarAttempt(
   run: MappableRun,
   timeZone: string,
+  check: Pick<CheckWithRuns, "degradedResponseTime" | "type">,
 ): NonNullable<DashboardCheckRow["bars"][number]["attempts"]>[number] {
+  const status = getRunDashboardStatus(run, check);
+
   return {
     duration: formatDuration(run.durationMs ?? undefined),
     label: `Attempt #${getRunAttempt(run)}`,
     occurredAt: formatBarTimestamp(run, timeZone),
     runner: "Local runner",
     runState: mapRunState(run.status),
-    status: mapRunStatus(run.status),
-    tone: mapRunTone(run.status),
+    status,
+    tone: mapRunTone(run.status, status),
   };
 }
 
@@ -2989,10 +3270,13 @@ function getRelativeBarHeight(
   );
 }
 
-function mapRunTone(status: string | undefined): DashboardResultTone {
+function mapRunTone(
+  status: string | undefined,
+  dashboardStatus = mapRunStatus(status),
+): DashboardResultTone {
   return getRunResultTone({
     runState: mapRunState(status),
-    status: mapRunStatus(status),
+    status: dashboardStatus,
   });
 }
 
@@ -3186,5 +3470,22 @@ function createEmptyJournal(
     projectSlug: "all",
     projects,
     runs: [],
+  };
+}
+
+function createEmptyStatusLogs(page: number, pageSize: number): StatusLogsData {
+  return {
+    logs: [],
+    pagination: {
+      from: 0,
+      hasNext: false,
+      hasPrevious: false,
+      page,
+      pageSize,
+      to: 0,
+      total: 0,
+      totalPages: 1,
+    },
+    projectSlug: "all",
   };
 }

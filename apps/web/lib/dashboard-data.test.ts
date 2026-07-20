@@ -47,6 +47,7 @@ import {
   getDashboardData,
   getJournalData,
   getRunDetailData,
+  getStatusLogsData,
   getTestSessionData,
   getTestSessionCheckData,
   getTestSessionsData,
@@ -643,6 +644,7 @@ describe("dashboard data", () => {
     });
     mocks.checkFindMany.mockResolvedValue([
       {
+        degradedResponseTime: 2_000,
         enabled: true,
         entrypoint: null,
         frequencyMinutes: 180,
@@ -690,18 +692,23 @@ describe("dashboard data", () => {
     ]);
 
     const dashboard = await getDashboardData("default");
-    const bars = dashboard.groups[0]?.children?.[0]?.bars;
+    const check = dashboard.groups[0]?.children?.[0];
+    const bars = check?.bars;
 
     expect(bars).toEqual([
       expect.objectContaining({
         duration: "1.90 s",
+        status: "passing",
         value: 8,
       }),
       expect.objectContaining({
         duration: "13.16 s",
+        status: "degraded",
         value: 44,
       }),
     ]);
+    expect(check?.status).toBe("degraded");
+    expect(dashboard.summary.degraded).toBe(1);
   });
 
   it("groups retry attempts into one dashboard result bar per logical run", async () => {
@@ -1397,6 +1404,122 @@ describe("dashboard data", () => {
       schedule: "15 min",
       status: "passing",
     });
+  });
+
+  it("builds status change logs from completed dashboard runs", async () => {
+    mocks.checkFindMany.mockResolvedValue([
+      {
+        degradedResponseTime: 1_000,
+        group: {
+          name: "API / Bff",
+        },
+        id: "check_1",
+        key: "bff-health",
+        name: "BFF health",
+        project: {
+          slug: "account",
+        },
+        runs: [
+          {
+            createdAt: new Date("2026-07-05T11:00:00.000Z"),
+            id: "run_recovered",
+            durationMs: 500,
+            status: "PASSED",
+          },
+          {
+            createdAt: new Date("2026-07-05T10:45:00.000Z"),
+            durationMs: 2_500,
+            id: "run_degraded",
+            status: "PASSED",
+          },
+          {
+            createdAt: new Date("2026-07-05T10:30:00.000Z"),
+            durationMs: null,
+            id: "run_queued",
+            status: "QUEUED",
+          },
+          {
+            createdAt: new Date("2026-07-05T10:00:00.000Z"),
+            durationMs: 700,
+            id: "run_failed_again",
+            status: "FAILED",
+          },
+          {
+            createdAt: new Date("2026-07-05T09:00:00.000Z"),
+            durationMs: 800,
+            id: "run_failed",
+            status: "TIMED_OUT",
+          },
+          {
+            createdAt: new Date("2026-07-05T08:30:00.000Z"),
+            durationMs: null,
+            id: "run_running",
+            status: "RUNNING",
+          },
+          {
+            createdAt: new Date("2026-07-05T08:00:00.000Z"),
+            durationMs: 400,
+            id: "run_passed",
+            status: "PASSED",
+          },
+        ],
+        type: "API",
+      },
+    ]);
+
+    const data = await getStatusLogsData("default", {
+      page: 1,
+      pageSize: 10,
+    });
+
+    expect(mocks.checkFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({
+          runs: expect.objectContaining({
+            where: expect.objectContaining({
+              status: {
+                notIn: ["QUEUED", "RUNNING"],
+              },
+            }),
+          }),
+        }),
+        where: {
+          enabled: true,
+        },
+      }),
+    );
+    expect(data.pagination).toEqual({
+      from: 1,
+      hasNext: false,
+      hasPrevious: false,
+      page: 1,
+      pageSize: 10,
+      to: 3,
+      total: 3,
+      totalPages: 1,
+    });
+    expect(data.logs).toEqual([
+      expect.objectContaining({
+        checkHref: "/checks/check_1",
+        checkName: "BFF health",
+        fromStatus: "degraded",
+        id: "run_recovered",
+        runHref: "/checks/check_1/runs/run_recovered",
+        toStatus: "passing",
+      }),
+      expect.objectContaining({
+        fromStatus: "failing",
+        id: "run_degraded",
+        toStatus: "degraded",
+      }),
+      expect.objectContaining({
+        fromStatus: "passing",
+        id: "run_failed",
+        toStatus: "failing",
+      }),
+    ]);
+    expect(data.logs.some((log) => log.id === "run_queued")).toBe(false);
+    expect(data.logs.some((log) => log.id === "run_running")).toBe(false);
   });
 
   it("includes the latest failed run AI analysis in test session rows", async () => {

@@ -118,25 +118,26 @@ model CheckGroup {
 }
 
 model Check {
-  id               String      @id @default(cuid())
-  projectId        String
-  groupId          String?
-  deploymentId     String?
-  key              String
-  name             String
-  type             CheckType
-  enabled          Boolean     @default(true)
-  frequencyMinutes Int?
-  tags             String[]
-  entrypoint       String?
-  request          Json?
-  retryStrategy    Json?
-  createdAt        DateTime    @default(now())
-  updatedAt        DateTime    @updatedAt
-  deployment       Deployment? @relation(fields: [deploymentId], references: [id], onDelete: SetNull)
-  group            CheckGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
-  project          Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  runs             CheckRun[]
+  id                   String      @id @default(cuid())
+  projectId            String
+  groupId              String?
+  deploymentId         String?
+  key                  String
+  name                 String
+  type                 CheckType
+  enabled              Boolean     @default(true)
+  frequencyMinutes     Int?
+  degradedResponseTime Int?
+  tags                 String[]
+  entrypoint           String?
+  request              Json?
+  retryStrategy        Json?
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+  deployment           Deployment? @relation(fields: [deploymentId], references: [id], onDelete: SetNull)
+  group                CheckGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  project              Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  runs                 CheckRun[]
 
   @@unique([projectId, key])
   @@index([projectId, type])
@@ -163,36 +164,37 @@ model TestSession {
 }
 
 model CheckRun {
-  id                       String          @id @default(cuid())
-  projectId                String
-  checkId                  String?
-  testSessionId            String?
-  status                   CheckRunStatus  @default(QUEUED)
-  runSource                CheckRunSource?
-  attempt                  Int             @default(1)
-  maxAttempts              Int             @default(1)
-  retryGroupId             String?
-  startedAt                DateTime?
-  timeoutAt                DateTime?
-  finishedAt               DateTime?
-  durationMs               Int?
-  errorMessage             String?
-  logsPath                 String?
-  result                   Json?
-  checkSnapshotKey         String?
-  checkSnapshotName        String?
-  checkSnapshotType        CheckType?
-  checkSnapshotTags        String[]        @default([])
-  checkSnapshotEntrypoint  String?
-  checkSnapshotRequest     Json?
-  checkSnapshotGroupName   String?
-  checkSnapshotProjectSlug String?
-  createdAt                DateTime        @default(now())
-  artifacts                Artifact[]
-  notifications            Notification[]
-  check                    Check?          @relation(fields: [checkId], references: [id], onDelete: Cascade)
-  testSession              TestSession?    @relation(fields: [testSessionId], references: [id], onDelete: SetNull)
-  project                  Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id                                String          @id @default(cuid())
+  projectId                         String
+  checkId                           String?
+  testSessionId                     String?
+  status                            CheckRunStatus  @default(QUEUED)
+  runSource                         CheckRunSource?
+  attempt                           Int             @default(1)
+  maxAttempts                       Int             @default(1)
+  retryGroupId                      String?
+  startedAt                         DateTime?
+  timeoutAt                         DateTime?
+  finishedAt                        DateTime?
+  durationMs                        Int?
+  errorMessage                      String?
+  logsPath                          String?
+  result                            Json?
+  checkSnapshotKey                  String?
+  checkSnapshotName                 String?
+  checkSnapshotType                 CheckType?
+  checkSnapshotTags                 String[]        @default([])
+  checkSnapshotEntrypoint           String?
+  checkSnapshotRequest              Json?
+  checkSnapshotDegradedResponseTime Int?
+  checkSnapshotGroupName            String?
+  checkSnapshotProjectSlug          String?
+  createdAt                         DateTime        @default(now())
+  artifacts                         Artifact[]
+  notifications                     Notification[]
+  check                             Check?          @relation(fields: [checkId], references: [id], onDelete: Cascade)
+  testSession                       TestSession?    @relation(fields: [testSessionId], references: [id], onDelete: SetNull)
+  project                           Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId, status, createdAt])
   @@index([checkId, createdAt])

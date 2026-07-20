@@ -603,6 +603,7 @@ describe("runCheckById", () => {
     expect(mocks.checkRunCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
+          checkSnapshotDegradedResponseTime: 10_000,
           checkSnapshotKey: "api-health",
           checkSnapshotName: "API health",
           checkSnapshotProjectSlug: "default",
@@ -657,6 +658,7 @@ describe("runCheckById", () => {
     const runId = "run_2";
 
     mocks.checkFindFirst.mockResolvedValue({
+      degradedResponseTime: 2_500,
       entrypoint: null,
       group: null,
       id: "check_1",
@@ -733,6 +735,7 @@ describe("runCheckById", () => {
     expect(mocks.checkRunUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
+          checkSnapshotDegradedResponseTime: 2_500,
           checkSnapshotKey: "api-health",
           runSource: "MANUAL",
           status: "RUNNING",
@@ -915,6 +918,7 @@ describe("runChecks", () => {
     expect(mocks.checkRunCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
+          checkSnapshotDegradedResponseTime: 10_000,
           checkSnapshotGroupName: "API",
           checkSnapshotKey: "api-health",
           checkSnapshotName: "API health",

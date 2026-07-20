@@ -97,6 +97,7 @@ export async function persistDeploySummary({
 
       await tx.check.upsert({
         create: {
+          degradedResponseTime: check.degradedResponseTime,
           deploymentId: deployment.id,
           enabled: check.enabled,
           entrypoint: check.entrypoint,
@@ -111,6 +112,7 @@ export async function persistDeploySummary({
           type: check.type.toUpperCase() as Prisma.CheckCreateInput["type"],
         },
         update: {
+          degradedResponseTime: check.degradedResponseTime,
           deploymentId: deployment.id,
           enabled: check.enabled,
           entrypoint: check.entrypoint,

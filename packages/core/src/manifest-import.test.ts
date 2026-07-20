@@ -267,6 +267,7 @@ describe("parseCheckManifestSource", () => {
       parseCheckManifestSource(
         `
           new ApiCheck({
+            degradedResponseTime: 2500,
             key: "api-health",
             name: "API health",
             tags: ["api"],
@@ -284,6 +285,7 @@ describe("parseCheckManifestSource", () => {
     ).toMatchObject({
       checks: [
         {
+          degradedResponseTime: 2500,
           key: "api-health",
           name: "API health",
           request: {

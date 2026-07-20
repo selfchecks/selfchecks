@@ -39,6 +39,9 @@ describe("AppSidebar", () => {
     expect(screen.getByRole("link", { name: "Journal" }).getAttribute("href")).toBe(
       "/journal",
     );
+    expect(screen.getByRole("link", { name: "Logs" }).getAttribute("href")).toBe(
+      "/logs",
+    );
     expect(
       screen.getByRole("link", { name: "Test sessions" }).getAttribute("href"),
     ).toBe("/test-sessions");

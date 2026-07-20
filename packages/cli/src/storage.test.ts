@@ -110,6 +110,7 @@ describe("persistDeploySummary", () => {
       checks: [
         {
           alertChannelLogicalIds: ["RocketChatFail"],
+          degradedResponseTime: 2500,
           enabled: true,
           frequency: {
             intervalMinutes: 5,
@@ -261,6 +262,7 @@ describe("persistDeploySummary", () => {
     expect(mocks.checkUpsert).toHaveBeenCalledWith(
       expect.objectContaining({
         create: expect.objectContaining({
+          degradedResponseTime: 2500,
           deploymentId: "deployment_1",
           frequencyMinutes: 5,
           groupId: "group_api",
@@ -269,6 +271,7 @@ describe("persistDeploySummary", () => {
           type: "API",
         }),
         update: expect.objectContaining({
+          degradedResponseTime: 2500,
           frequencyMinutes: 5,
           groupId: "group_api",
           type: "API",

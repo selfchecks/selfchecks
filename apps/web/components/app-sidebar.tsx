@@ -9,6 +9,7 @@ import {
   History,
   Home,
   ListChecks,
+  ScrollText,
   Settings2,
   type LucideIcon,
 } from "lucide-react";
@@ -21,6 +22,7 @@ export type AppSidebarItem =
   | "documentation"
   | "home"
   | "journal"
+  | "logs"
   | "queue"
   | "settings"
   | "test-sessions"
@@ -45,6 +47,7 @@ const sidebarItems: SidebarEntry[] = [
   },
   { href: "/queue", icon: ListChecks, id: "queue", label: "Queue" },
   { href: "/journal", icon: History, id: "journal", label: "Journal" },
+  { href: "/logs", icon: ScrollText, id: "logs", label: "Logs" },
   {
     href: "/test-sessions",
     icon: FlaskConical,

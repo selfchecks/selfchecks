@@ -9,7 +9,11 @@ import type {
   CheckRunStatus,
   RetryStrategy,
 } from "@selfchecks/core";
-import { normalizeTags, resolveBrowserRunTimeoutConfig } from "@selfchecks/core";
+import {
+  defaultDegradedResponseTimeMs,
+  normalizeTags,
+  resolveBrowserRunTimeoutConfig,
+} from "@selfchecks/core";
 import { prisma, Prisma, type CheckRun, type TestSession } from "@selfchecks/db";
 
 import { analyzeFailedCheck } from "./ai-analysis.js";
@@ -124,6 +128,7 @@ export type RunTestSessionCheckOptions = {
 };
 
 export type RunnableCheck = {
+  degradedResponseTime: number | null;
   entrypoint: string | null;
   group?: {
     name: string;
@@ -140,6 +145,7 @@ export type RunnableCheck = {
 
 type CheckRunSnapshotData = Pick<
   Prisma.CheckRunUncheckedCreateInput,
+  | "checkSnapshotDegradedResponseTime"
   | "checkSnapshotEntrypoint"
   | "checkSnapshotGroupName"
   | "checkSnapshotKey"
@@ -315,6 +321,7 @@ async function findRunnableChecks(options: RunChecksOptions): Promise<RunnableCh
       )
       .filter((check) => doesCheckMatchTags(check, options.tagSets))
       .map((check) => ({
+        degradedResponseTime: check.degradedResponseTime ?? null,
         entrypoint: check.entrypoint ?? null,
         group: check.groupName
           ? {
@@ -1703,6 +1710,10 @@ function buildCheckRunSnapshot(
   options: RunChecksOptions,
 ): CheckRunSnapshotData {
   return {
+    checkSnapshotDegradedResponseTime:
+      check.type === "API"
+        ? (check.degradedResponseTime ?? defaultDegradedResponseTimeMs)
+        : null,
     checkSnapshotEntrypoint: check.entrypoint,
     checkSnapshotGroupName: check.group?.name,
     checkSnapshotKey: check.key,
