@@ -84,9 +84,13 @@ type DashboardSnapshot = {
   firewatch: DashboardFirewatch;
   groups: GroupRow[];
   queue: QueueRow[];
+  revision: string;
   summary: DashboardSummary;
 };
 type DashboardQueueSnapshot = Pick<DashboardSnapshot, "queue" | "summary">;
+type DashboardActivitySnapshot = Pick<DashboardSummary, "queued" | "running"> & {
+  revision: string;
+};
 
 type CheckRow = DashboardCheckRow;
 type GroupRow = DashboardGroupRow;
@@ -120,6 +124,7 @@ type AiAnalysisDrawerState = {
 };
 
 const AI_CUSTOM_ENDPOINT_VALUE = "__custom__";
+const DASHBOARD_ACTIVITY_REFRESH_INTERVAL_MS = 2000;
 
 const preferredTimeZoneOptions = [
   "Europe/Moscow",
@@ -300,6 +305,7 @@ export default function DashboardClient({
   initialFirewatch = createEmptyFirewatchSnapshot(),
   initialGroups,
   initialQueue,
+  initialRevision,
   initialSettings,
   initialSummary,
 }: {
@@ -308,6 +314,7 @@ export default function DashboardClient({
   initialFirewatch?: DashboardFirewatch;
   initialGroups: GroupRow[];
   initialQueue?: QueueRow[];
+  initialRevision?: string;
   initialSettings?: DashboardSettingsData;
   initialSummary: DashboardSummary;
 }) {
@@ -316,12 +323,14 @@ export default function DashboardClient({
     firewatch: initialFirewatch,
     groups: initialGroups,
     queue: initialQueue ?? [],
+    revision: initialRevision ?? createDashboardActivityRevision(initialQueue ?? []),
     summary: initialSummary,
   }));
   const [settings, setSettings] = useState<DashboardSettingsData | undefined>(
     initialSettings,
   );
   const { firewatch, groups, queue, summary } = dashboard;
+  const dashboardActivityRevisionRef = useRef(dashboard.revision);
   const optimisticQueuedCheckIdsRef = useRef<Set<string>>(new Set());
   const router = useRouter();
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -374,15 +383,7 @@ export default function DashboardClient({
     () => allChecks.filter((check) => !isCheckActive(check)),
     [allChecks],
   );
-  const hasActiveRuns = useMemo(
-    () =>
-      queue.length > 0 ||
-      groups.some((group) =>
-        group.children?.some((check) => ["queued", "running"].includes(check.runState)),
-      ),
-    [groups, queue.length],
-  );
-  const shouldRefreshDashboard = activeView === "queue" || hasActiveRuns;
+  const shouldRefreshDashboard = activeView !== "settings";
   const failedChecks = useMemo(
     () => allChecks.filter((check) => check.status === "failing"),
     [allChecks],
@@ -481,6 +482,9 @@ export default function DashboardClient({
           const nextQueue = await fetchDashboardQueueSnapshot();
 
           if (!cancelled) {
+            dashboardActivityRevisionRef.current = createDashboardActivityRevision(
+              nextQueue.queue,
+            );
             setDashboard((current) => ({
               ...current,
               queue: nextQueue.queue,
@@ -495,9 +499,16 @@ export default function DashboardClient({
           return;
         }
 
+        const activity = await fetchDashboardActivitySnapshot();
+
+        if (cancelled || activity.revision === dashboardActivityRevisionRef.current) {
+          return;
+        }
+
         const nextDashboard = await fetchDashboardSnapshot();
 
         if (!cancelled) {
+          dashboardActivityRevisionRef.current = nextDashboard.revision;
           optimisticQueuedCheckIdsRef.current = retainOptimisticQueuedCheckIds(
             nextDashboard.groups,
             optimisticQueuedCheckIdsRef.current,
@@ -522,7 +533,7 @@ export default function DashboardClient({
       if (!cancelled) {
         timeoutId = window.setTimeout(() => {
           void pollActiveRuns();
-        }, 1000);
+        }, DASHBOARD_ACTIVITY_REFRESH_INTERVAL_MS);
       }
     }
 
@@ -671,6 +682,7 @@ export default function DashboardClient({
         firewatch: removeFirewatchRows(current.firewatch, checkIdSet),
         groups: nextGroups,
         queue: nextQueue,
+        revision: current.revision,
         summary: summarizeDashboardSnapshot(nextGroups, nextQueue),
       };
     });
@@ -1045,7 +1057,32 @@ async function fetchDashboardSnapshot(): Promise<DashboardSnapshot> {
     firewatch: payload.firewatch ?? createEmptyFirewatchSnapshot(),
     groups: payload.groups,
     queue: payload.queue ?? [],
+    revision: payload.revision ?? createDashboardActivityRevision(payload.queue ?? []),
     summary: payload.summary,
+  };
+}
+
+async function fetchDashboardActivitySnapshot(): Promise<DashboardActivitySnapshot> {
+  const response = await fetch("/api/dashboard/status?project=default", {
+    cache: "no-store",
+  });
+  const payload = (await response.json().catch(() => ({}))) as Partial<
+    DashboardActivitySnapshot & { error: string }
+  >;
+
+  if (
+    !response.ok ||
+    typeof payload.queued !== "number" ||
+    typeof payload.revision !== "string" ||
+    typeof payload.running !== "number"
+  ) {
+    throw new Error(payload.error ?? "Unable to load dashboard activity.");
+  }
+
+  return {
+    queued: payload.queued,
+    revision: payload.revision,
+    running: payload.running,
   };
 }
 
@@ -1065,6 +1102,13 @@ async function fetchDashboardQueueSnapshot(): Promise<DashboardQueueSnapshot> {
     queue: payload.queue,
     summary: payload.summary,
   };
+}
+
+function createDashboardActivityRevision(queue: QueueRow[]): string {
+  return queue
+    .map((run) => `${run.id}:${run.runState.toUpperCase()}`)
+    .sort()
+    .join("|");
 }
 
 function createEmptyFirewatchSnapshot(): DashboardFirewatch {
@@ -1099,6 +1143,7 @@ function applyOptimisticQueuedSnapshot(
     firewatch: removeFirewatchRows(dashboard.firewatch, checkIds),
     groups,
     queue,
+    revision: dashboard.revision,
     summary: summarizeDashboardSnapshot(groups, queue),
   };
 }

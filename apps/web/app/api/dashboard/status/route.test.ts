@@ -25,6 +25,7 @@ describe("dashboard status route", () => {
     mocks.getDashboardActivityData.mockResolvedValue({
       projectSlug: "account",
       queued: 2,
+      revision: "run_1:QUEUED|run_2:RUNNING",
       running: 3,
     });
 
@@ -37,6 +38,7 @@ describe("dashboard status route", () => {
       accountLabel: "admin@example.com",
       projectSlug: "account",
       queued: 2,
+      revision: "run_1:QUEUED|run_2:RUNNING",
       running: 3,
     });
     expect(mocks.getDashboardActivityData).toHaveBeenCalledWith("account");

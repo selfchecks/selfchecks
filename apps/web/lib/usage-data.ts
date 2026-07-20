@@ -1,10 +1,9 @@
-import type { CheckRunStatus, CheckType } from "@prisma/client";
+import type { CheckType } from "@prisma/client";
 
 import { prisma } from "./prisma";
 import { getRuntimeTimeZone } from "./runtime-config";
 
 const USAGE_RANGE_DAYS = 30;
-const completedStatuses = ["PASSED", "FAILED", "TIMED_OUT", "CANCELLED"] as const;
 
 export type UsageDay = {
   api: number;
@@ -56,32 +55,18 @@ export type UsageProject = {
   total: number;
 };
 
-type UsageRun = {
-  check: {
-    id: string;
-    name: string;
-    projectId: string;
-    type: CheckType;
-  } | null;
-  checkSnapshotKey: string | null;
-  checkSnapshotName: string | null;
-  checkSnapshotType: CheckType | null;
-  finishedAt: Date | null;
-  status: CheckRunStatus;
-  testSessionId: string | null;
-  project: {
-    id: string;
-    name: string;
-    slug: string;
-  };
-};
-
-type UsageCheck = {
-  id: string;
-  key: string;
-  name: string;
+type UsageAggregateRow = {
+  checkId: string | null;
+  date: string | null;
+  failed: bigint;
+  kind: "day" | "test";
+  name: string | null;
+  passed: bigint;
   projectId: string;
-  projectSlug: string;
+  projectSlug: string | null;
+  scheduled: bigint;
+  testSessions: bigint;
+  total: bigint;
   type: CheckType;
 };
 
@@ -90,62 +75,108 @@ export async function getUsageData(
   now = new Date(),
 ): Promise<UsageData> {
   const timeZone = getRuntimeTimeZone();
+  const cutoff = new Date(now.getTime() - (USAGE_RANGE_DAYS + 1) * 86_400_000);
 
   try {
-    const [projects, activeChecks, runs] = await Promise.all([
+    const [projects, aggregates] = await Promise.all([
       prisma.project.findMany({
         orderBy: { name: "asc" },
         select: { id: true, name: true, slug: true },
       }),
-      prisma.check.findMany({
-        select: {
-          id: true,
-          key: true,
-          name: true,
-          projectId: true,
-          project: { select: { slug: true } },
-          type: true,
-        },
-      }),
-      prisma.checkRun.findMany({
-        select: {
-          check: { select: { id: true, name: true, projectId: true, type: true } },
-          checkSnapshotKey: true,
-          checkSnapshotName: true,
-          checkSnapshotType: true,
-          finishedAt: true,
-          status: true,
-          testSessionId: true,
-          project: { select: { id: true, name: true, slug: true } },
-        },
-        where: {
-          finishedAt: {
-            gte: new Date(now.getTime() - (USAGE_RANGE_DAYS + 1) * 86_400_000),
-          },
-          status: { in: [...completedStatuses] },
-        },
-      }),
+      fetchUsageAggregates(cutoff, timeZone),
     ]);
 
-    return buildUsageData(
-      runs,
-      activeChecks.map((check) => ({
-        ...check,
-        projectSlug: check.project.slug,
-      })),
-      projects,
-      now,
-      timeZone,
-    );
+    return buildUsageData(aggregates, projects, now, timeZone);
   } catch (error) {
     console.warn("Unable to load usage data.", error);
-    return buildUsageData([], [], [], now, timeZone);
+    return buildUsageData([], [], now, timeZone);
   }
 }
 
+async function fetchUsageAggregates(
+  cutoff: Date,
+  timeZone: string,
+): Promise<UsageAggregateRow[]> {
+  return prisma.$queryRaw<UsageAggregateRow[]>`
+    WITH resolved_runs AS MATERIALIZED (
+      SELECT
+        timezone(${timeZone}, run."finishedAt" AT TIME ZONE 'UTC')::date::text AS "date",
+        run."projectId",
+        project."slug" AS "projectSlug",
+        COALESCE(run."checkSnapshotType", direct_check."type", snapshot_check."type")::text AS "type",
+        COALESCE(direct_check."id", snapshot_check."id") AS "checkId",
+        COALESCE(
+          direct_check."id",
+          snapshot_check."id",
+          CASE
+            WHEN run."checkSnapshotKey" IS NOT NULL
+              THEN run."projectId" || ':' || run."checkSnapshotKey"
+            ELSE run."checkSnapshotName"
+          END
+        ) AS "testKey",
+        COALESCE(
+          direct_check."name",
+          snapshot_check."name",
+          run."checkSnapshotName",
+          run."checkSnapshotKey"
+        ) AS "name",
+        run."status"::text AS "status",
+        run."testSessionId"
+      FROM "CheckRun" AS run
+      INNER JOIN "Project" AS project ON project."id" = run."projectId"
+      LEFT JOIN "Check" AS direct_check ON direct_check."id" = run."checkId"
+      LEFT JOIN "Check" AS snapshot_check
+        ON snapshot_check."projectId" = run."projectId"
+        AND snapshot_check."key" = run."checkSnapshotKey"
+      WHERE
+        run."finishedAt" >= ${cutoff}
+        AND run."status" IN (
+          'PASSED'::"CheckRunStatus",
+          'FAILED'::"CheckRunStatus",
+          'TIMED_OUT'::"CheckRunStatus",
+          'CANCELLED'::"CheckRunStatus"
+        )
+    )
+    SELECT
+      'day'::text AS "kind",
+      "date",
+      "projectId",
+      NULL::text AS "projectSlug",
+      NULL::text AS "checkId",
+      NULL::text AS "name",
+      "type",
+      COUNT(*) FILTER (WHERE "status" = 'PASSED') AS "passed",
+      COUNT(*) FILTER (WHERE "status" <> 'PASSED') AS "failed",
+      COUNT(*) FILTER (WHERE "testSessionId" IS NULL) AS "scheduled",
+      COUNT(*) FILTER (WHERE "testSessionId" IS NOT NULL) AS "testSessions",
+      COUNT(*) AS "total"
+    FROM resolved_runs
+    WHERE "type" IS NOT NULL
+    GROUP BY "date", "projectId", "type"
+
+    UNION ALL
+
+    SELECT
+      'test'::text AS "kind",
+      NULL::text AS "date",
+      "projectId",
+      "projectSlug",
+      "checkId",
+      "name",
+      "type",
+      COUNT(*) FILTER (WHERE "status" = 'PASSED') AS "passed",
+      COUNT(*) FILTER (WHERE "status" <> 'PASSED') AS "failed",
+      0::bigint AS "scheduled",
+      0::bigint AS "testSessions",
+      COUNT(*) AS "total"
+    FROM resolved_runs
+    WHERE "type" IS NOT NULL AND "testKey" IS NOT NULL AND "name" IS NOT NULL
+    GROUP BY "projectId", "projectSlug", "testKey", "checkId", "name", "type"
+  `;
+}
+
 function buildUsageData(
-  runs: UsageRun[],
-  activeChecks: UsageCheck[],
+  aggregates: UsageAggregateRow[],
   projects: Array<{ id: string; name: string; slug: string }>,
   now: Date,
   timeZone: string,
@@ -168,65 +199,45 @@ function buildUsageData(
       },
     ]),
   );
-  const tests = new Map<
-    string,
-    Omit<UnstableTest, "failureRate" | "type"> & { type: CheckType }
-  >();
-  const activeChecksByKey = new Map(
-    activeChecks.map((check) => [`${check.projectId}:${check.key}`, check]),
-  );
-  let scheduled = 0;
-  let testSessions = 0;
+  const tests: Array<
+    Omit<UnstableTest, "failureRate" | "type"> & {
+      type: CheckType;
+    }
+  > = [];
 
-  for (const run of runs) {
-    if (!run.finishedAt) continue;
+  for (const aggregate of aggregates) {
+    if (aggregate.kind === "test") {
+      if (aggregate.name && aggregate.projectSlug) {
+        tests.push({
+          checkId: aggregate.checkId ?? undefined,
+          failed: Number(aggregate.failed),
+          name: aggregate.name,
+          passed: Number(aggregate.passed),
+          projectSlug: aggregate.projectSlug,
+          total: Number(aggregate.total),
+          type: aggregate.type,
+        });
+      }
 
-    const day = daysByDate.get(formatDateKey(run.finishedAt, timeZone));
-    const activeCheck =
-      run.check ??
-      (run.checkSnapshotKey
-        ? activeChecksByKey.get(`${run.project.id}:${run.checkSnapshotKey}`)
-        : undefined);
-    const type = run.checkSnapshotType ?? activeCheck?.type;
-
-    if (!day || !type) continue;
-
-    if (type === "API") day.api += 1;
-    if (type === "BROWSER") day.browser += 1;
-    if (run.status === "PASSED") day.passed += 1;
-    else day.failed += 1;
-    day.total += 1;
-    day.projects[run.project.id] = (day.projects[run.project.id] ?? 0) + 1;
-
-    const testKey =
-      activeCheck?.id ??
-      (run.checkSnapshotKey
-        ? `${run.project.id}:${run.checkSnapshotKey}`
-        : run.checkSnapshotName);
-    const testName = activeCheck?.name ?? run.checkSnapshotName ?? run.checkSnapshotKey;
-    if (testKey && testName) {
-      const test = tests.get(testKey) ?? {
-        checkId: activeCheck?.id,
-        failed: 0,
-        name: testName,
-        passed: 0,
-        projectSlug: run.project.slug,
-        total: 0,
-        type,
-      };
-      if (run.status === "PASSED") test.passed += 1;
-      else test.failed += 1;
-      test.total += 1;
-      tests.set(testKey, test);
+      continue;
     }
 
-    if (run.testSessionId) {
-      day.testSessions += 1;
-      testSessions += 1;
-    } else {
-      day.scheduled += 1;
-      scheduled += 1;
+    const day = aggregate.date ? daysByDate.get(aggregate.date) : undefined;
+
+    if (!day) {
+      continue;
     }
+
+    const total = Number(aggregate.total);
+    day.api += aggregate.type === "API" ? total : 0;
+    day.browser += aggregate.type === "BROWSER" ? total : 0;
+    day.failed += Number(aggregate.failed);
+    day.passed += Number(aggregate.passed);
+    day.projects[aggregate.projectId] =
+      (day.projects[aggregate.projectId] ?? 0) + total;
+    day.scheduled += Number(aggregate.scheduled);
+    day.testSessions += Number(aggregate.testSessions);
+    day.total += total;
   }
 
   const days = dateKeys.map((date) => daysByDate.get(date)!);
@@ -235,7 +246,9 @@ function buildUsageData(
   const passed = days.reduce((sum, day) => sum + day.passed, 0);
   const failed = days.reduce((sum, day) => sum + day.failed, 0);
   const total = api + browser;
-  const unstableTests = [...tests.values()]
+  const scheduled = days.reduce((sum, day) => sum + day.scheduled, 0);
+  const testSessions = days.reduce((sum, day) => sum + day.testSessions, 0);
+  const unstableTests = tests
     .filter((test) => test.failed > 0)
     .map((test) => ({
       ...test,

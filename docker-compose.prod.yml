@@ -100,6 +100,7 @@ services:
   worker:
     image: *selfchecks-worker-image
     container_name: selfchecks-prod-worker
+    init: true
     depends_on:
       migrate:
         condition: service_completed_successfully

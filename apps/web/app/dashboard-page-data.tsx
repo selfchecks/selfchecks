@@ -51,6 +51,7 @@ export async function DashboardData({
       initialActiveView={activeView}
       initialGroups={dashboard.groups}
       initialQueue={dashboard.queue}
+      initialRevision={dashboard.revision}
       initialSummary={dashboard.summary}
     />
   );

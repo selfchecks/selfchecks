@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   projectFindFirst: vi.fn(),
   projectFindMany: vi.fn(),
   projectFindUnique: vi.fn(),
+  queryRaw: vi.fn(),
   testSessionCount: vi.fn(),
   testSessionFindFirst: vi.fn(),
   testSessionFindMany: vi.fn(),
@@ -17,6 +18,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
+    $queryRaw: mocks.queryRaw,
     check: {
       findFirst: mocks.checkFindFirst,
       findMany: mocks.checkFindMany,
@@ -108,9 +110,11 @@ describe("dashboard data", () => {
   beforeEach(() => {
     mocks.checkFindMany.mockResolvedValue([]);
     mocks.checkRunCount.mockResolvedValue(0);
+    mocks.checkRunFindFirst.mockResolvedValue(null);
     mocks.checkRunFindMany.mockResolvedValue([]);
     mocks.checkRunUpdateMany.mockResolvedValue({ count: 0 });
     mocks.projectFindMany.mockResolvedValue([{ name: "default", slug: "default" }]);
+    mocks.queryRaw.mockResolvedValue([]);
     mocks.testSessionCount.mockResolvedValue(0);
     mocks.testSessionFindMany.mockResolvedValue([]);
   });
@@ -126,21 +130,68 @@ describe("dashboard data", () => {
       id: "project_1",
       slug: "default",
     });
-    mocks.checkRunCount.mockResolvedValueOnce(4).mockResolvedValueOnce(2);
+    mocks.checkRunFindMany.mockResolvedValue([
+      { id: "queued_1", status: "QUEUED" },
+      { id: "queued_2", status: "QUEUED" },
+      { id: "running_1", status: "RUNNING" },
+    ]);
+    mocks.checkRunFindFirst.mockResolvedValue({
+      finishedAt: new Date("2026-07-05T09:39:00.000Z"),
+      id: "terminal_1",
+      status: "PASSED",
+    });
 
     await expect(getDashboardActivityData("default")).resolves.toEqual({
       projectSlug: "default",
-      queued: 4,
-      running: 2,
+      queued: 2,
+      revision:
+        "terminal:terminal_1:PASSED:2026-07-05T09:39:00.000Z|active:queued_1:QUEUED|active:queued_2:QUEUED|active:running_1:RUNNING",
+      running: 1,
     });
-    expect(mocks.checkRunCount).toHaveBeenNthCalledWith(1, {
+    expect(mocks.checkRunFindMany).toHaveBeenCalledWith({
+      orderBy: {
+        id: "asc",
+      },
+      select: {
+        id: true,
+        status: true,
+      },
       where: {
-        status: "QUEUED",
+        status: {
+          in: ["QUEUED", "RUNNING"],
+        },
       },
     });
-    expect(mocks.checkRunCount).toHaveBeenNthCalledWith(2, {
+    expect(mocks.checkRunFindFirst).toHaveBeenCalledWith({
+      orderBy: [{ finishedAt: "desc" }, { id: "desc" }],
+      select: {
+        finishedAt: true,
+        id: true,
+        status: true,
+      },
       where: {
-        status: "RUNNING",
+        AND: [
+          {
+            OR: [
+              { testSessionId: null },
+              { status: { in: ["QUEUED", "RUNNING"] } },
+              {
+                testSession: {
+                  is: {
+                    kind: {
+                      not: "TEST",
+                    },
+                  },
+                },
+              },
+            ],
+          },
+          { check: { is: { enabled: true } } },
+          {
+            finishedAt: { not: null },
+            status: { notIn: ["QUEUED", "RUNNING"] },
+          },
+        ],
       },
     });
   });
@@ -1138,37 +1189,13 @@ describe("dashboard data", () => {
     ]);
 
     const dashboard = await getDashboardData("default");
-    const query = mocks.checkFindMany.mock.calls[0]?.[0] as {
-      include?: {
-        runs?: {
-          take?: number;
-          where?: unknown;
-        };
-      };
-    };
+    const [sql, firewatchDays, resultCount] = mocks.queryRaw.mock.calls[0] ?? [];
 
-    expect(query.include?.runs?.take).toBe(264);
-    expect(query.include?.runs?.where).toEqual({
-      OR: [
-        {
-          testSessionId: null,
-        },
-        {
-          status: {
-            in: ["QUEUED", "RUNNING"],
-          },
-        },
-        {
-          testSession: {
-            is: {
-              kind: {
-                not: "TEST",
-              },
-            },
-          },
-        },
-      ],
-    });
+    expect(Array.from(sql as TemplateStringsArray).join("?")).toContain(
+      'ranked."groupRank" <= ?',
+    );
+    expect(firewatchDays).toBe(7);
+    expect(resultCount).toBe(24);
     expect(dashboard.summary).toMatchObject({
       degraded: 0,
       failing: 0,
@@ -1429,63 +1456,51 @@ describe("dashboard data", () => {
   });
 
   it("builds status change logs from completed dashboard runs", async () => {
-    mocks.checkFindMany.mockResolvedValue([
+    mocks.queryRaw.mockResolvedValue([
       {
-        degradedResponseTime: 1_000,
-        group: {
-          name: "API / Bff",
-        },
-        id: "check_1",
-        key: "bff-health",
-        name: "BFF health",
-        project: {
-          slug: "account",
-        },
-        runs: [
-          {
-            createdAt: new Date("2026-07-05T11:00:00.000Z"),
-            id: "run_recovered",
-            durationMs: 500,
-            status: "PASSED",
-          },
-          {
-            createdAt: new Date("2026-07-05T10:45:00.000Z"),
-            durationMs: 2_500,
-            id: "run_degraded",
-            status: "PASSED",
-          },
-          {
-            createdAt: new Date("2026-07-05T10:30:00.000Z"),
-            durationMs: null,
-            id: "run_queued",
-            status: "QUEUED",
-          },
-          {
-            createdAt: new Date("2026-07-05T10:00:00.000Z"),
-            durationMs: 700,
-            id: "run_failed_again",
-            status: "FAILED",
-          },
-          {
-            createdAt: new Date("2026-07-05T09:00:00.000Z"),
-            durationMs: 800,
-            id: "run_failed",
-            status: "TIMED_OUT",
-          },
-          {
-            createdAt: new Date("2026-07-05T08:30:00.000Z"),
-            durationMs: null,
-            id: "run_running",
-            status: "RUNNING",
-          },
-          {
-            createdAt: new Date("2026-07-05T08:00:00.000Z"),
-            durationMs: 400,
-            id: "run_passed",
-            status: "PASSED",
-          },
-        ],
-        type: "API",
+        checkId: "check_1",
+        checkKey: "bff-health",
+        checkName: "BFF health",
+        checkType: "API",
+        createdAt: new Date("2026-07-05T11:00:00.000Z"),
+        fromStatus: "degraded",
+        groupName: "API / Bff",
+        id: "run_recovered",
+        page: 1,
+        projectSlug: "account",
+        toStatus: "passing",
+        total: 3,
+        totalPages: 1,
+      },
+      {
+        checkId: "check_1",
+        checkKey: "bff-health",
+        checkName: "BFF health",
+        checkType: "API",
+        createdAt: new Date("2026-07-05T10:45:00.000Z"),
+        fromStatus: "failing",
+        groupName: "API / Bff",
+        id: "run_degraded",
+        page: 1,
+        projectSlug: "account",
+        toStatus: "degraded",
+        total: 3,
+        totalPages: 1,
+      },
+      {
+        checkId: "check_1",
+        checkKey: "bff-health",
+        checkName: "BFF health",
+        checkType: "API",
+        createdAt: new Date("2026-07-05T09:00:00.000Z"),
+        fromStatus: "passing",
+        groupName: "API / Bff",
+        id: "run_failed",
+        page: 1,
+        projectSlug: "account",
+        toStatus: "failing",
+        total: 3,
+        totalPages: 1,
       },
     ]);
 
@@ -1494,22 +1509,18 @@ describe("dashboard data", () => {
       pageSize: 10,
     });
 
-    expect(mocks.checkFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        select: expect.objectContaining({
-          runs: expect.objectContaining({
-            where: expect.objectContaining({
-              status: {
-                notIn: ["QUEUED", "RUNNING"],
-              },
-            }),
-          }),
-        }),
-        where: {
-          enabled: true,
-        },
-      }),
-    );
+    const [sql, pageSize, requestedPage, degradedResponseTime] =
+      mocks.queryRaw.mock.calls[0] ?? [];
+    const query = Array.from(sql as TemplateStringsArray).join("?");
+
+    expect(query).toContain('LAG("toStatus") OVER');
+    expect(query).toContain('run."status" NOT IN');
+    expect(query).toContain('LIMIT (SELECT "pageSize" FROM page_info)');
+    expect(query).toContain("LEFT JOIN page_rows ON true");
+    expect(pageSize).toBe(10);
+    expect(requestedPage).toBe(1);
+    expect(degradedResponseTime).toBe(10_000);
+    expect(mocks.checkFindMany).not.toHaveBeenCalled();
     expect(data.pagination).toEqual({
       from: 1,
       hasNext: false,
@@ -1540,8 +1551,47 @@ describe("dashboard data", () => {
         toStatus: "failing",
       }),
     ]);
-    expect(data.logs.some((log) => log.id === "run_queued")).toBe(false);
-    expect(data.logs.some((log) => log.id === "run_running")).toBe(false);
+  });
+
+  it("returns empty status logs from the aggregate placeholder row", async () => {
+    mocks.queryRaw.mockResolvedValue([
+      {
+        checkId: null,
+        checkKey: null,
+        checkName: null,
+        checkType: null,
+        createdAt: null,
+        fromStatus: null,
+        groupName: null,
+        id: null,
+        page: 1,
+        projectSlug: null,
+        toStatus: null,
+        total: 0,
+        totalPages: 1,
+      },
+    ]);
+
+    await expect(
+      getStatusLogsData("default", {
+        page: 99,
+        pageSize: 20,
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        logs: [],
+        pagination: {
+          from: 0,
+          hasNext: false,
+          hasPrevious: false,
+          page: 1,
+          pageSize: 20,
+          to: 0,
+          total: 0,
+          totalPages: 1,
+        },
+      }),
+    );
   });
 
   it("includes the latest failed run AI analysis in test session rows", async () => {

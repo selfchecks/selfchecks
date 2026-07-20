@@ -1,15 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  checkFindMany: vi.fn(),
-  checkRunFindMany: vi.fn(),
   projectFindMany: vi.fn(),
+  queryRaw: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    check: { findMany: mocks.checkFindMany },
-    checkRun: { findMany: mocks.checkRunFindMany },
+    $queryRaw: mocks.queryRaw,
     project: {
       findMany: mocks.projectFindMany,
     },
@@ -29,64 +27,76 @@ describe("usage data", () => {
     mocks.projectFindMany.mockResolvedValue([
       { id: "project_1", name: "Account", slug: "account" },
     ]);
-    mocks.checkFindMany.mockResolvedValue([
+    mocks.queryRaw.mockResolvedValue([
       {
-        id: "check_1",
-        key: "health-api",
-        name: "Health API",
+        checkId: null,
+        date: "2026-07-11",
+        failed: 0n,
+        kind: "day",
+        name: null,
+        passed: 1n,
         projectId: "project_1",
-        project: { slug: "account" },
+        projectSlug: null,
+        scheduled: 1n,
+        testSessions: 0n,
+        total: 1n,
         type: "API",
       },
       {
-        id: "check_2",
-        key: "checkout",
-        name: "Checkout",
+        checkId: null,
+        date: "2026-07-11",
+        failed: 1n,
+        kind: "day",
+        name: null,
+        passed: 0n,
         projectId: "project_1",
-        project: { slug: "account" },
+        projectSlug: null,
+        scheduled: 0n,
+        testSessions: 1n,
+        total: 1n,
         type: "BROWSER",
       },
-    ]);
-    mocks.checkRunFindMany.mockResolvedValue([
       {
-        check: {
-          id: "check_1",
-          name: "Health API",
-          projectId: "project_1",
-          type: "API",
-        },
-        checkSnapshotKey: "health-api",
-        checkSnapshotName: "Health API",
-        checkSnapshotType: null,
-        finishedAt: new Date("2026-07-11T08:00:00.000Z"),
-        status: "PASSED",
-        testSessionId: null,
-        project: { id: "project_1", name: "Account", slug: "account" },
+        checkId: null,
+        date: "2026-07-10",
+        failed: 1n,
+        kind: "day",
+        name: null,
+        passed: 0n,
+        projectId: "project_1",
+        projectSlug: null,
+        scheduled: 0n,
+        testSessions: 1n,
+        total: 1n,
+        type: "API",
       },
       {
-        check: null,
-        checkSnapshotKey: "checkout",
-        checkSnapshotName: "Checkout",
-        checkSnapshotType: "BROWSER",
-        finishedAt: new Date("2026-07-11T09:00:00.000Z"),
-        status: "FAILED",
-        testSessionId: "session_1",
-        project: { id: "project_1", name: "Account", slug: "account" },
+        checkId: "check_1",
+        date: null,
+        failed: 1n,
+        kind: "test",
+        name: "Health API",
+        passed: 1n,
+        projectId: "project_1",
+        projectSlug: "account",
+        scheduled: 0n,
+        testSessions: 0n,
+        total: 2n,
+        type: "API",
       },
       {
-        check: {
-          id: "check_1",
-          name: "Health API",
-          projectId: "project_1",
-          type: "API",
-        },
-        checkSnapshotKey: "health-api",
-        checkSnapshotName: "Health API",
-        checkSnapshotType: null,
-        finishedAt: new Date("2026-07-10T20:00:00.000Z"),
-        status: "TIMED_OUT",
-        testSessionId: "session_1",
-        project: { id: "project_1", name: "Account", slug: "account" },
+        checkId: "check_2",
+        date: null,
+        failed: 1n,
+        kind: "test",
+        name: "Checkout",
+        passed: 0n,
+        projectId: "project_1",
+        projectSlug: "account",
+        scheduled: 0n,
+        testSessions: 0n,
+        total: 1n,
+        type: "BROWSER",
       },
     ]);
 
@@ -137,12 +147,12 @@ describe("usage data", () => {
         type: "api",
       },
     ]);
-    expect(mocks.checkRunFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          status: { in: ["PASSED", "FAILED", "TIMED_OUT", "CANCELLED"] },
-        }),
-      }),
+    const [sql, timeZone, cutoff] = mocks.queryRaw.mock.calls[0] ?? [];
+
+    expect(Array.from(sql as TemplateStringsArray).join("?")).toContain(
+      "WITH resolved_runs AS MATERIALIZED",
     );
+    expect(timeZone).toBe("UTC");
+    expect(cutoff).toEqual(new Date("2026-06-10T12:00:00.000Z"));
   });
 });

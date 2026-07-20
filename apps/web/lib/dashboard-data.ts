@@ -32,7 +32,6 @@ import { getTestSessionSourceBranch } from "./test-session-source";
 const FIREWATCH_LOOKBACK_DAYS = 7;
 const MAX_LOG_PREVIEW_CHARS = 12_000;
 const DASHBOARD_RESULT_BAR_COUNT = 24;
-const MAX_RETRY_ATTEMPTS_PER_RUN = 11;
 const MAX_RESULT_BAR_HEIGHT = 44;
 const MIN_RESULT_BAR_HEIGHT = 8;
 const activeSessionStatuses = ["QUEUED", "RUNNING"];
@@ -43,6 +42,7 @@ type DashboardData = {
   groups: DashboardGroupRow[];
   projectSlug: string;
   queue: DashboardQueueRow[];
+  revision: string;
   summary: DashboardSummary;
 };
 type DashboardDataOptions = {
@@ -52,6 +52,7 @@ type DashboardDataOptions = {
 export type DashboardActivityData = {
   projectSlug: string;
   queued: number;
+  revision: string;
   running: number;
 };
 
@@ -367,6 +368,7 @@ type MappableRun = {
   durationMs: number | null;
   errorMessage: string | null;
   finishedAt?: Date | null;
+  hasTrace?: boolean;
   checkId?: string | null;
   checkSnapshotDegradedResponseTime?: number | null;
   checkSnapshotEntrypoint?: string | null;
@@ -391,6 +393,7 @@ type CheckWithRuns = {
   degradedResponseTime: number | null;
   enabled: boolean;
   entrypoint: string | null;
+  firstFailingAt?: Date | null;
   frequencyMinutes: number | null;
   group: {
     name: string;
@@ -406,6 +409,11 @@ type CheckWithRuns = {
   runs: MappableRun[];
   tags: string[];
   type: string;
+};
+type DashboardRunRecord = MappableRun & {
+  checkId: string;
+  firstFailingAt: Date | null;
+  hasTrace: boolean;
 };
 type TestSessionRunWithCheck = MappableRun & {
   check: {
@@ -515,26 +523,20 @@ type ActiveQueueRunWithCheck = MappableRun & {
     slug: string;
   };
 };
-type StatusLogCheckWithRuns = {
-  degradedResponseTime: number | null;
-  group: {
-    name: string;
-  } | null;
-  id: string;
-  key: string;
-  name: string;
-  project: {
-    slug: string;
-  };
-  runs: Array<{
-    checkSnapshotDegradedResponseTime: number | null;
-    checkSnapshotType: string | null;
-    createdAt: Date;
-    durationMs: number | null;
-    id: string;
-    status: string;
-  }>;
-  type: string;
+type StatusLogQueryRow = {
+  checkId: string | null;
+  checkKey: string | null;
+  checkName: string | null;
+  checkType: string | null;
+  createdAt: Date | null;
+  fromStatus: DashboardStatus | null;
+  groupName: string | null;
+  id: string | null;
+  page: number;
+  projectSlug: string | null;
+  toStatus: DashboardStatus | null;
+  total: number;
+  totalPages: number;
 };
 
 const JOURNAL_DEFAULT_PAGE_SIZE = 20;
@@ -552,9 +554,10 @@ export async function getDashboardData(
   const timeZone = getRuntimeTimeZone();
 
   try {
-    const [checks, queue] = await Promise.all([
+    const [checks, queue, latestTerminalRun] = await Promise.all([
       fetchChecks(),
       fetchActiveQueue(timeZone),
+      fetchLatestTerminalRevisionRun(),
     ]);
     const groups = buildGroups(checks, timeZone);
 
@@ -563,6 +566,13 @@ export async function getDashboardData(
       groups,
       projectSlug: "default",
       queue,
+      revision: formatDashboardRevision(
+        queue.map((run) => ({
+          id: run.id,
+          status: run.runState.toUpperCase(),
+        })),
+        latestTerminalRun,
+      ),
       summary: applyQueueCounts(summarizeGroups(groups), queue),
     };
   } catch (error) {
@@ -579,23 +589,29 @@ export async function getDashboardData(
 export async function getDashboardActivityData(
   _projectSlug = "default",
 ): Promise<DashboardActivityData> {
-  const [queued, running] = await Promise.all([
-    prisma.checkRun.count({
+  const [runs, latestTerminalRun] = await Promise.all([
+    prisma.checkRun.findMany({
+      orderBy: {
+        id: "asc",
+      },
+      select: {
+        id: true,
+        status: true,
+      },
       where: {
-        status: "QUEUED",
+        status: {
+          in: [...DASHBOARD_ACTIVE_RUN_STATUSES],
+        },
       },
     }),
-    prisma.checkRun.count({
-      where: {
-        status: "RUNNING",
-      },
-    }),
+    fetchLatestTerminalRevisionRun(),
   ]);
 
   return {
     projectSlug: "default",
-    queued,
-    running,
+    queued: runs.filter((run) => run.status === "QUEUED").length,
+    revision: formatDashboardRevision(runs, latestTerminalRun),
+    running: runs.filter((run) => run.status === "RUNNING").length,
   };
 }
 
@@ -976,58 +992,154 @@ export async function getStatusLogsData(
   const timeZone = getRuntimeTimeZone();
 
   try {
-    const checks = (await prisma.check.findMany({
-      orderBy: {
-        name: "asc",
-      },
-      select: {
-        degradedResponseTime: true,
-        group: {
-          select: {
-            name: true,
-          },
-        },
-        id: true,
-        key: true,
-        name: true,
-        project: {
-          select: {
-            slug: true,
-          },
-        },
-        runs: {
-          orderBy: {
-            createdAt: "desc",
-          },
-          select: {
-            checkSnapshotDegradedResponseTime: true,
-            checkSnapshotType: true,
-            createdAt: true,
-            durationMs: true,
-            id: true,
-            status: true,
-          },
-          where: {
-            ...buildDashboardVisibleRunWhere(),
-            status: {
-              notIn: [...DASHBOARD_ACTIVE_RUN_STATUSES],
-            },
-          },
-        },
-        type: true,
-      },
-      where: {
-        enabled: true,
-      },
-    })) as StatusLogCheckWithRuns[];
-    const logs = checks
-      .flatMap((check) => buildStatusLogs(check, timeZone))
-      .sort(compareStatusLogs);
-    const total = logs.length;
-    const totalPages = Math.max(1, Math.ceil(total / pageSize));
-    const page = Math.min(requestedPage, totalPages);
+    const rows = await prisma.$queryRaw<StatusLogQueryRow[]>`
+      WITH params AS (
+        SELECT
+          ${pageSize}::int AS "pageSize",
+          ${requestedPage}::int AS "requestedPage",
+          ${defaultDegradedResponseTimeMs}::int AS "defaultDegradedResponseTime"
+      ),
+      status_history AS MATERIALIZED (
+        SELECT
+          run."id",
+          run."checkId",
+          run."createdAt",
+          CASE
+            WHEN
+              run."status" = 'PASSED'::"CheckRunStatus"
+              AND COALESCE(run."checkSnapshotType", check_row."type") = 'API'::"CheckType"
+              AND run."durationMs" IS NOT NULL
+              AND run."durationMs" > COALESCE(
+                run."checkSnapshotDegradedResponseTime",
+                check_row."degradedResponseTime",
+                params."defaultDegradedResponseTime"
+              )
+              THEN 'degraded'
+            WHEN run."status" = 'PASSED'::"CheckRunStatus" THEN 'passing'
+            ELSE 'failing'
+          END AS "toStatus"
+        FROM "CheckRun" AS run
+        INNER JOIN "Check" AS check_row
+          ON check_row."id" = run."checkId" AND check_row."enabled" = true
+        LEFT JOIN "TestSession" AS session ON session."id" = run."testSessionId"
+        CROSS JOIN params
+        WHERE
+          run."status" NOT IN (
+            'QUEUED'::"CheckRunStatus",
+            'RUNNING'::"CheckRunStatus"
+          )
+          AND (
+            run."testSessionId" IS NULL
+            OR session."kind" <> 'TEST'::"TestSessionKind"
+          )
+      ),
+      status_changes AS MATERIALIZED (
+        SELECT
+          status_history.*,
+          LAG("toStatus") OVER (
+            PARTITION BY "checkId"
+            ORDER BY "createdAt" ASC, "id" ASC
+          ) AS "fromStatus"
+        FROM status_history
+      ),
+      transitions AS MATERIALIZED (
+        SELECT *
+        FROM status_changes
+        WHERE "fromStatus" IS NOT NULL AND "fromStatus" <> "toStatus"
+      ),
+      page_info AS (
+        SELECT
+          COUNT(*)::int AS "total",
+          GREATEST(
+            1,
+            CEIL(COUNT(*)::numeric / params."pageSize")::int
+          ) AS "totalPages",
+          LEAST(
+            params."requestedPage",
+            GREATEST(
+              1,
+              CEIL(COUNT(*)::numeric / params."pageSize")::int
+            )
+          ) AS "page",
+          params."pageSize"
+        FROM transitions
+        CROSS JOIN params
+        GROUP BY params."pageSize", params."requestedPage"
+      ),
+      page_rows AS (
+        SELECT transitions.*
+        FROM transitions
+        ORDER BY "createdAt" DESC, "id" DESC
+        LIMIT (SELECT "pageSize" FROM page_info)
+        OFFSET (
+          SELECT ("page" - 1) * "pageSize"
+          FROM page_info
+        )
+      )
+      SELECT
+        page_info."total",
+        page_info."totalPages",
+        page_info."page",
+        page_rows."id",
+        page_rows."checkId",
+        page_rows."createdAt",
+        page_rows."fromStatus",
+        page_rows."toStatus",
+        check_row."key" AS "checkKey",
+        check_row."name" AS "checkName",
+        check_row."type"::text AS "checkType",
+        project."slug" AS "projectSlug",
+        COALESCE(group_row."name", 'Ungrouped') AS "groupName"
+      FROM page_info
+      LEFT JOIN page_rows ON true
+      LEFT JOIN "Check" AS check_row ON check_row."id" = page_rows."checkId"
+      LEFT JOIN "Project" AS project ON project."id" = check_row."projectId"
+      LEFT JOIN "CheckGroup" AS group_row ON group_row."id" = check_row."groupId"
+      ORDER BY
+        page_rows."createdAt" DESC NULLS LAST,
+        page_rows."id" DESC NULLS LAST
+    `;
+    const metadata = rows[0];
+    const total = metadata?.total ?? 0;
+    const totalPages = metadata?.totalPages ?? 1;
+    const page = metadata?.page ?? Math.min(requestedPage, totalPages);
     const skip = (page - 1) * pageSize;
-    const pageLogs = logs.slice(skip, skip + pageSize);
+    const pageLogs = rows.flatMap((row): StatusLogRow[] => {
+      if (
+        !row.id ||
+        !row.checkId ||
+        !row.checkKey ||
+        !row.checkName ||
+        !row.checkType ||
+        !row.createdAt ||
+        !row.fromStatus ||
+        !row.groupName ||
+        !row.projectSlug ||
+        !row.toStatus
+      ) {
+        return [];
+      }
+
+      return [
+        {
+          checkHref: `/checks/${encodeURIComponent(row.checkId)}`,
+          checkId: row.checkId,
+          checkKey: row.checkKey,
+          checkName: row.checkName,
+          checkType: row.checkType.toLowerCase() as DashboardCheckRow["type"],
+          createdAt: row.createdAt.toISOString(),
+          createdAtLabel: formatRunTimestamp(row.createdAt, timeZone),
+          fromStatus: row.fromStatus,
+          groupName: row.groupName,
+          id: row.id,
+          projectSlug: row.projectSlug,
+          runHref: `/checks/${encodeURIComponent(
+            row.checkId,
+          )}/runs/${encodeURIComponent(row.id)}`,
+          toStatus: row.toStatus,
+        },
+      ];
+    });
 
     return {
       logs: pageLogs,
@@ -2046,109 +2158,231 @@ function mapJournalRun(run: JournalRunWithCheck, timeZone: string): JournalRunRo
   };
 }
 
-function buildStatusLogs(
-  check: StatusLogCheckWithRuns,
-  timeZone: string,
-): StatusLogRow[] {
-  const logs: StatusLogRow[] = [];
-  const terminalRuns = check.runs.filter(
-    (run) =>
-      !DASHBOARD_ACTIVE_RUN_STATUSES.includes(run.status as "QUEUED" | "RUNNING"),
-  );
-
-  for (let index = 0; index < terminalRuns.length - 1; index += 1) {
-    const run = terminalRuns[index];
-    const previousRun = terminalRuns[index + 1];
-
-    if (!run || !previousRun) {
-      continue;
-    }
-
-    const fromStatus = mapRunStatus(previousRun.status, {
-      degradedResponseTime:
-        previousRun.checkSnapshotDegradedResponseTime ?? check.degradedResponseTime,
-      durationMs: previousRun.durationMs,
-      type: previousRun.checkSnapshotType ?? check.type,
-    });
-    const toStatus = mapRunStatus(run.status, {
-      degradedResponseTime:
-        run.checkSnapshotDegradedResponseTime ?? check.degradedResponseTime,
-      durationMs: run.durationMs,
-      type: run.checkSnapshotType ?? check.type,
-    });
-
-    if (fromStatus === toStatus) {
-      continue;
-    }
-
-    logs.push({
-      checkHref: `/checks/${encodeURIComponent(check.id)}`,
-      checkId: check.id,
-      checkKey: check.key,
-      checkName: check.name,
-      checkType: check.type.toLowerCase() as DashboardCheckRow["type"],
-      createdAt: run.createdAt.toISOString(),
-      createdAtLabel: formatRunTimestamp(run.createdAt, timeZone),
-      fromStatus,
-      groupName: check.group?.name ?? "Ungrouped",
-      id: run.id,
-      projectSlug: check.project.slug,
-      runHref: `/checks/${encodeURIComponent(check.id)}/runs/${encodeURIComponent(
-        run.id,
-      )}`,
-      toStatus,
-    });
-  }
-
-  return logs;
+function formatDashboardRevision(
+  activeRuns: Array<{ id: string; status: string }>,
+  latestTerminalRun?: { finishedAt: Date | null; id: string; status: string } | null,
+): string {
+  return [
+    latestTerminalRun
+      ? `terminal:${latestTerminalRun.id}:${latestTerminalRun.status}:${
+          latestTerminalRun.finishedAt?.toISOString() ?? ""
+        }`
+      : "terminal:",
+    ...activeRuns
+      .map((run) => `active:${run.id}:${run.status}`)
+      .sort((left, right) => left.localeCompare(right)),
+  ].join("|");
 }
 
-function compareStatusLogs(left: StatusLogRow, right: StatusLogRow): number {
-  const createdAtRank =
-    new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
-
-  return createdAtRank || right.id.localeCompare(left.id);
-}
-
-async function fetchChecks() {
-  return prisma.check.findMany({
-    include: {
-      group: true,
-      project: {
-        select: {
-          name: true,
-          slug: true,
-        },
-      },
-      runs: {
-        include: {
-          artifacts: {
-            orderBy: {
-              createdAt: "desc",
+async function fetchLatestTerminalRevisionRun() {
+  return prisma.checkRun.findFirst({
+    orderBy: [{ finishedAt: "desc" }, { id: "desc" }],
+    select: {
+      finishedAt: true,
+      id: true,
+      status: true,
+    },
+    where: {
+      AND: [
+        buildDashboardVisibleRunWhere(),
+        {
+          check: {
+            is: {
+              enabled: true,
             },
           },
         },
-        orderBy: {
-          createdAt: "desc",
+        {
+          finishedAt: {
+            not: null,
+          },
+          status: {
+            notIn: [...DASHBOARD_ACTIVE_RUN_STATUSES],
+          },
         },
-        where: buildDashboardVisibleRunWhere(),
-        take: DASHBOARD_RESULT_BAR_COUNT * MAX_RETRY_ATTEMPTS_PER_RUN,
-      },
-    },
-    orderBy: [
-      {
-        group: {
-          name: "asc",
-        },
-      },
-      {
-        name: "asc",
-      },
-    ],
-    where: {
-      enabled: true,
+      ],
     },
   });
+}
+
+async function fetchChecks() {
+  const [checkRows, runRows] = await Promise.all([
+    prisma.check.findMany({
+      orderBy: [
+        {
+          group: {
+            name: "asc",
+          },
+        },
+        {
+          name: "asc",
+        },
+      ],
+      select: {
+        degradedResponseTime: true,
+        enabled: true,
+        entrypoint: true,
+        frequencyMinutes: true,
+        group: {
+          select: {
+            name: true,
+          },
+        },
+        id: true,
+        key: true,
+        name: true,
+        project: {
+          select: {
+            name: true,
+            slug: true,
+          },
+        },
+        request: true,
+        tags: true,
+        type: true,
+      },
+      where: {
+        enabled: true,
+      },
+    }),
+    fetchDashboardRuns(),
+  ]);
+  const checks = checkRows as Array<
+    Omit<CheckWithRuns, "firstFailingAt" | "runs"> & {
+      runs?: MappableRun[];
+    }
+  >;
+  const runsByCheck = new Map<string, DashboardRunRecord[]>();
+  const firstFailingByCheck = new Map<string, Date | null>();
+
+  for (const run of runRows) {
+    runsByCheck.set(run.checkId, [...(runsByCheck.get(run.checkId) ?? []), run]);
+
+    if (!firstFailingByCheck.has(run.checkId)) {
+      firstFailingByCheck.set(run.checkId, run.firstFailingAt);
+    }
+  }
+
+  return checks.map<CheckWithRuns>((check) => ({
+    ...check,
+    firstFailingAt: check.runs
+      ? undefined
+      : (firstFailingByCheck.get(check.id) ?? null),
+    runs: check.runs ?? runsByCheck.get(check.id) ?? [],
+  }));
+}
+
+async function fetchDashboardRuns(): Promise<DashboardRunRecord[]> {
+  const runs = await prisma.$queryRaw<DashboardRunRecord[]>`
+    WITH visible_runs AS (
+      SELECT
+        run."id",
+        run."checkId",
+        run."status"::text AS "status",
+        run."attempt",
+        run."maxAttempts",
+        run."retryGroupId",
+        run."createdAt",
+        run."durationMs",
+        run."checkSnapshotDegradedResponseTime",
+        run."checkSnapshotType"::text AS "checkSnapshotType",
+        COALESCE(NULLIF(run."retryGroupId", ''), run."id") AS "logicalRunId",
+        ROW_NUMBER() OVER (
+          PARTITION BY run."checkId"
+          ORDER BY run."createdAt" DESC, run."id" DESC
+        ) AS "runRank",
+        run."result" -> 'aiAnalysis' AS "aiAnalysis",
+        run."logsPath" IS NOT NULL AS "hasLog"
+      FROM "CheckRun" AS run
+      INNER JOIN "Check" AS check_row
+        ON check_row."id" = run."checkId" AND check_row."enabled" = true
+      LEFT JOIN "TestSession" AS session
+        ON session."id" = run."testSessionId"
+      WHERE
+        run."testSessionId" IS NULL
+        OR run."status" IN ('QUEUED'::"CheckRunStatus", 'RUNNING'::"CheckRunStatus")
+        OR (session."id" IS NOT NULL AND session."kind" <> 'TEST'::"TestSessionKind")
+    ),
+    ranked_groups AS (
+      SELECT
+        "checkId",
+        "logicalRunId",
+        ROW_NUMBER() OVER (
+          PARTITION BY "checkId"
+          ORDER BY MAX("createdAt") DESC, "logicalRunId" DESC
+        ) AS "groupRank"
+      FROM visible_runs
+      GROUP BY "checkId", "logicalRunId"
+    ),
+    streak_candidates AS (
+      SELECT
+        "id",
+        "checkId",
+        "createdAt",
+        "status",
+        COUNT(*) FILTER (
+          WHERE "status" NOT IN ('FAILED', 'TIMED_OUT', 'CANCELLED')
+        ) OVER (
+          PARTITION BY "checkId"
+          ORDER BY "createdAt" DESC, "id" DESC
+          ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+        ) AS "nonFailingSeen"
+      FROM visible_runs
+    ),
+    firewatch AS (
+      SELECT "checkId", MIN("createdAt") AS "firstFailingAt"
+      FROM streak_candidates
+      WHERE
+        "nonFailingSeen" = 0
+        AND "status" IN ('FAILED', 'TIMED_OUT', 'CANCELLED')
+      GROUP BY "checkId"
+      HAVING MIN("createdAt") >= NOW() - ${FIREWATCH_LOOKBACK_DAYS} * INTERVAL '1 day'
+    ),
+    trace_runs AS (
+      SELECT DISTINCT artifact."runId"
+      FROM "Artifact" AS artifact
+      WHERE artifact."type" IN (
+        'LOG'::"ArtifactType",
+        'SCREENSHOT'::"ArtifactType",
+        'TRACE'::"ArtifactType",
+        'VIDEO'::"ArtifactType"
+      )
+    )
+    SELECT
+      run."id",
+      run."checkId",
+      run."status",
+      run."attempt",
+      run."maxAttempts",
+      run."retryGroupId",
+      run."createdAt",
+      run."durationMs",
+      run."checkSnapshotDegradedResponseTime",
+      run."checkSnapshotType",
+      CASE
+        WHEN run."runRank" = 1 AND run."aiAnalysis" IS NOT NULL
+          THEN jsonb_build_object('aiAnalysis', run."aiAnalysis")
+        ELSE NULL
+      END AS "result",
+      NULL::text AS "errorMessage",
+      NULL::text AS "logsPath",
+      firewatch."firstFailingAt",
+      (run."hasLog" OR trace_run."runId" IS NOT NULL) AS "hasTrace"
+    FROM visible_runs AS run
+    INNER JOIN ranked_groups AS ranked
+      ON ranked."checkId" = run."checkId"
+      AND ranked."logicalRunId" = run."logicalRunId"
+    LEFT JOIN firewatch ON firewatch."checkId" = run."checkId"
+    LEFT JOIN trace_runs AS trace_run ON trace_run."runId" = run."id"
+    WHERE ranked."groupRank" <= ${DASHBOARD_RESULT_BAR_COUNT}
+    ORDER BY run."checkId" ASC, run."createdAt" DESC, run."id" DESC
+  `;
+
+  return runs.map((run) => ({
+    ...run,
+    artifacts: [],
+    result: run.result ?? null,
+  }));
 }
 
 async function fetchActiveQueue(timeZone: string): Promise<DashboardQueueRow[]> {
@@ -2350,6 +2584,7 @@ function mapCheck(check: CheckWithRuns, timeZone: string): DashboardCheckRow {
     hasTrace: Boolean(
       check.runs.some(
         (run) =>
+          run.hasTrace ||
           run.logsPath ||
           run.artifacts.some((artifact) =>
             ["LOG", "SCREENSHOT", "TRACE", "VIDEO"].includes(artifact.type),
@@ -2360,7 +2595,7 @@ function mapCheck(check: CheckWithRuns, timeZone: string): DashboardCheckRow {
     name: check.name,
     p95: formatDuration(percentile(durations, 0.95)),
     runState: mapRunState(latestRun?.status),
-    runs: check.runs.map((run) => mapRun(run, timeZone, check)),
+    runs: check.runs.slice(0, 1).map((run) => mapRun(run, timeZone, check)),
     settings: {
       enabled: check.enabled,
       entrypoint: check.entrypoint ?? undefined,
@@ -2408,6 +2643,14 @@ function mapFirewatchRow(
     return undefined;
   }
 
+  if (typeof check.firstFailingAt !== "undefined") {
+    if (!check.firstFailingAt || check.firstFailingAt < cutoff) {
+      return undefined;
+    }
+
+    return createFirewatchRow(check, latestRun, check.firstFailingAt, timeZone);
+  }
+
   const failingStreak: CheckWithRuns["runs"] = [];
 
   for (const run of check.runs) {
@@ -2424,10 +2667,19 @@ function mapFirewatchRow(
     return undefined;
   }
 
+  return createFirewatchRow(check, latestRun, firstFailingRun.createdAt, timeZone);
+}
+
+function createFirewatchRow(
+  check: CheckWithRuns,
+  latestRun: MappableRun,
+  firstFailingAt: Date,
+  timeZone: string,
+): DashboardFirewatchRow {
   return {
     checkId: check.id,
-    firstSeen: formatRunTimestamp(firstFailingRun.createdAt, timeZone),
-    firstSeenAt: firstFailingRun.createdAt.toISOString(),
+    firstSeen: formatRunTimestamp(firstFailingAt, timeZone),
+    firstSeenAt: firstFailingAt.toISOString(),
     groupName: check.group?.name ?? "Ungrouped",
     lastSeen: formatRelative(latestRun.createdAt, timeZone),
     lastSeenAt: latestRun.createdAt.toISOString(),
@@ -3481,6 +3733,7 @@ function createEmptyDashboard(projectSlug: string): DashboardData {
     groups: [],
     projectSlug,
     queue: [],
+    revision: "terminal:",
     summary: {
       degraded: 0,
       failing: 0,

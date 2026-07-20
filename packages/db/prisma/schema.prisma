@@ -199,6 +199,7 @@ model CheckRun {
   @@index([projectId, status, createdAt])
   @@index([checkId, createdAt])
   @@index([checkSnapshotProjectSlug])
+  @@index([finishedAt, status])
   @@index([testSessionId, status, createdAt])
   @@index([retryGroupId, attempt])
   @@index([status, createdAt])
@@ -214,6 +215,8 @@ model Artifact {
   sizeBytes Int?
   createdAt DateTime     @default(now())
   run       CheckRun     @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
 }
 
 model WebhookEndpoint {

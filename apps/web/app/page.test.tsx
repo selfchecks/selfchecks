@@ -1522,6 +1522,24 @@ describe("DashboardPage", () => {
 
   it("keeps the last dashboard snapshot when live refresh fails", async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      if (input === "/api/dashboard/status?project=default") {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              queued: 0,
+              revision: "run_running:RUNNING",
+              running: 1,
+            }),
+            {
+              headers: {
+                "content-type": "application/json",
+              },
+              status: 200,
+            },
+          ),
+        );
+      }
+
       expect(input).toBe("/api/dashboard");
 
       return Promise.resolve(
@@ -1625,13 +1643,19 @@ describe("DashboardPage", () => {
     );
 
     const dashboardRequestCount = () =>
-      fetchMock.mock.calls.filter(([input]) => input === "/api/dashboard").length;
+      fetchMock.mock.calls.filter(
+        ([input]) => input === "/api/dashboard/status?project=default",
+      ).length;
 
     expect(dashboardRequestCount()).toBe(1);
 
     await vi.advanceTimersByTimeAsync(5000);
 
-    expect(dashboardRequestCount()).toBe(1);
+    expect(dashboardRequestCount()).toBe(2);
+
+    await vi.advanceTimersByTimeAsync(5000);
+
+    expect(dashboardRequestCount()).toBe(2);
   });
 
   it("opens the account menu and updates passive filter selects", async () => {
@@ -2237,6 +2261,24 @@ describe("DashboardPage", () => {
                 "content-type": "application/json",
               },
               status: 202,
+            },
+          ),
+        );
+      }
+
+      if (input === "/api/dashboard/status?project=default") {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              queued: 0,
+              revision: "run_1:RUNNING",
+              running: 1,
+            }),
+            {
+              headers: {
+                "content-type": "application/json",
+              },
+              status: 200,
             },
           ),
         );
