@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  getDashboardSettingsData: vi.fn(),
+  getDashboardAccountLabel: vi.fn(() => "admin@example.com"),
   getRunDetailData: vi.fn(),
   notFound: vi.fn(() => {
     throw new Error("NEXT_NOT_FOUND");
@@ -19,7 +19,7 @@ vi.mock("@/lib/dashboard-data", async (importOriginal) => ({
 }));
 
 vi.mock("@/lib/settings-data", () => ({
-  getDashboardSettingsData: mocks.getDashboardSettingsData,
+  getDashboardAccountLabel: mocks.getDashboardAccountLabel,
 }));
 
 vi.mock("./run-detail-view", () => ({
@@ -50,12 +50,6 @@ describe("RunDetailPage", () => {
         id: "run_1",
       },
     });
-    mocks.getDashboardSettingsData.mockResolvedValue({
-      basic: {
-        login: "admin@example.com",
-      },
-    });
-
     render(
       await RunDetailPage({
         params: Promise.resolve({
@@ -69,7 +63,7 @@ describe("RunDetailPage", () => {
       "admin@example.com:run_1",
     );
     expect(mocks.getRunDetailData).toHaveBeenCalledWith("check_1", "run_1");
-    expect(mocks.getDashboardSettingsData).toHaveBeenCalledWith("default");
+    expect(mocks.getDashboardAccountLabel).toHaveBeenCalled();
   });
 
   it("delegates to notFound when the run is missing", async () => {

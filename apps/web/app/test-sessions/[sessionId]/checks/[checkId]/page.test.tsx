@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  getDashboardSettingsData: vi.fn(),
+  getDashboardAccountLabel: vi.fn(() => "admin@example.com"),
   getTestSessionCheckData: vi.fn(),
   notFound: vi.fn(() => {
     throw new Error("NEXT_NOT_FOUND");
@@ -19,7 +19,7 @@ vi.mock("@/lib/dashboard-data", async (importOriginal) => ({
 }));
 
 vi.mock("@/lib/settings-data", () => ({
-  getDashboardSettingsData: mocks.getDashboardSettingsData,
+  getDashboardAccountLabel: mocks.getDashboardAccountLabel,
 }));
 
 import type { TestSessionCheckDetailData } from "@/lib/dashboard-data";
@@ -94,12 +94,6 @@ describe("TestSessionCheckPage", () => {
 
   it("renders runs for a check inside a test session", async () => {
     mocks.getTestSessionCheckData.mockResolvedValue(checkDetailFixture);
-    mocks.getDashboardSettingsData.mockResolvedValue({
-      basic: {
-        login: "admin@example.com",
-      },
-    });
-
     render(
       await TestSessionCheckPage({
         params: Promise.resolve({

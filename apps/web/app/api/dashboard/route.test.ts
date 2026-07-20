@@ -2,10 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getDashboardData: vi.fn(),
+  getDashboardQueueData: vi.fn(),
 }));
 
 vi.mock("@/lib/dashboard-data", () => ({
   getDashboardData: mocks.getDashboardData,
+  getDashboardQueueData: mocks.getDashboardQueueData,
 }));
 
 import { GET } from "./route";
@@ -67,6 +69,30 @@ describe("dashboard route", () => {
     expect(mocks.getDashboardData).toHaveBeenCalledWith("default", {
       onError: "throw",
     });
+  });
+
+  it("returns only active queue data for queue polling", async () => {
+    mocks.getDashboardQueueData.mockResolvedValue({
+      projectSlug: "default",
+      queue: [],
+      summary: {
+        degraded: 0,
+        failing: 0,
+        passing: 0,
+        queued: 0,
+        running: 0,
+      },
+    });
+
+    const response = await GET(
+      new Request("http://localhost/api/dashboard?view=queue"),
+    );
+
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(mocks.getDashboardQueueData).toHaveBeenCalledWith("default", {
+      onError: "throw",
+    });
+    expect(mocks.getDashboardData).not.toHaveBeenCalled();
   });
 
   it("returns a service error when dashboard data cannot be loaded", async () => {

@@ -2,7 +2,7 @@ import { act, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  getDashboardSettingsData: vi.fn(),
+  getDashboardAccountLabel: vi.fn(() => "admin@example.com"),
   getStatusLogsData: vi.fn(),
 }));
 
@@ -12,7 +12,7 @@ vi.mock("@/lib/dashboard-data", async (importOriginal) => ({
 }));
 
 vi.mock("@/lib/settings-data", () => ({
-  getDashboardSettingsData: mocks.getDashboardSettingsData,
+  getDashboardAccountLabel: mocks.getDashboardAccountLabel,
 }));
 
 import type { StatusLogsData } from "@/lib/dashboard-data";
@@ -57,12 +57,6 @@ describe("LogsPage", () => {
 
   it("renders completed status transitions and navigation", async () => {
     mocks.getStatusLogsData.mockResolvedValue(logsFixture);
-    mocks.getDashboardSettingsData.mockResolvedValue({
-      basic: {
-        login: "admin@example.com",
-      },
-    });
-
     const page = await LogsPage({
       searchParams: Promise.resolve({
         page: "1",
@@ -102,12 +96,6 @@ describe("LogsPage", () => {
 
   it("renders the page shell and table skeleton while logs are loading", async () => {
     mocks.getStatusLogsData.mockReturnValue(new Promise(() => undefined));
-    mocks.getDashboardSettingsData.mockResolvedValue({
-      basic: {
-        login: "admin@example.com",
-      },
-    });
-
     const page = await LogsPage({});
 
     await act(async () => {

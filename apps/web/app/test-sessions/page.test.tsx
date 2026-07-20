@@ -1,8 +1,8 @@
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  getDashboardSettingsData: vi.fn(),
+  getDashboardAccountLabel: vi.fn(() => "admin@example.com"),
   getTestSessionsData: vi.fn(),
 }));
 
@@ -12,7 +12,7 @@ vi.mock("@/lib/dashboard-data", async (importOriginal) => ({
 }));
 
 vi.mock("@/lib/settings-data", () => ({
-  getDashboardSettingsData: mocks.getDashboardSettingsData,
+  getDashboardAccountLabel: mocks.getDashboardAccountLabel,
 }));
 
 import type { TestSessionsData } from "@/lib/dashboard-data";
@@ -69,22 +69,18 @@ describe("TestSessionsPage", () => {
 
   it("renders recorded test sessions and navigation links", async () => {
     mocks.getTestSessionsData.mockResolvedValue(testSessionsFixture);
-    mocks.getDashboardSettingsData.mockResolvedValue({
-      basic: {
-        login: "admin@example.com",
-      },
+    const page = await TestSessionsPage({
+      searchParams: Promise.resolve({
+        page: "2",
+        pageSize: "10",
+        q: "release",
+        session: "Nightly regression",
+      }),
     });
 
-    render(
-      await TestSessionsPage({
-        searchParams: Promise.resolve({
-          page: "2",
-          pageSize: "10",
-          q: "release",
-          session: "Nightly regression",
-        }),
-      }),
-    );
+    await act(async () => {
+      render(page);
+    });
 
     expect(mocks.getTestSessionsData).toHaveBeenCalledWith("default", {
       page: 2,
@@ -92,7 +88,6 @@ describe("TestSessionsPage", () => {
       query: "release",
       sessionName: "Nightly regression",
     });
-    expect(mocks.getDashboardSettingsData).toHaveBeenCalledWith("default");
     expect(screen.getByRole("heading", { name: "Test sessions" })).toBeTruthy();
     expect(screen.getAllByText("11-11 of 11 test sessions").length).toBe(2);
     expect(screen.getAllByText("All projects").length).toBeGreaterThan(0);
@@ -192,17 +187,28 @@ describe("TestSessionsPage", () => {
       projectSlug: "default",
       sessions: [],
     });
-    mocks.getDashboardSettingsData.mockResolvedValue({
-      basic: {
-        login: "",
-      },
-    });
+    const page = await TestSessionsPage({});
 
-    render(await TestSessionsPage({}));
+    await act(async () => {
+      render(page);
+    });
 
     expect(screen.getAllByText("0 test sessions").length).toBe(2);
     expect(
       screen.getByText("No test sessions match the current filters."),
     ).toBeTruthy();
+  });
+
+  it("renders the test sessions shell while data is loading", async () => {
+    mocks.getTestSessionsData.mockReturnValue(new Promise(() => undefined));
+    const page = await TestSessionsPage({});
+
+    await act(async () => {
+      render(page);
+    });
+
+    expect(screen.getByRole("heading", { name: "Test sessions" })).toBeTruthy();
+    expect(screen.getByLabelText("Loading test sessions content")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Nightly regression" })).toBeNull();
   });
 });

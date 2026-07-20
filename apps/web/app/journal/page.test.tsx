@@ -1,8 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  getDashboardSettingsData: vi.fn(),
+  getDashboardAccountLabel: vi.fn(() => "admin@example.com"),
   getJournalData: vi.fn(),
 }));
 
@@ -12,7 +12,7 @@ vi.mock("@/lib/dashboard-data", async (importOriginal) => ({
 }));
 
 vi.mock("@/lib/settings-data", () => ({
-  getDashboardSettingsData: mocks.getDashboardSettingsData,
+  getDashboardAccountLabel: mocks.getDashboardAccountLabel,
 }));
 
 import type { JournalData } from "@/lib/dashboard-data";
@@ -84,23 +84,19 @@ describe("JournalPage", () => {
 
   it("renders filters, paginated runs and navigation links", async () => {
     mocks.getJournalData.mockResolvedValue(journalFixture);
-    mocks.getDashboardSettingsData.mockResolvedValue({
-      basic: {
-        login: "nikolaev@iprojects.ru",
-      },
+    const page = await JournalPage({
+      searchParams: Promise.resolve({
+        page: "2",
+        pageSize: "10",
+        q: "health",
+        status: "passed",
+        type: "api",
+      }),
     });
 
-    render(
-      await JournalPage({
-        searchParams: Promise.resolve({
-          page: "2",
-          pageSize: "10",
-          q: "health",
-          status: "passed",
-          type: "api",
-        }),
-      }),
-    );
+    await act(async () => {
+      render(page);
+    });
 
     expect(mocks.getJournalData).toHaveBeenCalledWith("default", {
       page: 2,
@@ -143,5 +139,18 @@ describe("JournalPage", () => {
     expect(screen.getByRole("link", { name: "Previous" }).getAttribute("href")).toBe(
       "/journal?q=health&status=passed&type=api&pageSize=10",
     );
+  });
+
+  it("renders the journal shell while data is loading", async () => {
+    mocks.getJournalData.mockReturnValue(new Promise(() => undefined));
+    const page = await JournalPage({});
+
+    await act(async () => {
+      render(page);
+    });
+
+    expect(screen.getByRole("heading", { name: "Journal" })).toBeTruthy();
+    expect(screen.getByLabelText("Loading journal content")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "bff-health" })).toBeNull();
   });
 });

@@ -2,12 +2,12 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  getDashboardSettingsData: vi.fn(),
+  getDashboardAccountLabel: vi.fn(() => "admin@example.com"),
   getUsageData: vi.fn(),
 }));
 
 vi.mock("@/lib/settings-data", () => ({
-  getDashboardSettingsData: mocks.getDashboardSettingsData,
+  getDashboardAccountLabel: mocks.getDashboardAccountLabel,
 }));
 
 vi.mock("@/lib/usage-data", () => ({
@@ -58,10 +58,6 @@ describe("UsagePage", () => {
         },
       ],
     });
-    mocks.getDashboardSettingsData.mockResolvedValue({
-      basic: { login: "admin@example.com" },
-    });
-
     await act(async () => {
       render(await UsagePage());
       await Promise.resolve();

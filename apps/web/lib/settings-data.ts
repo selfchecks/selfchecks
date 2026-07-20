@@ -216,17 +216,23 @@ export async function getDashboardSettingsData(
 
   try {
     const project = await findSettingsProject(GLOBAL_SETTINGS_PROJECT_SLUG);
+    const [ai, apiKeys, environment, performance] = await Promise.all([
+      project ? readAiSettings(project.id) : createDefaultAiSettings(),
+      listApiKeys(runtimeConfig.preferences.timeZone),
+      project
+        ? readRuntimeEnvironmentSettings(project.id)
+        : createEmptyRuntimeEnvironmentSettings(),
+      project
+        ? readPerformanceSettings(project.id)
+        : createDefaultPerformanceSettings(),
+    ]);
 
     return {
-      ai: project ? await readAiSettings(project.id) : createDefaultAiSettings(),
-      apiKeys: await listApiKeys(runtimeConfig.preferences.timeZone),
+      ai,
+      apiKeys,
       basic: mapBasicSettings(runtimeConfig),
-      environment: project
-        ? await readRuntimeEnvironmentSettings(project.id)
-        : createEmptyRuntimeEnvironmentSettings(),
-      performance: project
-        ? await readPerformanceSettings(project.id)
-        : createDefaultPerformanceSettings(),
+      environment,
+      performance,
       projectSlug: GLOBAL_SETTINGS_PROJECT_SLUG,
     };
   } catch (error) {

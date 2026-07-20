@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { getRunDetailData } from "@/lib/dashboard-data";
-import { getDashboardSettingsData } from "@/lib/settings-data";
+import { getDashboardAccountLabel } from "@/lib/settings-data";
 
 import { RunDetailView } from "./run-detail-view";
 
@@ -22,9 +22,5 @@ export default async function RunDetailPage({ params }: RunDetailPageProps) {
     notFound();
   }
 
-  const settings = await getDashboardSettingsData(detail.projectSlug);
-
-  return (
-    <RunDetailView accountLabel={settings.basic.login || "Admin"} detail={detail} />
-  );
+  return <RunDetailView accountLabel={getDashboardAccountLabel()} detail={detail} />;
 }

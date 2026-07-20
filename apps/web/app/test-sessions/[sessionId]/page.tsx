@@ -5,7 +5,7 @@ import { notFound } from "next/navigation";
 
 import { AppSidebar } from "@/components/app-sidebar";
 import { getTestSessionData, type TestSessionCheckRow } from "@/lib/dashboard-data";
-import { getDashboardSettingsData } from "@/lib/settings-data";
+import { getDashboardAccountLabel } from "@/lib/settings-data";
 import { formatTestSessionSource } from "@/lib/test-session-source";
 
 import { RunStateBadge, SummaryPills } from "../test-session-components";
@@ -27,7 +27,7 @@ export default async function TestSessionPage({ params }: TestSessionPageProps) 
     notFound();
   }
 
-  const settings = await getDashboardSettingsData(data.projectSlug);
+  const accountLabel = getDashboardAccountLabel();
   const { session } = data;
   const sourceFields = formatTestSessionSource({
     commitSha: session.commitSha,
@@ -41,7 +41,7 @@ export default async function TestSessionPage({ params }: TestSessionPageProps) 
   return (
     <main className="min-h-screen bg-[#0d1117] text-slate-200">
       <AppSidebar
-        accountLabel={settings.basic.login || "Admin"}
+        accountLabel={accountLabel}
         activeItem="test-sessions"
         projectSlug={data.projectSlug}
       />
@@ -57,9 +57,7 @@ export default async function TestSessionPage({ params }: TestSessionPageProps) 
               >
                 <ArrowLeft className="h-4 w-4" />
               </Link>
-              <span className="hidden truncate sm:inline">
-                {settings.basic.login || "Admin"}
-              </span>
+              <span className="hidden truncate sm:inline">{accountLabel}</span>
               <span className="text-slate-600">/</span>
               <Link
                 className="inline-flex min-w-0 items-center gap-2 truncate text-slate-300 hover:text-slate-100"

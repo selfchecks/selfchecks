@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  getDashboardSettingsData: vi.fn(),
+  getDashboardAccountLabel: vi.fn(() => "admin@example.com"),
   getTestSessionData: vi.fn(),
   notFound: vi.fn(() => {
     throw new Error("NEXT_NOT_FOUND");
@@ -24,7 +24,7 @@ vi.mock("@/lib/dashboard-data", async (importOriginal) => ({
 }));
 
 vi.mock("@/lib/settings-data", () => ({
-  getDashboardSettingsData: mocks.getDashboardSettingsData,
+  getDashboardAccountLabel: mocks.getDashboardAccountLabel,
 }));
 
 import type { TestSessionDetailData } from "@/lib/dashboard-data";
@@ -84,12 +84,6 @@ describe("TestSessionPage", () => {
   it("renders a test session with recorded checks", async () => {
     const user = userEvent.setup();
     mocks.getTestSessionData.mockResolvedValue(sessionDetailFixture);
-    mocks.getDashboardSettingsData.mockResolvedValue({
-      basic: {
-        login: "admin@example.com",
-      },
-    });
-
     render(
       await TestSessionPage({
         params: Promise.resolve({

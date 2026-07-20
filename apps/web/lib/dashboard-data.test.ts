@@ -45,6 +45,7 @@ import {
   getCheckDetailShellData,
   getDashboardActivityData,
   getDashboardData,
+  getDashboardQueueData,
   getJournalData,
   getRunDetailData,
   getStatusLogsData,
@@ -142,6 +143,27 @@ describe("dashboard data", () => {
         status: "RUNNING",
       },
     });
+  });
+
+  it("loads active queue rows without fetching dashboard checks", async () => {
+    mocks.checkRunFindMany.mockResolvedValue([
+      createActiveQueueRun({
+        id: "run_queued",
+        status: "QUEUED",
+      }),
+    ]);
+
+    const data = await getDashboardQueueData("default");
+
+    expect(data.queue).toEqual([
+      expect.objectContaining({
+        checkName: "bff-health",
+        id: "run_queued",
+        runState: "queued",
+      }),
+    ]);
+    expect(data.summary).toMatchObject({ queued: 1, running: 0 });
+    expect(mocks.checkFindMany).not.toHaveBeenCalled();
   });
 
   it("does not mutate queued runs while reading check details", async () => {

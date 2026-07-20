@@ -86,6 +86,7 @@ type DashboardSnapshot = {
   queue: QueueRow[];
   summary: DashboardSummary;
 };
+type DashboardQueueSnapshot = Pick<DashboardSnapshot, "queue" | "summary">;
 
 type CheckRow = DashboardCheckRow;
 type GroupRow = DashboardGroupRow;
@@ -294,6 +295,7 @@ const traceFilterOptions = [
 ] satisfies Array<FilterOption<TraceFilter>>;
 
 export default function DashboardClient({
+  initialAccountLabel,
   initialActiveView = "dashboard",
   initialFirewatch = createEmptyFirewatchSnapshot(),
   initialGroups,
@@ -301,11 +303,12 @@ export default function DashboardClient({
   initialSettings,
   initialSummary,
 }: {
+  initialAccountLabel?: string;
   initialActiveView?: ActiveView;
   initialFirewatch?: DashboardFirewatch;
   initialGroups: GroupRow[];
   initialQueue?: QueueRow[];
-  initialSettings: DashboardSettingsData;
+  initialSettings?: DashboardSettingsData;
   initialSummary: DashboardSummary;
 }) {
   const [activeView, setActiveView] = useState<ActiveView>(initialActiveView);
@@ -315,7 +318,9 @@ export default function DashboardClient({
     queue: initialQueue ?? [],
     summary: initialSummary,
   }));
-  const [settings, setSettings] = useState<DashboardSettingsData>(initialSettings);
+  const [settings, setSettings] = useState<DashboardSettingsData | undefined>(
+    initialSettings,
+  );
   const { firewatch, groups, queue, summary } = dashboard;
   const optimisticQueuedCheckIdsRef = useRef<Set<string>>(new Set());
   const router = useRouter();
@@ -472,6 +477,24 @@ export default function DashboardClient({
 
     async function refreshActiveRuns() {
       try {
+        if (activeView === "queue") {
+          const nextQueue = await fetchDashboardQueueSnapshot();
+
+          if (!cancelled) {
+            setDashboard((current) => ({
+              ...current,
+              queue: nextQueue.queue,
+              summary: {
+                ...current.summary,
+                queued: nextQueue.summary.queued,
+                running: nextQueue.summary.running,
+              },
+            }));
+          }
+
+          return;
+        }
+
         const nextDashboard = await fetchDashboardSnapshot();
 
         if (!cancelled) {
@@ -511,7 +534,7 @@ export default function DashboardClient({
         window.clearTimeout(timeoutId);
       }
     };
-  }, [shouldRefreshDashboard]);
+  }, [activeView, shouldRefreshDashboard]);
 
   const filteredGroups = useMemo<GroupRow[]>(() => {
     const nextGroups: GroupRow[] = [];
@@ -752,7 +775,7 @@ export default function DashboardClient({
     <main className="min-h-screen bg-[#0d1117] text-slate-200">
       <h1 className="sr-only">Synthetic checks dashboard</h1>
       <AppSidebar
-        accountLabel={settings.basic.login || "Admin"}
+        accountLabel={settings?.basic.login || initialAccountLabel || "Admin"}
         activeItem={
           activeView === "settings"
             ? "settings"
@@ -764,7 +787,7 @@ export default function DashboardClient({
         initialRunningCount={summary.running}
         onHomeClick={resetDashboard}
         onQueueClick={openQueue}
-        projectSlug={settings.projectSlug}
+        projectSlug={settings?.projectSlug ?? "default"}
       />
 
       <div className="min-h-screen xl:pl-72">
@@ -919,9 +942,9 @@ export default function DashboardClient({
             </>
           ) : activeView === "queue" ? (
             <QueueScreen queue={queue} />
-          ) : (
+          ) : settings ? (
             <SettingsScreen onSettingsChange={setSettings} settings={settings} />
-          )}
+          ) : null}
         </section>
       </div>
       {aiAnalysisDrawer ? (
@@ -1022,6 +1045,24 @@ async function fetchDashboardSnapshot(): Promise<DashboardSnapshot> {
     firewatch: payload.firewatch ?? createEmptyFirewatchSnapshot(),
     groups: payload.groups,
     queue: payload.queue ?? [],
+    summary: payload.summary,
+  };
+}
+
+async function fetchDashboardQueueSnapshot(): Promise<DashboardQueueSnapshot> {
+  const response = await fetch("/api/dashboard?view=queue", {
+    cache: "no-store",
+  });
+  const payload = (await response.json().catch(() => ({}))) as Partial<
+    DashboardQueueSnapshot & { error: string }
+  >;
+
+  if (!response.ok || !payload.queue || !payload.summary) {
+    throw new Error(payload.error ?? "Unable to load dashboard queue data.");
+  }
+
+  return {
+    queue: payload.queue,
     summary: payload.summary,
   };
 }

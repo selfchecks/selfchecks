@@ -7,9 +7,11 @@ import {
   History,
 } from "lucide-react";
 import Link from "next/link";
+import { Suspense, use } from "react";
 
 import { AppSidebar } from "@/components/app-sidebar";
 import { ServiceMark } from "@/components/service-mark";
+import { TablePageContentSkeleton } from "@/components/table-page-skeleton";
 import {
   getJournalData,
   type JournalData,
@@ -19,7 +21,7 @@ import {
   type JournalRunTypeFilter,
 } from "@/lib/dashboard-data";
 import type { DashboardRunState, DashboardStatus } from "@/lib/dashboard-types";
-import { getDashboardSettingsData } from "@/lib/settings-data";
+import { getDashboardAccountLabel } from "@/lib/settings-data";
 import { cn } from "@/lib/utils";
 import { JournalFilters } from "./journal-filters";
 
@@ -28,6 +30,8 @@ export const dynamic = "force-dynamic";
 type JournalPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
+
+type JournalDataPromise = ReturnType<typeof getJournalData>;
 
 const runStateLabels: Record<DashboardRunState, string> = {
   cancelled: "Cancelled",
@@ -41,7 +45,7 @@ const runStateLabels: Record<DashboardRunState, string> = {
 
 export default async function JournalPage({ searchParams }: JournalPageProps) {
   const params = searchParams ? await searchParams : {};
-  const journal = await getJournalData("default", {
+  const options = {
     page: readNumberParam(params.page),
     pageSize: readNumberParam(params.pageSize),
     project: readStringParam(params.project),
@@ -49,25 +53,20 @@ export default async function JournalPage({ searchParams }: JournalPageProps) {
     range: readStringParam(params.range) as JournalRangeFilter | undefined,
     status: readStringParam(params.status) as JournalRunStatusFilter | undefined,
     type: readStringParam(params.type) as JournalRunTypeFilter | undefined,
-  });
-  const settings = await getDashboardSettingsData(journal.projectSlug);
+  };
+  const journalPromise = getJournalData("default", options);
+  const accountLabel = getDashboardAccountLabel();
 
   return (
     <main className="min-h-screen bg-[#0d1117] text-slate-200">
-      <AppSidebar
-        accountLabel={settings.basic.login || "Admin"}
-        activeItem="journal"
-        projectSlug={journal.projectSlug}
-      />
+      <AppSidebar accountLabel={accountLabel} activeItem="journal" projectSlug="all" />
 
       <div className="min-h-screen xl:pl-72">
         <header className="sticky top-0 z-30 border-b border-slate-800 bg-[#12171f]/95 backdrop-blur">
           <div className="flex h-16 items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
             <div className="flex min-w-0 items-center gap-3 text-sm text-slate-400">
               <ServiceMark className="h-9 w-9 shrink-0 rounded-md xl:hidden" />
-              <span className="hidden truncate sm:inline">
-                {settings.basic.login || "Admin"}
-              </span>
+              <span className="hidden truncate sm:inline">{accountLabel}</span>
               <span className="hidden text-slate-600 sm:inline">/</span>
               <span className="inline-flex min-w-0 items-center gap-2 truncate text-slate-200">
                 <History className="h-4 w-4 shrink-0" />
@@ -79,20 +78,71 @@ export default async function JournalPage({ searchParams }: JournalPageProps) {
         </header>
 
         <section className="mx-auto flex w-full max-w-[1760px] flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8">
-          <div>
-            <h1 className="text-3xl font-semibold text-slate-100">Journal</h1>
-            <p className="mt-1 text-sm text-slate-500">
-              {formatPaginationSummary(journal.pagination)}
-            </p>
-          </div>
-
-          <JournalFilters filters={journal.filters} projects={journal.projects ?? []} />
-          <JournalTable runs={journal.runs} />
-          <JournalPagination journal={journal} />
+          <Suspense
+            fallback={
+              <TablePageContentSkeleton
+                ariaLabel="Loading journal content"
+                columns={[
+                  "Run",
+                  "Status",
+                  "Check",
+                  "Project",
+                  "Type",
+                  "Schedule",
+                  "Duration",
+                  "Actions",
+                ]}
+                filters={6}
+                title="Journal"
+              />
+            }
+            key={buildJournalLoadingKey(options)}
+          >
+            <JournalContent journalPromise={journalPromise} />
+          </Suspense>
         </section>
       </div>
     </main>
   );
+}
+
+function JournalContent({ journalPromise }: { journalPromise: JournalDataPromise }) {
+  const journal = use(journalPromise);
+
+  return (
+    <>
+      <div>
+        <h1 className="text-3xl font-semibold text-slate-100">Journal</h1>
+        <p className="mt-1 text-sm text-slate-500">
+          {formatPaginationSummary(journal.pagination)}
+        </p>
+      </div>
+
+      <JournalFilters filters={journal.filters} projects={journal.projects ?? []} />
+      <JournalTable runs={journal.runs} />
+      <JournalPagination journal={journal} />
+    </>
+  );
+}
+
+function buildJournalLoadingKey(options: {
+  page?: number;
+  pageSize?: number;
+  project?: string;
+  query?: string;
+  range?: JournalRangeFilter;
+  status?: JournalRunStatusFilter;
+  type?: JournalRunTypeFilter;
+}) {
+  return [
+    options.page ?? 1,
+    options.pageSize ?? 20,
+    options.project ?? "all",
+    options.query ?? "",
+    options.range ?? "all",
+    options.status ?? "all",
+    options.type ?? "all",
+  ].join(":");
 }
 
 function JournalTable({ runs }: { runs: JournalRunRow[] }) {

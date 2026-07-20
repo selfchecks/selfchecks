@@ -55,6 +55,12 @@ export type DashboardActivityData = {
   running: number;
 };
 
+export type DashboardQueueData = {
+  projectSlug: string;
+  queue: DashboardQueueRow[];
+  summary: DashboardSummary;
+};
+
 export type TestSessionRunCountSummary = {
   failed: number;
   passed: number;
@@ -593,6 +599,37 @@ export async function getDashboardActivityData(
   };
 }
 
+export async function getDashboardQueueData(
+  _projectSlug = "default",
+  options: DashboardDataOptions = {},
+): Promise<DashboardQueueData> {
+  const timeZone = getRuntimeTimeZone();
+
+  try {
+    const queue = await fetchActiveQueue(timeZone);
+
+    return {
+      projectSlug: "default",
+      queue,
+      summary: applyQueueCounts(createEmptyDashboard("default").summary, queue),
+    };
+  } catch (error) {
+    console.warn("Unable to load dashboard queue data.", error);
+
+    if (options.onError === "throw") {
+      throw error;
+    }
+
+    const dashboard = createEmptyDashboard("default");
+
+    return {
+      projectSlug: dashboard.projectSlug,
+      queue: dashboard.queue,
+      summary: dashboard.summary,
+    };
+  }
+}
+
 export async function getCheckDetailShellData(
   checkId: string,
 ): Promise<CheckDetailData | undefined> {
@@ -795,7 +832,10 @@ export async function getRunDetailData(
 
     const check = getRunCheckSnapshot(run as TestSessionRunWithCheck);
     const request = formatRunRequest(check.request, run.result);
-    const attemptRuns = await fetchRunAttempts(run as MappableRun);
+    const [attemptRuns, jobLog] = await Promise.all([
+      fetchRunAttempts(run as MappableRun),
+      readRunLogPreview(run.logsPath),
+    ]);
     const attempts = attemptRuns.map((attemptRun) =>
       mapAttemptNavigationRun(attemptRun, check, run.id, timeZone),
     );
@@ -829,7 +869,7 @@ export async function getRunDetailData(
         failedAttempts: attempts.filter((attempt) => attempt.status === "failing")
           .length,
         finishedAt: run.finishedAt ? formatRunTimestamp(run.finishedAt, timeZone) : "-",
-        jobLog: await readRunLogPreview(run.logsPath),
+        jobLog,
         maxAttempts,
         request,
         response: formatRunResponse(run.result),
