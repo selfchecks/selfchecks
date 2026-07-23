@@ -6,6 +6,14 @@ traces, videos, request/response data, and CI metadata in one dashboard.
 
 Public documentation: [selfchecks.github.io](https://selfchecks.github.io/getting-started.html)
 
+Questions and feedback: [Telegram](https://t.me/aleksnick)
+
+## Product preview
+
+![Selfchecks dashboard with check status, filters, availability, and recent results](docs/images/product-dashboard.webp)
+
+![Selfchecks check details with run history, availability, and performance metrics](docs/images/product-check-detail.webp)
+
 ## Install
 
 The constructs and CLI packages are published under the `@selfchecks` npm
