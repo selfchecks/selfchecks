@@ -22,22 +22,22 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@appnotes/react@npm:^0.1.1":
-  version: 0.1.1
-  resolution: "@appnotes/react@npm:0.1.1"
+"@appnotes/react@npm:^0.1.4":
+  version: 0.1.4
+  resolution: "@appnotes/react@npm:0.1.4"
   dependencies:
-    "@appnotes/sdk": "npm:^0.1.1"
+    "@appnotes/sdk": "npm:^0.3.1"
   peerDependencies:
     react: ^19.0.0
     react-dom: ^19.0.0
-  checksum: 10c0/61db270cd804a4f618c072c8c4c16bb5af2d8f767349483dfd0baf67ec109813b871b1ac0f2ba3563bd4ab0d0a3070f00d8ed951fe77f90e5a84ba223d4a56ea
+  checksum: 10c0/c43edf1bff27c69c43e7a465afd9c79a1a2b50142af00bb5c5fb7aafbf8705f722884148dc8394562d846d17b9d0d6839a93e620be6d71756a67262bedf3dab3
   languageName: node
   linkType: hard
 
-"@appnotes/sdk@npm:^0.1.1":
-  version: 0.1.1
-  resolution: "@appnotes/sdk@npm:0.1.1"
-  checksum: 10c0/1afc8d72bce7a26fc68143f43fadfde92803dd4e9afc19dcb572b846c7385eee35fd29e49508f38944f838ab15909972b3dd8024a018dd04923c6418e7614674
+"@appnotes/sdk@npm:^0.3.1":
+  version: 0.3.1
+  resolution: "@appnotes/sdk@npm:0.3.1"
+  checksum: 10c0/3ef2b818cc32382d84cddc5ab383a985296df7e9ff4caad46dfff19f575dc2472599a18e1515592693267f2f6ef1612b86b47b2bdfe0b256bf177ac5bf2f0b1c
   languageName: node
   linkType: hard
 
@@ -1579,8 +1579,8 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@selfchecks/web@workspace:apps/web"
   dependencies:
-    "@appnotes/react": "npm:^0.1.1"
-    "@appnotes/sdk": "npm:^0.1.1"
+    "@appnotes/react": "npm:^0.1.4"
+    "@appnotes/sdk": "npm:^0.3.1"
     "@radix-ui/react-slot": "npm:^1.2.3"
     "@selfchecks/cli": "workspace:*"
     "@selfchecks/core": "workspace:*"
