@@ -1,48 +1,46 @@
-import type { AppNotesProps } from "@appnotes/react";
-import { render, screen } from "@testing-library/react";
+import { render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AppNotesIntegration } from "./appnotes-integration";
 
+const mocks = vi.hoisted(() => ({
+  useAppNotes: vi.fn(),
+}));
+
 vi.mock("@appnotes/react", () => ({
-  AppNotes: ({
-    apiUrl,
-    className,
-    projectKey,
-    roomId,
-    theme,
-    toggleClassName,
-  }: AppNotesProps) => (
-    <div
-      data-api-url={apiUrl}
-      data-class={className}
-      data-project-key={projectKey}
-      data-room-id={roomId}
-      data-testid="appnotes"
-      data-theme={theme}
-      data-toggle-class={toggleClassName}
-    />
-  ),
+  useAppNotes: mocks.useAppNotes,
 }));
 
 describe("AppNotesIntegration", () => {
   afterEach(() => {
+    vi.clearAllMocks();
     vi.unstubAllEnvs();
   });
 
-  it("configures AppNotes for the current SelfChecks host", () => {
+  it("keeps the launcher in place and portals the drawer root to the body", async () => {
     vi.stubEnv("NEXT_PUBLIC_APPNOTES_PROJECT_KEY", "appnotes_pk_test");
 
     render(<AppNotesIntegration />);
 
-    const appNotes = screen.getByTestId("appnotes");
+    const toggleElement = document.querySelector("[data-appnotes-toggle]");
 
-    expect(appNotes.getAttribute("data-api-url")).toBe("https://app.appnotes.tech/api");
-    expect(appNotes.getAttribute("data-class")).toBe("shrink-0");
-    expect(appNotes.getAttribute("data-project-key")).toBe("appnotes_pk_test");
-    expect(appNotes.getAttribute("data-room-id")).toBe(window.location.host);
-    expect(appNotes.getAttribute("data-theme")).toBe("dark");
-    expect(appNotes.getAttribute("data-toggle-class")).toBe("h-10");
+    expect(toggleElement?.getAttribute("class")).toBe("h-10 shrink-0");
+
+    await waitFor(() => {
+      const rootElement = document.querySelector("[data-appnotes-drawer-root]");
+
+      expect(rootElement?.parentElement).toBe(document.body);
+      expect(mocks.useAppNotes).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          apiUrl: "https://app.appnotes.tech/api",
+          projectKey: "appnotes_pk_test",
+          roomId: window.location.host,
+          rootDomElement: rootElement,
+          theme: "dark",
+          toggleDomElement: toggleElement,
+        }),
+      );
+    });
   });
 
   it("does not render AppNotes when the project key is unavailable", () => {
@@ -50,6 +48,8 @@ describe("AppNotesIntegration", () => {
 
     render(<AppNotesIntegration />);
 
-    expect(screen.queryByTestId("appnotes")).toBeNull();
+    expect(document.querySelector("[data-appnotes-toggle]")).toBeNull();
+    expect(document.querySelector("[data-appnotes-drawer-root]")).toBeNull();
+    expect(mocks.useAppNotes).toHaveBeenLastCalledWith(null);
   });
 });

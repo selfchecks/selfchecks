@@ -352,11 +352,13 @@ describe("DashboardPage", () => {
 
     renderDashboard();
 
-    const appNotes = document.querySelector("[data-appnotes-react]");
+    const appNotes = document.querySelector("[data-appnotes-toggle]");
+    const drawerRoot = document.querySelector("[data-appnotes-drawer-root]");
     const runAllChecks = screen.getByRole("button", { name: "Run all checks" });
 
     expect(appNotes).toBeTruthy();
     expect(appNotes?.nextElementSibling).toBe(runAllChecks);
+    expect(drawerRoot?.parentElement).toBe(document.body);
   });
 
   it("renders the dashboard skeleton while the snapshot is loading", () => {
