@@ -347,18 +347,14 @@ describe("DashboardPage", () => {
     expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
   });
 
-  it("places AppNotes before the Run all checks action", () => {
-    vi.stubEnv("NEXT_PUBLIC_APPNOTES_PROJECT_KEY", "appnotes_pk_test");
-
+  it("exposes the topbar action slot beside Run all checks", () => {
     renderDashboard();
 
-    const appNotes = document.querySelector("[data-appnotes-toggle]");
-    const drawerRoot = document.querySelector("[data-appnotes-drawer-root]");
+    const actions = document.querySelector("[data-appnotes-actions]");
     const runAllChecks = screen.getByRole("button", { name: "Run all checks" });
 
-    expect(appNotes).toBeTruthy();
-    expect(appNotes?.nextElementSibling).toBe(runAllChecks);
-    expect(drawerRoot?.parentElement).toBe(document.body);
+    expect(actions).toBeTruthy();
+    expect(actions?.contains(runAllChecks)).toBe(true);
   });
 
   it("renders the dashboard skeleton while the snapshot is loading", () => {

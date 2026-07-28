@@ -36,7 +36,7 @@ export function DashboardPageSkeleton({
           <div className="flex min-w-0 items-center gap-3">
             <ServiceMark className="h-9 w-9 shrink-0 rounded-md xl:hidden" />
           </div>
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2" data-appnotes-actions="">
             {activeView === "dashboard" ? (
               <SkeletonLine className="h-10 w-44 shrink-0" />
             ) : null}

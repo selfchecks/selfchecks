@@ -64,7 +64,7 @@ export function TraceArtifactViewer({
               </div>
             </div>
 
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="flex shrink-0 items-center gap-2" data-appnotes-actions="">
               {viewerUrl ? (
                 <a
                   aria-label="Open trace viewer in new tab"

@@ -283,7 +283,7 @@ export default function CheckDetailClient({
                 {check.name}
               </span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex shrink-0 items-center gap-2" data-appnotes-actions="">
               <button
                 className="inline-flex h-10 items-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={scheduling}

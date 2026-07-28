@@ -16,12 +16,18 @@ export default function UsageLoading() {
 
       <div className="min-h-screen xl:pl-72">
         <header className="sticky top-0 z-30 border-b border-slate-800 bg-[#12171f]/95 backdrop-blur">
-          <div className="flex h-16 items-center gap-3 px-4 text-sm text-slate-400 sm:px-6 lg:px-8">
-            <ServiceMark className="h-9 w-9 shrink-0 rounded-md xl:hidden" />
-            <span className="inline-flex items-center gap-2 text-slate-200">
-              <ChartNoAxesColumnIncreasing className="h-4 w-4" />
-              Usage
-            </span>
+          <div className="flex h-16 items-center justify-between gap-4 px-4 text-sm text-slate-400 sm:px-6 lg:px-8">
+            <div className="flex min-w-0 items-center gap-3">
+              <ServiceMark className="h-9 w-9 shrink-0 rounded-md xl:hidden" />
+              <span className="inline-flex items-center gap-2 text-slate-200">
+                <ChartNoAxesColumnIncreasing className="h-4 w-4" />
+                Usage
+              </span>
+            </div>
+            <div
+              className="flex shrink-0 items-center gap-2"
+              data-appnotes-actions=""
+            />
           </div>
         </header>
 

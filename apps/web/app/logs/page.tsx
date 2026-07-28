@@ -52,7 +52,9 @@ export default async function LogsPage({ searchParams }: LogsPageProps) {
                 Logs
               </span>
             </div>
-            <div className="hidden text-sm text-slate-500 sm:block">All projects</div>
+            <div className="flex shrink-0 items-center gap-2" data-appnotes-actions="">
+              <div className="hidden text-sm text-slate-500 sm:block">All projects</div>
+            </div>
           </div>
         </header>
 

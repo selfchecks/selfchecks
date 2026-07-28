@@ -112,12 +112,14 @@ export function RunDetailView({ accountLabel, detail }: RunDetailViewProps) {
               <span className="text-slate-600">/</span>
               <span className="truncate text-slate-200">Check run</span>
             </div>
-            <Link
-              className="hidden h-10 items-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-500 sm:inline-flex"
-              href={checkHref}
-            >
-              Open check
-            </Link>
+            <div className="flex shrink-0 items-center gap-2" data-appnotes-actions="">
+              <Link
+                className="hidden h-10 items-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-500 sm:inline-flex"
+                href={checkHref}
+              >
+                Open check
+              </Link>
+            </div>
           </div>
         </header>
 

@@ -71,6 +71,10 @@ export default async function TestSessionCheckPage({
               <span className="text-slate-600">/</span>
               <span className="truncate text-slate-200">{data.check.name}</span>
             </div>
+            <div
+              className="flex shrink-0 items-center gap-2"
+              data-appnotes-actions=""
+            />
           </div>
         </header>
 

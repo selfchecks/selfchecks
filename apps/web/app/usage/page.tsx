@@ -43,6 +43,10 @@ export default function UsagePage() {
                 Usage
               </span>
             </div>
+            <div
+              className="flex shrink-0 items-center gap-2"
+              data-appnotes-actions=""
+            />
           </div>
         </header>
 

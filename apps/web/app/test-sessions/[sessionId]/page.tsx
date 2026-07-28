@@ -71,6 +71,10 @@ export default async function TestSessionPage({ params }: TestSessionPageProps) 
                 {session.name || session.createdAtLabel}
               </span>
             </div>
+            <div
+              className="flex shrink-0 items-center gap-2"
+              data-appnotes-actions=""
+            />
           </div>
         </header>
 
