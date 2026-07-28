@@ -23,6 +23,7 @@ export function AppNotesIntegration() {
       projectKey={projectKey}
       roomId={roomId}
       theme="dark"
+      toggleClassName="fixed bottom-6 right-6 z-[2147483000]"
     />
   );
 }
