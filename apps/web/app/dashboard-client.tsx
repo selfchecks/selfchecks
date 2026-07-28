@@ -47,6 +47,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { AppSidebar } from "@/components/app-sidebar";
+import { AppNotesIntegration } from "@/components/appnotes-integration";
 import { CopyAnalysisButton } from "@/components/copy-analysis-button";
 import { ServiceMark } from "@/components/service-mark";
 import {
@@ -806,15 +807,18 @@ export default function DashboardClient({
         <Topbar
           actions={
             activeView === "dashboard" ? (
-              <button
-                className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={queueingAllChecks || allRunnableChecks.length === 0}
-                onClick={() => void runAllChecks()}
-                type="button"
-              >
-                <Zap className="h-4 w-4" />
-                Run all checks
-              </button>
+              <>
+                <AppNotesIntegration />
+                <button
+                  className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={queueingAllChecks || allRunnableChecks.length === 0}
+                  onClick={() => void runAllChecks()}
+                  type="button"
+                >
+                  <Zap className="h-4 w-4" />
+                  Run all checks
+                </button>
+              </>
             ) : null
           }
         />

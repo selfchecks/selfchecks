@@ -301,6 +301,7 @@ function renderDashboard(
 describe("DashboardPage", () => {
   afterEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllEnvs();
     vi.unstubAllGlobals();
     vi.useRealTimers();
   });
@@ -344,6 +345,18 @@ describe("DashboardPage", () => {
     expect(screen.queryByRole("button", { name: "Open support chat" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Support" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+  });
+
+  it("places AppNotes before the Run all checks action", () => {
+    vi.stubEnv("NEXT_PUBLIC_APPNOTES_PROJECT_KEY", "appnotes_pk_test");
+
+    renderDashboard();
+
+    const appNotes = document.querySelector("[data-appnotes-react]");
+    const runAllChecks = screen.getByRole("button", { name: "Run all checks" });
+
+    expect(appNotes).toBeTruthy();
+    expect(appNotes?.nextElementSibling).toBe(runAllChecks);
   });
 
   it("renders the dashboard skeleton while the snapshot is loading", () => {

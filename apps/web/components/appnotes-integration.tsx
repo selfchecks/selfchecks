@@ -3,7 +3,7 @@
 import { AppNotes } from "@appnotes/react";
 import { useEffect, useState } from "react";
 
-const APPNOTES_API_URL = "https://appnotes.tech/api";
+const APPNOTES_API_URL = "https://app.appnotes.tech/api";
 
 export function AppNotesIntegration() {
   const projectKey = process.env.NEXT_PUBLIC_APPNOTES_PROJECT_KEY;
@@ -20,10 +20,11 @@ export function AppNotesIntegration() {
   return (
     <AppNotes
       apiUrl={APPNOTES_API_URL}
+      className="shrink-0"
       projectKey={projectKey}
       roomId={roomId}
       theme="dark"
-      toggleClassName="fixed bottom-6 right-6 z-[2147483000]"
+      toggleClassName="h-10"
     />
   );
 }

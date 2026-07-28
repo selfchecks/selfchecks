@@ -5,9 +5,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppNotesIntegration } from "./appnotes-integration";
 
 vi.mock("@appnotes/react", () => ({
-  AppNotes: ({ apiUrl, projectKey, roomId, theme, toggleClassName }: AppNotesProps) => (
+  AppNotes: ({
+    apiUrl,
+    className,
+    projectKey,
+    roomId,
+    theme,
+    toggleClassName,
+  }: AppNotesProps) => (
     <div
       data-api-url={apiUrl}
+      data-class={className}
       data-project-key={projectKey}
       data-room-id={roomId}
       data-testid="appnotes"
@@ -29,13 +37,12 @@ describe("AppNotesIntegration", () => {
 
     const appNotes = screen.getByTestId("appnotes");
 
-    expect(appNotes.getAttribute("data-api-url")).toBe("https://appnotes.tech/api");
+    expect(appNotes.getAttribute("data-api-url")).toBe("https://app.appnotes.tech/api");
+    expect(appNotes.getAttribute("data-class")).toBe("shrink-0");
     expect(appNotes.getAttribute("data-project-key")).toBe("appnotes_pk_test");
     expect(appNotes.getAttribute("data-room-id")).toBe(window.location.host);
     expect(appNotes.getAttribute("data-theme")).toBe("dark");
-    expect(appNotes.getAttribute("data-toggle-class")).toBe(
-      "fixed bottom-6 right-6 z-[2147483000]",
-    );
+    expect(appNotes.getAttribute("data-toggle-class")).toBe("h-10");
   });
 
   it("does not render AppNotes when the project key is unavailable", () => {
