@@ -167,6 +167,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Validate AppNotes build secret
+        shell: bash
+        env:
+          APPNOTES_KEY: ${{ secrets.APPNOTES_KEY }}
+        run: |
+          if [ -z "${APPNOTES_KEY}" ]; then
+            echo "Missing required GitHub secret: APPNOTES_KEY" >&2
+            exit 1
+          fi
+
       - name: Build and push web image
         uses: docker/build-push-action@v7
         with:
@@ -181,6 +191,8 @@ jobs:
           labels: |
             org.opencontainers.image.source=https://github.com/selfchecks/selfchecks
             org.opencontainers.image.description=Selfchecks web runtime image
+          secrets: |
+            APPNOTES_KEY=${{ secrets.APPNOTES_KEY }}
           cache-from: type=gha,scope=selfchecks-web
           cache-to: type=gha,mode=max,scope=selfchecks-web
 

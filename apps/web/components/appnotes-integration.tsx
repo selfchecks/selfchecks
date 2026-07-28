@@ -4,19 +4,23 @@ import { AppNotes } from "@appnotes/react";
 import { useEffect, useState } from "react";
 
 const APPNOTES_API_URL = "https://appnotes.tech/api";
-const APPNOTES_PROJECT_KEY = "appnotes_pk_DtXYxqlZ6H0EoAts";
 
 export function AppNotesIntegration() {
+  const projectKey = process.env.NEXT_PUBLIC_APPNOTES_PROJECT_KEY;
   const [roomId, setRoomId] = useState("");
 
   useEffect(() => {
     setRoomId(window.location.host);
   }, []);
 
+  if (!projectKey) {
+    return null;
+  }
+
   return (
     <AppNotes
       apiUrl={APPNOTES_API_URL}
-      projectKey={APPNOTES_PROJECT_KEY}
+      projectKey={projectKey}
       roomId={roomId}
       theme="dark"
     />

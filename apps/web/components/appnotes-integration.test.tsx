@@ -1,6 +1,6 @@
 import type { AppNotesProps } from "@appnotes/react";
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AppNotesIntegration } from "./appnotes-integration";
 
@@ -17,16 +17,28 @@ vi.mock("@appnotes/react", () => ({
 }));
 
 describe("AppNotesIntegration", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("configures AppNotes for the current SelfChecks host", () => {
+    vi.stubEnv("NEXT_PUBLIC_APPNOTES_PROJECT_KEY", "appnotes_pk_test");
+
     render(<AppNotesIntegration />);
 
     const appNotes = screen.getByTestId("appnotes");
 
     expect(appNotes.getAttribute("data-api-url")).toBe("https://appnotes.tech/api");
-    expect(appNotes.getAttribute("data-project-key")).toBe(
-      "appnotes_pk_DtXYxqlZ6H0EoAts",
-    );
+    expect(appNotes.getAttribute("data-project-key")).toBe("appnotes_pk_test");
     expect(appNotes.getAttribute("data-room-id")).toBe(window.location.host);
     expect(appNotes.getAttribute("data-theme")).toBe("dark");
+  });
+
+  it("does not render AppNotes when the project key is unavailable", () => {
+    vi.stubEnv("NEXT_PUBLIC_APPNOTES_PROJECT_KEY", "");
+
+    render(<AppNotesIntegration />);
+
+    expect(screen.queryByTestId("appnotes")).toBeNull();
   });
 });
