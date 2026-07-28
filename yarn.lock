@@ -22,6 +22,25 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@appnotes/react@npm:^0.1.1":
+  version: 0.1.1
+  resolution: "@appnotes/react@npm:0.1.1"
+  dependencies:
+    "@appnotes/sdk": "npm:^0.1.1"
+  peerDependencies:
+    react: ^19.0.0
+    react-dom: ^19.0.0
+  checksum: 10c0/61db270cd804a4f618c072c8c4c16bb5af2d8f767349483dfd0baf67ec109813b871b1ac0f2ba3563bd4ab0d0a3070f00d8ed951fe77f90e5a84ba223d4a56ea
+  languageName: node
+  linkType: hard
+
+"@appnotes/sdk@npm:^0.1.1":
+  version: 0.1.1
+  resolution: "@appnotes/sdk@npm:0.1.1"
+  checksum: 10c0/1afc8d72bce7a26fc68143f43fadfde92803dd4e9afc19dcb572b846c7385eee35fd29e49508f38944f838ab15909972b3dd8024a018dd04923c6418e7614674
+  languageName: node
+  linkType: hard
+
 "@asamuzakjp/css-color@npm:^5.1.11":
   version: 5.1.11
   resolution: "@asamuzakjp/css-color@npm:5.1.11"
@@ -1560,6 +1579,8 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@selfchecks/web@workspace:apps/web"
   dependencies:
+    "@appnotes/react": "npm:^0.1.1"
+    "@appnotes/sdk": "npm:^0.1.1"
     "@radix-ui/react-slot": "npm:^1.2.3"
     "@selfchecks/cli": "workspace:*"
     "@selfchecks/core": "workspace:*"
