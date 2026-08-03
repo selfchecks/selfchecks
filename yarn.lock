@@ -34,10 +34,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@appnotes/sdk@npm:^0.6.0, @appnotes/sdk@npm:^0.6.1":
-  version: 0.6.1
-  resolution: "@appnotes/sdk@npm:0.6.1"
-  checksum: 10c0/c20498d4a570d3f620f3e4a9e49c351e2d035f7502dd2a8700fbe2a80618f5b6ae3eb57de76554ed75493c0c9a9b24c35d1da860bcbf1f777f3940571abcf1b3
+"@appnotes/sdk@npm:^0.6.0, @appnotes/sdk@npm:^0.6.2":
+  version: 0.6.2
+  resolution: "@appnotes/sdk@npm:0.6.2"
+  checksum: 10c0/8f1987ec5395d80c1c03b1e2c6addd758430c30ab4fae8c3c09a22e6d863cdb8a03398b7e8e2ab03c11ad52e7484454621939ffed5da5c528f0427cbfd07251a
   languageName: node
   linkType: hard
 
@@ -1580,7 +1580,7 @@ __metadata:
   resolution: "@selfchecks/web@workspace:apps/web"
   dependencies:
     "@appnotes/react": "npm:^0.2.1"
-    "@appnotes/sdk": "npm:^0.6.1"
+    "@appnotes/sdk": "npm:^0.6.2"
     "@radix-ui/react-slot": "npm:^1.2.3"
     "@selfchecks/cli": "workspace:*"
     "@selfchecks/core": "workspace:*"
