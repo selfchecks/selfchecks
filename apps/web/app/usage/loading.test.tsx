@@ -9,6 +9,7 @@ describe("UsageLoading", () => {
 
     expect(screen.getByRole("main", { name: "Loading usage analytics" })).toBeTruthy();
     expect(screen.getByLabelText("Loading usage totals")).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Loading server storage" })).toBeTruthy();
     expect(screen.getByRole("region", { name: "Loading tests by day" })).toBeTruthy();
     expect(screen.getByRole("region", { name: "Loading test sources" })).toBeTruthy();
     expect(screen.getByRole("region", { name: "Loading results by day" })).toBeTruthy();

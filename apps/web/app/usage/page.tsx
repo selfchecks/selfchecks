@@ -4,6 +4,7 @@ import { Suspense, type ReactNode, use } from "react";
 
 import { AppSidebar } from "@/components/app-sidebar";
 import { ServiceMark } from "@/components/service-mark";
+import { getServerStorageUsage, type ServerStorageUsage } from "@/lib/server-storage";
 import { getDashboardAccountLabel } from "@/lib/settings-data";
 import { getUsageData } from "@/lib/usage-data";
 
@@ -17,14 +18,17 @@ import {
   UsageChartSkeleton,
   UsageMetricsSkeleton,
   UsageReliabilitySkeleton,
+  UsageStorageSkeleton,
 } from "./usage-skeleton";
 
 export const dynamic = "force-dynamic";
 
 type UsageDataPromise = ReturnType<typeof getUsageData>;
+type StorageUsagePromise = ReturnType<typeof getServerStorageUsage>;
 
 export default function UsagePage() {
   const dataPromise = getUsageData("default");
+  const storagePromise = getServerStorageUsage();
   const accountLabel = getDashboardAccountLabel();
 
   return (
@@ -76,6 +80,9 @@ export default function UsagePage() {
           <Suspense fallback={<UsageReliabilitySkeleton />}>
             <UsageReliabilityBlock dataPromise={dataPromise} />
           </Suspense>
+          <Suspense fallback={<UsageStorageSkeleton />}>
+            <UsageStorageBlock storagePromise={storagePromise} />
+          </Suspense>
         </section>
       </div>
     </main>
@@ -95,6 +102,208 @@ function UsageMetricsBlock({ dataPromise }: { dataPromise: UsageDataPromise }) {
         value={data.totals.browser}
       />
     </div>
+  );
+}
+
+function UsageStorageBlock({
+  storagePromise,
+}: {
+  storagePromise: StorageUsagePromise;
+}) {
+  const storage = use(storagePromise);
+
+  return <ServerStorageCard storage={storage} />;
+}
+
+function ServerStorageCard({ storage }: { storage: ServerStorageUsage | undefined }) {
+  return (
+    <section
+      aria-labelledby="server-storage-heading"
+      className="w-full rounded-md border border-slate-800 bg-[#111821] p-4 sm:p-5"
+    >
+      <div>
+        <h2 className="font-semibold text-slate-100" id="server-storage-heading">
+          Server storage
+        </h2>
+        <p className="mt-1 text-sm text-slate-500">
+          Disk usage on the filesystem containing test artifacts.
+        </p>
+      </div>
+      {storage ? (
+        <StorageBreakdown storage={storage} />
+      ) : (
+        <div className="mt-5 rounded-md border border-dashed border-slate-700 px-4 py-8 text-center text-sm text-slate-500">
+          Storage data is currently unavailable.
+        </div>
+      )}
+    </section>
+  );
+}
+
+function StorageBreakdown({ storage }: { storage: ServerStorageUsage }) {
+  const circumference = 2 * Math.PI * 42;
+  const segments = [
+    {
+      color: "#38bdf8",
+      label: "Free space",
+      value: storage.freeBytes,
+    },
+    {
+      color: "#a78bfa",
+      label: "Test artifacts",
+      value: storage.artifactsBytes,
+    },
+    {
+      color: "#475569",
+      label: "Other used",
+      value: storage.otherBytes,
+    },
+  ];
+  let segmentOffset = 0;
+
+  return (
+    <div className="mt-5 grid items-center gap-6 sm:grid-cols-[220px_minmax(0,1fr)] lg:grid-cols-[260px_minmax(0,1fr)]">
+      <div className="relative mx-auto h-52 w-52">
+        <svg
+          aria-label={
+            "Server storage: " +
+            formatBytes(storage.freeBytes) +
+            " free, " +
+            formatBytes(storage.artifactsBytes) +
+            " test artifacts, " +
+            formatBytes(storage.otherBytes) +
+            " other used."
+          }
+          className="h-full w-full -rotate-90"
+          role="img"
+          viewBox="0 0 100 100"
+        >
+          <circle
+            cx="50"
+            cy="50"
+            fill="none"
+            r="42"
+            stroke="#273244"
+            strokeWidth="12"
+          />
+          {segments.map((segment) => {
+            const segmentLength =
+              storage.totalBytes > 0
+                ? (segment.value / storage.totalBytes) * circumference
+                : 0;
+            const circle = (
+              <circle
+                cx="50"
+                cy="50"
+                fill="none"
+                key={segment.label}
+                r="42"
+                stroke={segment.color}
+                strokeDasharray={
+                  String(segmentLength) + " " + String(circumference - segmentLength)
+                }
+                strokeDashoffset={-segmentOffset}
+                strokeWidth="12"
+              />
+            );
+            segmentOffset += segmentLength;
+            return circle;
+          })}
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+          <span className="text-2xl font-semibold tabular-nums text-slate-100">
+            {formatBytes(storage.freeBytes)}
+          </span>
+          <span className="mt-1 text-xs uppercase tracking-wide text-slate-500">
+            free
+          </span>
+        </div>
+      </div>
+      <div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {segments.map((segment) => (
+            <StorageLegendItem
+              color={segment.color}
+              key={segment.label}
+              label={segment.label}
+              total={storage.totalBytes}
+              value={segment.value}
+            />
+          ))}
+        </div>
+        <div className="mt-4 border-t border-slate-800 pt-4 text-sm text-slate-500">
+          Total capacity{" "}
+          <span className="font-medium tabular-nums text-slate-300">
+            {formatBytes(storage.totalBytes)}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StorageLegendItem({
+  color,
+  label,
+  total,
+  value,
+}: {
+  color: string;
+  label: string;
+  total: number;
+  value: number;
+}) {
+  return (
+    <div className="rounded-md border border-slate-800 bg-slate-950/25 p-3">
+      <div className="flex items-center gap-2 text-sm text-slate-400">
+        <span
+          className="h-2.5 w-2.5 shrink-0 rounded-sm"
+          style={{ backgroundColor: color }}
+        />
+        {label}
+      </div>
+      <div className="mt-2 font-semibold tabular-nums text-slate-200">
+        {formatBytes(value)}
+      </div>
+      <div className="mt-0.5 text-xs tabular-nums text-slate-500">
+        {formatPercentage(value, total)}
+      </div>
+    </div>
+  );
+}
+
+function formatBytes(value: number): string {
+  const units = ["B", "KB", "MB", "GB", "TB", "PB"];
+  let unitIndex = 0;
+  let scaledValue = value;
+
+  while (scaledValue >= 1_024 && unitIndex < units.length - 1) {
+    scaledValue /= 1_024;
+    unitIndex += 1;
+  }
+
+  const maximumFractionDigits = scaledValue >= 10 || unitIndex === 0 ? 0 : 1;
+
+  return (
+    scaledValue.toLocaleString("en", { maximumFractionDigits }) + " " + units[unitIndex]
+  );
+}
+
+function formatPercentage(value: number, total: number): string {
+  if (total <= 0 || value <= 0) {
+    return "0%";
+  }
+
+  const percentage = (value / total) * 100;
+
+  if (percentage < 0.1) {
+    return "<0.1%";
+  }
+
+  return (
+    percentage.toLocaleString("en", {
+      maximumFractionDigits: percentage < 10 ? 1 : 0,
+    }) + "%"
   );
 }
 

@@ -45,6 +45,29 @@ export function UsageChartSkeleton({ label }: { label: string }) {
   );
 }
 
+export function UsageStorageSkeleton() {
+  return (
+    <section
+      aria-label="Loading server storage"
+      className="animate-pulse rounded-md border border-slate-800 bg-[#111821] p-4 sm:p-5"
+    >
+      <div className="h-5 w-36 rounded bg-slate-800" />
+      <div className="mt-2 h-4 w-72 max-w-full rounded bg-slate-800" />
+      <div className="mt-5 grid items-center gap-6 sm:grid-cols-[220px_minmax(0,1fr)]">
+        <div className="mx-auto h-52 w-52 rounded-full border-[26px] border-slate-800" />
+        <div className="grid gap-3 sm:grid-cols-3">
+          {Array.from({ length: 3 }, (_, index) => (
+            <div
+              className="h-24 rounded-md border border-slate-800 bg-slate-950/25"
+              key={index}
+            />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export function UsageReliabilitySkeleton() {
   return (
     <section aria-label="Loading test reliability" className="animate-pulse">
@@ -85,6 +108,7 @@ export function UsageContentSkeleton() {
       <UsageChartSkeleton label="results by day" />
       <UsageChartSkeleton label="tests by project" />
       <UsageReliabilitySkeleton />
+      <UsageStorageSkeleton />
     </>
   );
 }

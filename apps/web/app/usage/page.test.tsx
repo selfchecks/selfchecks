@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getDashboardAccountLabel: vi.fn(() => "admin@example.com"),
+  getServerStorageUsage: vi.fn(),
   getUsageData: vi.fn(),
 }));
 
@@ -14,12 +15,23 @@ vi.mock("@/lib/usage-data", () => ({
   getUsageData: mocks.getUsageData,
 }));
 
+vi.mock("@/lib/server-storage", () => ({
+  getServerStorageUsage: mocks.getServerStorageUsage,
+}));
+
 import UsagePage from "./page";
 
 describe("UsagePage", () => {
   afterEach(() => vi.resetAllMocks());
 
   it("shows daily test types and the source split", async () => {
+    const gibibyte = 1_024 ** 3;
+    mocks.getServerStorageUsage.mockResolvedValue({
+      artifactsBytes: 10 * gibibyte,
+      freeBytes: 40 * gibibyte,
+      otherBytes: 50 * gibibyte,
+      totalBytes: 100 * gibibyte,
+    });
     mocks.getUsageData.mockResolvedValue({
       days: [
         {
@@ -80,6 +92,16 @@ describe("UsagePage", () => {
     expect(screen.getByText("75%")).toBeTruthy();
     expect(screen.getByText("25%")).toBeTruthy();
     expect(screen.getByRole("img", { name: "75% success rate" })).toBeTruthy();
+    const storage = screen.getByRole("region", { name: "Server storage" });
+    expect(
+      within(storage).getByRole("img", {
+        name: "Server storage: 40 GB free, 10 GB test artifacts, 50 GB other used.",
+      }),
+    ).toBeTruthy();
+    expect(within(storage).getByText("Free space")).toBeTruthy();
+    expect(within(storage).getByText("Test artifacts")).toBeTruthy();
+    expect(within(storage).getByText("Other used")).toBeTruthy();
+    expect(within(storage).getByText("Total capacity")).toBeTruthy();
     expect(
       screen.getByRole("img", { name: "Passed and failed tests by day" }),
     ).toBeTruthy();
@@ -121,6 +143,9 @@ describe("UsagePage", () => {
     const reliabilityHeading = screen.getByRole("heading", {
       name: "Test reliability",
     });
+    const storageHeading = screen.getByRole("heading", {
+      name: "Server storage",
+    });
     const resultsHeading = screen.getByRole("heading", {
       name: "Results by day",
     });
@@ -130,6 +155,10 @@ describe("UsagePage", () => {
     ).toBeTruthy();
     expect(
       resultsHeading.compareDocumentPosition(reliabilityHeading) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      reliabilityHeading.compareDocumentPosition(storageHeading) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
