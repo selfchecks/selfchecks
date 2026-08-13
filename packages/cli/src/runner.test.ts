@@ -143,7 +143,7 @@ describe("runCheckById", () => {
     );
   });
 
-  it("isolates Playwright artifacts per recorded run", async () => {
+  it("preserves project trace settings and isolates Playwright artifacts per run", async () => {
     const rootDir = await createTempProject();
     const runId = "run_1";
     const artifactsRootDir = path.join(rootDir, "runtime-artifacts");
@@ -281,8 +281,6 @@ describe("runCheckById", () => {
         isolatedOutputDir,
         "--reporter",
         "list",
-        "--trace",
-        "on",
       ],
       expect.objectContaining({
         cwd: rootDir,

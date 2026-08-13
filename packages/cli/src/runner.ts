@@ -1021,8 +1021,6 @@ async function runBrowserCheck(
       artifactPaths.testResultsDir,
       "--reporter",
       options.reporter,
-      "--trace",
-      "on",
     ],
     command: "npx",
     env: options.env,
