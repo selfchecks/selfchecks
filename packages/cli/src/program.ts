@@ -5,10 +5,11 @@ import { Command } from "commander";
 import {
   type CheckDefinition,
   type DeploySummary,
-  importCheckDefinitions,
+  manifestToImportResult,
   toDeploySummary,
   normalizeTags,
 } from "@selfchecks/core";
+import { compileProject } from "@selfchecks/selfchecks/compiler";
 
 import { applyDatabaseMigrations } from "./migrations.js";
 import { runRemoteDeploy, type RemoteDeployOptions } from "./remote-deploy.js";
@@ -175,6 +176,19 @@ export function createSelfchecksProgram(
   const runChecksRemotely = options.runChecksRemotely ?? runRemoteTestSession;
   const triggerRemotely = options.triggerRemotely ?? runRemoteTrigger;
 
+  const compileDefinitions = async (
+    rootDir: string,
+    projectSlug: string,
+    configPath?: string,
+  ) =>
+    manifestToImportResult(
+      await compileProject({
+        ...(configPath ? { configPath } : {}),
+        rootDir,
+      }),
+      projectSlug,
+    );
+
   const program = new Command();
 
   program
@@ -199,6 +213,12 @@ export function createSelfchecksProgram(
     .action(async (commandOptions: Record<string, string | boolean | undefined>) => {
       const projectSlug = String(commandOptions.project ?? "default");
       const rootDir = resolveDeployRootDir(commandOptions);
+      const configPath =
+        typeof commandOptions.config === "string"
+          ? typeof commandOptions.root === "string"
+            ? commandOptions.config
+            : path.basename(commandOptions.config)
+          : undefined;
       const hasRemoteConfig = assertRemoteConfig(
         commandOptions.apiUrl,
         commandOptions.apiToken,
@@ -207,7 +227,7 @@ export function createSelfchecksProgram(
       const summary = await (async () => {
         if (commandOptions.dryRun) {
           return toDeploySummary(
-            await importCheckDefinitions({ projectSlug, rootDir }),
+            await compileDefinitions(rootDir, projectSlug, configPath),
           );
         }
 
@@ -216,15 +236,17 @@ export function createSelfchecksProgram(
             allowRemovals: Boolean(commandOptions.force),
             apiToken: String(commandOptions.apiToken),
             apiUrl: String(commandOptions.apiUrl),
+            ...(configPath ? { configPath } : {}),
             projectSlug,
             rootDir,
           });
         }
 
-        const parsedSummary = await importCheckDefinitions({
-          projectSlug,
+        const parsedSummary = await compileDefinitions(
           rootDir,
-        });
+          projectSlug,
+          configPath,
+        );
 
         return (async () => {
           await migrateDatabase();
@@ -331,10 +353,10 @@ export function createSelfchecksProgram(
               testSessionName: commandOptions.testSessionName,
             })
           : await (async () => {
-              const imported = await importCheckDefinitions({
-                projectSlug: commandOptions.project,
-                rootDir: commandOptions.root,
-              });
+              const imported = await compileDefinitions(
+                commandOptions.root,
+                commandOptions.project,
+              );
 
               return runChecksLocally({
                 checkKeys: commandOptions.check,

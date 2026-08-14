@@ -30,6 +30,11 @@ Deploy checks from the current repository:
 npx selfchecks deploy --project my-project --root .
 ```
 
+Before upload, the CLI executes supported TypeScript manifests and produces a
+versioned deployment manifest. Project helpers, imports, loops, and computed check
+definitions are supported; unsupported Checkly properties stop the command with an
+explicit error.
+
 Upload and run selected checks in an isolated test session:
 
 ```bash

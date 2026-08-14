@@ -12,5 +12,6 @@
     "../cli/src/remote-test-session.ts",
     "../cli/src/remote-trigger.ts"
   ],
-  "exclude": ["src/**/*.test.ts"]
+  "exclude": ["src/**/*.test.ts"],
+  "references": [{ "path": "../checkly-compat" }]
 }

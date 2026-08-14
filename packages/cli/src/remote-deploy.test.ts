@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -20,7 +21,23 @@ describe("remote deploy", () => {
     rootDir = await mkdtemp(path.join(os.tmpdir(), "selfchecks-deploy-"));
     await mkdir(path.join(rootDir, "src"));
     await writeFile(path.join(rootDir, "package.json"), '{"name":"checks"}');
-    await writeFile(path.join(rootDir, "src/home.check.ts"), "export const x = 1;");
+    await writeFile(
+      path.join(rootDir, "checkly.config.ts"),
+      `export default { logicalId: "account", projectName: "Account" };`,
+    );
+    const constructsUrl = pathToFileURL(
+      path.resolve(
+        process.env.INIT_CWD ?? process.cwd(),
+        "packages/checkly-compat/src/constructs.ts",
+      ),
+    ).href;
+    await writeFile(
+      path.join(rootDir, "src/home.check.ts"),
+      `import { ApiCheck } from ${JSON.stringify(constructsUrl)};
+       new ApiCheck("health", {
+         request: { method: "GET", url: "https://example.test/health" }
+       });`,
+    );
     const summary = {
       checks: [],
       created: 1,
@@ -58,7 +75,22 @@ describe("remote deploy", () => {
     const upload = fetchMock.mock.calls[0]?.[1];
     const metadata = JSON.parse(String((upload?.body as FormData).get("metadata")));
 
-    expect(metadata).toEqual({ allowRemovals: true, projectSlug: "account" });
+    expect(metadata).toMatchObject({
+      allowRemovals: true,
+      deploymentManifest: {
+        checks: [
+          expect.objectContaining({
+            key: "health",
+            request: expect.objectContaining({
+              url: "https://example.test/health",
+            }),
+          }),
+        ],
+        project: { logicalId: "account", name: "Account" },
+        version: 1,
+      },
+      projectSlug: "account",
+    });
     expect(upload?.headers).toEqual({ Authorization: "Bearer secret" });
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,

@@ -118,6 +118,8 @@ describe("persistDeploySummary", () => {
           groupKey: "api",
           groupName: "API",
           key: "api-health",
+          maxResponseTime: 5000,
+          muted: true,
           name: "API health",
           request: {
             assertions: [],
@@ -126,6 +128,7 @@ describe("persistDeploySummary", () => {
             url: "https://api.example.test/health",
           },
           tags: ["api", "smoke"],
+          shouldFail: true,
           type: "api",
         },
         {
@@ -178,7 +181,19 @@ describe("persistDeploySummary", () => {
         projectId: "project_1",
         source: "git:abc123",
         summary: {
-          checks: summary.checks,
+          checks: expect.arrayContaining([
+            expect.objectContaining({
+              key: "api-health",
+              maxResponseTime: 5000,
+              muted: true,
+              shouldFail: true,
+            }),
+            expect.objectContaining({
+              key: "homepage",
+              muted: false,
+              shouldFail: false,
+            }),
+          ]),
           created: 0,
           projectSlug: "account",
           removed: 0,
@@ -267,13 +282,19 @@ describe("persistDeploySummary", () => {
           frequencyMinutes: 5,
           groupId: "group_api",
           key: "api-health",
+          maxResponseTime: 5000,
+          muted: true,
           projectId: "project_1",
+          shouldFail: true,
           type: "API",
         }),
         update: expect.objectContaining({
           degradedResponseTime: 2500,
           frequencyMinutes: 5,
           groupId: "group_api",
+          maxResponseTime: 5000,
+          muted: true,
+          shouldFail: true,
           type: "API",
         }),
         where: {

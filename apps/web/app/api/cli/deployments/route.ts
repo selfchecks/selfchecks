@@ -4,7 +4,11 @@ import path from "node:path";
 import { Queue } from "bullmq";
 import { NextResponse } from "next/server";
 
-import { normalizeCheckQueueName } from "@selfchecks/core";
+import {
+  deploymentManifestSchema,
+  normalizeCheckQueueName,
+  type DeploymentManifest,
+} from "@selfchecks/core";
 
 import { parseCliBundle, writeCliBundle } from "@/lib/cli-bundle";
 import { isCliRequestAuthorized } from "@/lib/cli-auth";
@@ -13,6 +17,7 @@ export const runtime = "nodejs";
 
 type DeploymentJob = {
   allowRemovals: boolean;
+  deploymentManifest?: DeploymentManifest;
   kind: "deployment";
   projectSlug: string;
   rootDir: string;
@@ -20,6 +25,7 @@ type DeploymentJob = {
 
 type DeploymentMetadata = {
   allowRemovals: boolean;
+  deploymentManifest?: DeploymentManifest;
   projectSlug: string;
 };
 
@@ -43,6 +49,7 @@ export async function POST(request: Request) {
         "deploy-checks",
         {
           allowRemovals: metadata.allowRemovals,
+          deploymentManifest: metadata.deploymentManifest,
           kind: "deployment",
           projectSlug: metadata.projectSlug,
           rootDir,
@@ -87,6 +94,13 @@ function parseMetadata(value: FormDataEntryValue | null): DeploymentMetadata {
 
   return {
     allowRemovals: metadata.allowRemovals === true,
+    ...(metadata.deploymentManifest
+      ? {
+          deploymentManifest: deploymentManifestSchema.parse(
+            metadata.deploymentManifest,
+          ),
+        }
+      : {}),
     projectSlug: metadata.projectSlug.trim(),
   };
 }

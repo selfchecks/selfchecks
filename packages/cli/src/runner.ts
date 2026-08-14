@@ -135,10 +135,13 @@ export type RunnableCheck = {
   } | null;
   id?: string;
   key: string;
+  maxResponseTime?: number | null;
+  muted?: boolean;
   name: string;
   request: unknown;
   retryStrategy: unknown;
   runs: CheckRun[];
+  shouldFail?: boolean;
   tags: string[];
   type: "API" | "BROWSER";
 };
@@ -329,10 +332,13 @@ async function findRunnableChecks(options: RunChecksOptions): Promise<RunnableCh
             }
           : null,
         key: check.key,
+        maxResponseTime: check.maxResponseTime ?? null,
+        muted: check.muted,
         name: check.name,
         request: check.request ?? null,
         retryStrategy: check.retryStrategy ?? null,
         runs: [],
+        shouldFail: check.shouldFail,
         tags: check.tags,
         type: check.type.toUpperCase() as "API" | "BROWSER",
       }));
@@ -756,8 +762,14 @@ function resolveRetryPlan(check: RunnableCheck, options: RunChecksOptions): Retr
       retryStrategy.baseBackoffSeconds ?? DEFAULT_RETRY_BACKOFF_SECONDS,
     maxDurationSeconds:
       retryStrategy.maxDurationSeconds ?? DEFAULT_RETRY_MAX_DURATION_SECONDS,
-    maxRetries: clampRetries(retryStrategy.maxRetries ?? DEFAULT_RETRY_MAX_RETRIES),
-    onlyOn: retryStrategy.onlyOn ?? [],
+    maxRetries:
+      retryStrategy.type === "SINGLE_RETRY"
+        ? 1
+        : clampRetries(retryStrategy.maxRetries ?? DEFAULT_RETRY_MAX_RETRIES),
+    onlyOn:
+      typeof retryStrategy.onlyOn === "string"
+        ? [retryStrategy.onlyOn]
+        : (retryStrategy.onlyOn ?? []),
     type: retryStrategy.type,
   };
 }
@@ -773,7 +785,8 @@ function normalizeRetryStrategy(value: unknown): RetryStrategy | undefined {
     strategy.type !== "NO_RETRIES" &&
     strategy.type !== "FIXED" &&
     strategy.type !== "LINEAR" &&
-    strategy.type !== "EXPONENTIAL"
+    strategy.type !== "EXPONENTIAL" &&
+    strategy.type !== "SINGLE_RETRY"
   ) {
     return undefined;
   }
@@ -795,6 +808,7 @@ function normalizeRetryStrategy(value: unknown): RetryStrategy | undefined {
           ),
         }
       : {}),
+    ...(strategy.onlyOn === "NETWORK_ERROR" ? { onlyOn: strategy.onlyOn } : {}),
     ...(typeof strategy.sameRegion === "boolean"
       ? { sameRegion: strategy.sameRegion }
       : {}),
@@ -1106,7 +1120,27 @@ async function runApiCheck(
   }
 
   const env = Object.fromEntries(options.env.map((item) => [item.name, item.value]));
-  const url = interpolateEnv(request.url, env);
+  const url = new URL(interpolateEnv(request.url, env));
+  for (const [key, value] of Object.entries(request.queryParameters ?? {})) {
+    url.searchParams.set(key, interpolateEnv(value, env));
+  }
+  const headers = Object.fromEntries(
+    Object.entries(request.headers).map(([key, value]) => [
+      key,
+      interpolateEnv(value, env),
+    ]),
+  );
+  if (request.basicAuth && !hasHeader(headers, "authorization")) {
+    const username = interpolateEnv(request.basicAuth.username, env);
+    const password = interpolateEnv(request.basicAuth.password, env);
+    headers.Authorization = `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
+  }
+  if (request.bodyType === "JSON" && !hasHeader(headers, "content-type")) {
+    headers["Content-Type"] = "application/json";
+  }
+  if (request.bodyType === "FORM" && !hasHeader(headers, "content-type")) {
+    headers["Content-Type"] = "application/x-www-form-urlencoded";
+  }
   const remainingSessionMs = getTestSessionRemainingMs(options.testSessionDeadline);
   const controller = new AbortController();
   const handleCancellation = () => controller.abort();
@@ -1117,12 +1151,14 @@ async function runApiCheck(
       : undefined;
   timeoutTimer?.unref?.();
   let response: Response;
+  const requestStartedAt = Date.now();
 
   try {
-    response = await fetch(url, {
+    response = await fetch(url.toString(), {
       body: request.body ? interpolateEnv(request.body, env) : undefined,
-      headers: request.headers,
+      headers,
       method: request.method,
+      ...(request.followRedirects === false ? { redirect: "manual" as const } : {}),
       signal: controller.signal,
     });
   } catch (error) {
@@ -1142,6 +1178,7 @@ async function runApiCheck(
 
     options.signal?.removeEventListener("abort", handleCancellation);
   }
+  const responseTimeMs = Date.now() - requestStartedAt;
   const responseBody = await response.text();
   const body =
     responseBody.length > MAX_RESPONSE_BODY_CHARS
@@ -1150,20 +1187,228 @@ async function runApiCheck(
         } chars ...`
       : responseBody;
 
+  const assertionResults = evaluateApiAssertions(request.assertions, {
+    body: responseBody,
+    headers: response.headers,
+    responseTimeMs,
+    status: response.status,
+  });
+  const failedAssertion = assertionResults.find((assertion) => !assertion.passed);
+  const responsePassed = check.shouldFail ? !response.ok : response.ok;
+  const responseTimePassed =
+    typeof check.maxResponseTime !== "number" ||
+    responseTimeMs <= check.maxResponseTime;
+  const errorMessage = failedAssertion
+    ? `${failedAssertion.source} expected ${failedAssertion.comparison}${
+        failedAssertion.target === undefined
+          ? ""
+          : ` ${formatAssertionValue(failedAssertion.target)}`
+      }, received ${formatAssertionValue(failedAssertion.actual)}.`
+    : !responseTimePassed
+      ? `Response time ${responseTimeMs} ms exceeded ${check.maxResponseTime} ms.`
+      : responsePassed
+        ? undefined
+        : `HTTP ${response.status} ${response.statusText}`.trim();
+
   return {
     artifacts: [],
-    errorMessage: response.ok
-      ? undefined
-      : `HTTP ${response.status} ${response.statusText}`,
+    errorMessage,
     resultJson: {
+      assertions: assertionResults,
       body,
       headers: Object.fromEntries(response.headers.entries()),
+      responseTimeMs,
       status: response.status,
       statusText: response.statusText,
-      url,
+      url: url.toString(),
     },
-    status: response.ok ? "passed" : "failed",
+    status: errorMessage ? "failed" : "passed",
   };
+}
+
+type AssertionContext = {
+  body: string;
+  headers: Headers;
+  responseTimeMs: number;
+  status: number;
+};
+
+type AssertionResult = {
+  actual: unknown;
+  comparison: string;
+  passed: boolean;
+  property?: string;
+  source: string;
+  target?: unknown;
+};
+
+function evaluateApiAssertions(
+  assertions: ApiRequest["assertions"],
+  context: AssertionContext,
+): AssertionResult[] {
+  let parsedJson: unknown;
+  let parsedJsonReady = false;
+
+  return assertions.map((assertion) => {
+    const normalized = normalizeAssertion(assertion);
+    let actual: unknown;
+
+    if (normalized.source === "STATUS_CODE") {
+      actual = context.status;
+    } else if (normalized.source === "RESPONSE_TIME") {
+      actual = context.responseTimeMs;
+    } else if (normalized.source === "TEXT_BODY") {
+      actual = context.body;
+    } else if (normalized.source === "HEADERS") {
+      actual = normalized.property
+        ? context.headers.get(normalized.property)
+        : Object.fromEntries(context.headers.entries());
+    } else if (normalized.source === "JSON_BODY") {
+      if (!parsedJsonReady) {
+        try {
+          parsedJson = JSON.parse(context.body) as unknown;
+        } catch {
+          parsedJson = undefined;
+        }
+        parsedJsonReady = true;
+      }
+      actual = normalized.property
+        ? readJsonPath(parsedJson, normalized.property)
+        : parsedJson;
+    }
+
+    return {
+      actual,
+      comparison: normalized.comparison,
+      passed: compareAssertion(actual, normalized.comparison, normalized.target),
+      ...(normalized.property ? { property: normalized.property } : {}),
+      source: normalized.source,
+      ...(normalized.target !== undefined ? { target: normalized.target } : {}),
+    };
+  });
+}
+
+function normalizeAssertion(assertion: ApiRequest["assertions"][number]) {
+  const legacySource = assertion.source;
+  const source = legacySource.startsWith("jsonBody:")
+    ? "JSON_BODY"
+    : legacySource === "status" || legacySource === "statusCode"
+      ? "STATUS_CODE"
+      : legacySource === "textBody"
+        ? "TEXT_BODY"
+        : legacySource;
+  const comparison = (assertion.comparison ?? assertion.operator ?? "EQUALS")
+    .replace(/([a-z])([A-Z])/g, "$1_$2")
+    .toUpperCase();
+
+  return {
+    comparison,
+    property:
+      assertion.property ??
+      (legacySource.startsWith("jsonBody:")
+        ? legacySource.slice("jsonBody:".length)
+        : undefined),
+    source,
+    target: assertion.target,
+  };
+}
+
+function compareAssertion(
+  actual: unknown,
+  comparison: string,
+  target: unknown,
+): boolean {
+  switch (comparison) {
+    case "EQUALS":
+      return actual === target;
+    case "NOT_EQUALS":
+      return actual !== target;
+    case "GREATER_THAN":
+      return compareValues(actual, target, (left, right) => left > right);
+    case "LESS_THAN":
+      return compareValues(actual, target, (left, right) => left < right);
+    case "CONTAINS":
+      return typeof actual === "string"
+        ? actual.includes(String(target))
+        : Array.isArray(actual) && actual.includes(target);
+    case "NOT_CONTAINS":
+      return typeof actual === "string"
+        ? !actual.includes(String(target))
+        : Array.isArray(actual) && !actual.includes(target);
+    case "HAS_KEY":
+      return Boolean(actual && typeof actual === "object" && String(target) in actual);
+    case "NOT_HAS_KEY":
+      return !actual || typeof actual !== "object" || !(String(target) in actual);
+    case "HAS_VALUE":
+      return Boolean(
+        actual &&
+        typeof actual === "object" &&
+        Object.values(actual).some((value) => value === target),
+      );
+    case "NOT_HAS_VALUE":
+      return (
+        !actual ||
+        typeof actual !== "object" ||
+        !Object.values(actual).some((value) => value === target)
+      );
+    case "IS_EMPTY":
+    case "EMPTY":
+      return isEmptyAssertionValue(actual);
+    case "NOT_EMPTY":
+      return !isEmptyAssertionValue(actual);
+    case "IS_NULL":
+      return actual === null;
+    case "IS_NOT_NULL":
+      return actual !== null && actual !== undefined;
+    default:
+      return false;
+  }
+}
+
+function isEmptyAssertionValue(value: unknown): boolean {
+  return (
+    value === "" ||
+    (Array.isArray(value) && value.length === 0) ||
+    Boolean(
+      value &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      Object.keys(value).length === 0,
+    )
+  );
+}
+
+function compareValues(
+  actual: unknown,
+  target: unknown,
+  compare: (left: number, right: number) => boolean,
+): boolean {
+  const left = typeof actual === "number" ? actual : Number(actual);
+  const right = typeof target === "number" ? target : Number(target);
+  return Number.isFinite(left) && Number.isFinite(right) && compare(left, right);
+}
+
+function readJsonPath(value: unknown, jsonPath: string): unknown {
+  const pathParts = jsonPath
+    .replace(/^\$\.?/, "")
+    .replace(/\[(\d+)\]/g, ".$1")
+    .split(".")
+    .filter(Boolean);
+
+  return pathParts.reduce<unknown>((current, part) => {
+    if (!current || typeof current !== "object") {
+      return undefined;
+    }
+    return (current as Record<string, unknown>)[part];
+  }, value);
+}
+
+function hasHeader(headers: Record<string, string>, name: string): boolean {
+  return Object.keys(headers).some((key) => key.toLowerCase() === name.toLowerCase());
+}
+
+function formatAssertionValue(value: unknown): string {
+  return typeof value === "string" ? value : JSON.stringify(value);
 }
 
 function assertTestSessionDeadline(

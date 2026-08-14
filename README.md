@@ -75,6 +75,32 @@ new BrowserCheck("homepage", {
 });
 ```
 
+Or define an API check with a portable HTTP request and assertions:
+
+```ts
+import {
+  ApiCheck,
+  AssertionBuilder,
+  Frequency,
+} from "@selfchecks/selfchecks/constructs";
+
+new ApiCheck("api-health", {
+  frequency: Frequency.EVERY_5M,
+  maxResponseTime: 2_000,
+  request: {
+    method: "GET",
+    url: "{{API_URL}}/health",
+    headers: { accept: "application/json" },
+    queryParameters: { probe: "selfchecks" },
+    assertions: [
+      AssertionBuilder.statusCode().equals(200),
+      AssertionBuilder.jsonBody("$.data.ok").equals(true),
+      AssertionBuilder.headers("content-type").contains("application/json"),
+    ],
+  },
+});
+```
+
 The entrypoint is a normal Playwright Test file:
 
 ```ts
@@ -131,28 +157,29 @@ import {
 } from "checkly/constructs";
 ```
 
-Compatibility is intentionally limited. The npm package exposes only this
-source-compatible subset:
+Compatibility is intentionally limited. `deploy` and `test` execute the project's
+TypeScript manifests locally, compile supported constructs into a versioned
+`DeploymentManifest`, and send that data to the server. Imports, helpers, loops, and
+computed values therefore work without project-specific parsing.
 
-| Import                    | Supported API                                                                                        |
-| ------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `checkly`                 | `defineConfig`                                                                                       |
-| checks                    | `ApiCheck`, `BrowserCheck`                                                                           |
-| groups                    | `CheckGroup`, `CheckGroupV2`                                                                         |
-| frequency                 | `EVERY_10M`, `EVERY_15M`, `EVERY_30M`, `EVERY_2H`, `EVERY_3H`, `EVERY_6H`, `EVERY_12H`, `EVERY_24H`  |
-| assertions                | `statusCode()`, `textBody()`, `jsonBody(path)` with `equals`, `contains`, `isEmpty`, and `isNotNull` |
-| retries                   | `noRetries`, `fixedStrategy`, `linearStrategy`, `exponentialStrategy`                                |
-| source-compatible helpers | `AlertEscalationBuilder.runBasedEscalation`, `WebhookAlertChannel`                                   |
-| TypeScript types          | `ApiCheckProps`, `BrowserCheckProps`, `CheckGroupV2Props`, `Request`, `RetryStrategy`                |
+| Area             | Supported subset                                                                                                                          |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| configuration    | `defineConfig`, `logicalId`, `projectName`, and shared `activated`, `frequency`, `tags`, retry, mute, and expected-failure check defaults |
+| checks           | `ApiCheck`, `BrowserCheck`, `CheckGroup`, `CheckGroupV2`                                                                                  |
+| frequency        | 1, 2, 5, 10, 15, and 30 minutes; 1, 2, 3, 6, 12, and 24 hours                                                                             |
+| API requests     | method, URL, headers, query parameters, body, body type, Basic Auth, redirects, environment placeholders                                  |
+| assertions       | status, response time, headers, text, and JSON body comparisons                                                                           |
+| retries          | none, single, fixed, linear, and exponential strategies                                                                                   |
+| notifications    | `WebhookAlertChannel` attached through a check group                                                                                      |
+| TypeScript types | `ApiCheckProps`, `BrowserCheckProps`, `CheckGroupV2Props`, `Request`, `RetryStrategy`                                                     |
 
-Assertion builder expressions, alert channels, and escalation objects are accepted so
-existing manifests compile, but the current importer does not deploy Checkly
-assertions or alert configuration. Configure API validation and notifications in
-Selfchecks instead. Other Checkly constructs, CLI commands, cloud APIs, and runtime
-features are not compatibility targets and must not be assumed to work.
-
-Selfchecks also recognizes the local `createApiCheck`, `createBrowserCheck`, and
-`createCheckGroup` wrapper patterns used by the account project.
+Unsupported properties fail compilation with their construct and property name; they
+are not silently emulated. Private/public locations, Checkly runtimes, secrets,
+environment-variable constructs, status pages, maintenance windows, alert escalation
+policies, the Checkly REST API, and Checkly CLI commands are outside this profile.
+`AlertEscalationBuilder` remains exported for source migration, but escalation
+policies cannot be deployed. The old server-side static importer remains only as a
+fallback for older clients.
 
 ## CI examples
 

@@ -29,10 +29,6 @@ export default defineConfig({
   checks: {
     activated: true,
     frequency: Frequency.EVERY_10M,
-    checkMatch: "**/*.check.ts",
-    browserChecks: {
-      testMatch: "**/*.spec.ts",
-    },
   },
 });
 `,

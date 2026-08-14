@@ -39,7 +39,28 @@ describe("CLI deployment route", () => {
     const file = Buffer.from("new ApiCheck('health', {});\n");
     formData.set(
       "metadata",
-      JSON.stringify({ allowRemovals: true, projectSlug: "account" }),
+      JSON.stringify({
+        allowRemovals: true,
+        deploymentManifest: {
+          alertChannels: [],
+          checks: [
+            {
+              enabled: true,
+              key: "health",
+              muted: false,
+              name: "Health",
+              request: { method: "GET", url: "https://example.test/health" },
+              shouldFail: false,
+              tags: [],
+              type: "api",
+            },
+          ],
+          project: { logicalId: "account", name: "Account" },
+          version: 1,
+          warnings: [],
+        },
+        projectSlug: "account",
+      }),
     );
     formData.set(
       "manifest",
@@ -59,6 +80,7 @@ describe("CLI deployment route", () => {
       "deploy-checks",
       expect.objectContaining({
         allowRemovals: true,
+        deploymentManifest: expect.objectContaining({ version: 1 }),
         kind: "deployment",
         projectSlug: "account",
       }),

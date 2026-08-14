@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -19,6 +20,23 @@ async function createProject() {
   await mkdir(path.join(rootDir, "src"), { recursive: true });
   await mkdir(path.join(rootDir, "node_modules", "ignored"), { recursive: true });
   await mkdir(path.join(rootDir, "test-results"), { recursive: true });
+  await writeFile(
+    path.join(rootDir, "checkly.config.ts"),
+    `export default { logicalId: "demo", projectName: "Demo" };`,
+  );
+  const constructsUrl = pathToFileURL(
+    path.resolve(
+      process.env.INIT_CWD ?? process.cwd(),
+      "packages/checkly-compat/src/constructs.ts",
+    ),
+  ).href;
+  await writeFile(
+    path.join(rootDir, "src", "health.check.ts"),
+    `import { ApiCheck } from ${JSON.stringify(constructsUrl)};
+     new ApiCheck("health", {
+       request: { method: "GET", url: "https://api.example.test/health" }
+     });`,
+  );
   await writeFile(
     path.join(rootDir, "package.json"),
     JSON.stringify({
@@ -171,8 +189,10 @@ describe("remote test sessions", () => {
     const files = await collectBundleFiles(rootDir);
 
     expect(files.map((file) => file.path)).toEqual([
+      "checkly.config.ts",
       "package.json",
       "src/check.spec.ts",
+      "src/health.check.ts",
       "tsconfig.json",
     ]);
     expect(
@@ -263,6 +283,18 @@ describe("remote test sessions", () => {
 
     expect(JSON.parse(String(uploadBody.get("metadata")))).toMatchObject({
       commitSha: "abc123def456",
+      deploymentManifest: {
+        checks: [
+          expect.objectContaining({
+            key: "health",
+            request: expect.objectContaining({
+              url: "https://api.example.test/health",
+            }),
+          }),
+        ],
+        project: { logicalId: "demo", name: "Demo" },
+        version: 1,
+      },
       jobUrl: "https://gitlab.example.test/jobs/456",
       pipelineUrl: "https://gitlab.example.test/pipelines/123",
       ref: "release/1.2.3",

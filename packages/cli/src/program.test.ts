@@ -1,6 +1,7 @@
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -13,6 +14,27 @@ import {
 } from "./program.js";
 
 const tempDirs: string[] = [];
+const constructsUrl = pathToFileURL(
+  path.resolve(
+    process.env.INIT_CWD ?? process.cwd(),
+    "packages/checkly-compat/src/constructs.ts",
+  ),
+).href;
+
+function browserCheckSource() {
+  return `
+    import { BrowserCheck } from ${JSON.stringify(constructsUrl)};
+
+    new BrowserCheck("homepage", {
+      name: "Homepage",
+      code: { entrypoint: "homepage.spec.ts" }
+    });
+  `;
+}
+
+function projectConfigSource() {
+  return `export default { logicalId: "account", projectName: "Account" };`;
+}
 
 async function createTempProject(): Promise<string> {
   const dir = await mkdtemp(path.join(os.tmpdir(), "selfchecks-cli-"));
@@ -24,14 +46,10 @@ async function createTempChecklyProject(): Promise<string> {
   const rootDir = await createTempProject();
 
   await mkdir(path.join(rootDir, "config/checkly"), { recursive: true });
+  await writeFile(path.join(rootDir, "checkly.config.ts"), projectConfigSource());
   await writeFile(
     path.join(rootDir, "config/checkly/homepage.check.ts"),
-    `
-      new BrowserCheck("homepage", {
-        name: "Homepage",
-        entrypoint: "homepage.spec.ts"
-      });
-    `,
+    browserCheckSource(),
   );
 
   return rootDir;
@@ -152,13 +170,12 @@ describe("createSelfchecksProgram", () => {
     const rootDir = await createTempProject();
     await mkdir(path.join(rootDir, "config/checkly"), { recursive: true });
     await writeFile(
+      path.join(rootDir, "config/checkly/checkly.config.ts"),
+      projectConfigSource(),
+    );
+    await writeFile(
       path.join(rootDir, "config/checkly/homepage.check.ts"),
-      `
-        new BrowserCheck("homepage", {
-          name: "Homepage",
-          entrypoint: "homepage.spec.ts"
-        });
-      `,
+      browserCheckSource(),
     );
 
     await expect(
@@ -189,7 +206,9 @@ describe("createSelfchecksProgram", () => {
               enabled: true,
               entrypoint: "homepage.spec.ts",
               key: "homepage",
+              muted: false,
               name: "Homepage",
+              shouldFail: false,
               tags: [],
               type: "browser",
             },
@@ -209,16 +228,8 @@ describe("createSelfchecksProgram", () => {
     const configDir = path.join(rootDir, "config/checkly");
 
     await mkdir(configDir, { recursive: true });
-    await writeFile(path.join(configDir, "checkly.config.ts"), "export default {};");
-    await writeFile(
-      path.join(configDir, "homepage.check.ts"),
-      `
-        new BrowserCheck("homepage", {
-          name: "Homepage",
-          entrypoint: "homepage.spec.ts"
-        });
-      `,
-    );
+    await writeFile(path.join(configDir, "checkly.config.ts"), projectConfigSource());
+    await writeFile(path.join(configDir, "homepage.check.ts"), browserCheckSource());
 
     await expect(
       parseCommand([
@@ -269,14 +280,10 @@ describe("createSelfchecksProgram", () => {
     });
 
     await mkdir(path.join(rootDir, "config/checkly"), { recursive: true });
+    await writeFile(path.join(rootDir, "checkly.config.ts"), projectConfigSource());
     await writeFile(
       path.join(rootDir, "config/checkly/homepage.check.ts"),
-      `
-        new BrowserCheck("homepage", {
-          name: "Homepage",
-          entrypoint: "homepage.spec.ts"
-        });
-      `,
+      browserCheckSource(),
     );
     program.exitOverride();
     program.configureOutput({
@@ -323,14 +330,10 @@ describe("createSelfchecksProgram", () => {
     });
 
     await mkdir(path.join(rootDir, "config/checkly"), { recursive: true });
+    await writeFile(path.join(rootDir, "checkly.config.ts"), projectConfigSource());
     await writeFile(
       path.join(rootDir, "config/checkly/homepage.check.ts"),
-      `
-        new BrowserCheck("homepage", {
-          name: "Homepage",
-          entrypoint: "homepage.spec.ts"
-        });
-      `,
+      browserCheckSource(),
     );
     program.exitOverride();
     program.configureOutput({

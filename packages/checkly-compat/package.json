@@ -19,12 +19,19 @@
     "./constructs": {
       "types": "./dist/constructs.d.ts",
       "import": "./dist/constructs.js"
+    },
+    "./compiler": {
+      "types": "./dist/compiler.d.ts",
+      "import": "./dist/compiler.js"
     }
   },
   "typesVersions": {
     "*": {
       "constructs": [
         "dist/constructs.d.ts"
+      ],
+      "compiler": [
+        "dist/compiler.d.ts"
       ]
     }
   },
@@ -41,11 +48,14 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "vitest run --root ../.. packages/checkly-compat/src/index.test.ts",
+    "test": "vitest run --root ../.. packages/checkly-compat/src",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "tsx": "^4.20.3"
   }
 }

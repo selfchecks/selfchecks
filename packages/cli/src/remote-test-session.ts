@@ -1,6 +1,8 @@
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 
+import { compileProject } from "@selfchecks/selfchecks/compiler";
+
 export type EnvVar = {
   name: string;
   value: string;
@@ -83,10 +85,12 @@ const IGNORED_FILES = new Set(["checkly-github-report.md"]);
 export async function runRemoteTestSession(
   options: RemoteTestSessionOptions,
 ): Promise<RunChecksSummary> {
+  const deploymentManifest = await compileProject({ rootDir: options.rootDir });
   const formData = await createRemoteBundleFormData(options.rootDir, {
     checkKeys: options.checkKeys,
     checkTypes: options.checkTypes,
     commitSha: options.commitSha,
+    deploymentManifest,
     env: options.env,
     jobUrl: options.jobUrl,
     pipelineUrl: options.pipelineUrl,

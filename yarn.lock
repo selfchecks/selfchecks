@@ -1527,6 +1527,7 @@ __metadata:
   dependencies:
     "@selfchecks/core": "workspace:*"
     "@selfchecks/db": "workspace:*"
+    "@selfchecks/selfchecks": "workspace:*"
     commander: "npm:^14.0.0"
     tsx: "npm:^4.20.3"
     typescript: "npm:^5.8.3"
@@ -1558,6 +1559,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@selfchecks/selfchecks-cli@workspace:packages/npm-cli"
   dependencies:
+    "@selfchecks/selfchecks": "workspace:*"
     commander: "npm:^14.0.0"
     typescript: "npm:^5.8.3"
     vitest: "npm:^3.2.4"
@@ -1566,10 +1568,11 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@selfchecks/selfchecks@workspace:packages/checkly-compat":
+"@selfchecks/selfchecks@workspace:*, @selfchecks/selfchecks@workspace:packages/checkly-compat":
   version: 0.0.0-use.local
   resolution: "@selfchecks/selfchecks@workspace:packages/checkly-compat"
   dependencies:
+    tsx: "npm:^4.20.3"
     typescript: "npm:^5.8.3"
     vitest: "npm:^3.2.4"
   languageName: unknown

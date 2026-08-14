@@ -63,6 +63,25 @@ function createRequest(token = "api-token") {
       checkKeys: [],
       checkTypes: ["browser"],
       commitSha: "abc123def456",
+      deploymentManifest: {
+        alertChannels: [],
+        checks: [
+          {
+            alertChannelLogicalIds: [],
+            enabled: true,
+            entrypoint: "src/homepage.spec.ts",
+            key: "homepage",
+            muted: false,
+            name: "Homepage",
+            shouldFail: false,
+            tags: ["browser"],
+            type: "browser",
+          },
+        ],
+        project: { logicalId: "account", name: "Account" },
+        version: 1,
+        warnings: [],
+      },
       env: [{ name: "ENVIRONMENT_URL", value: "https://preview.example.test" }],
       jobUrl: "https://gitlab.example.test/jobs/456",
       pipelineUrl: "https://gitlab.example.test/pipelines/123",
@@ -144,7 +163,8 @@ describe("CLI test session upload route", () => {
       statusUrl: "/api/cli/test-sessions/session_1",
     });
     expect(response.status).toBe(202);
-    const rootDir = mocks.importCheckDefinitions.mock.calls[0]?.[0].rootDir as string;
+    expect(mocks.importCheckDefinitions).not.toHaveBeenCalled();
+    const rootDir = mocks.queueAdd.mock.calls[0]?.[1].rootDir as string;
     await expect(
       readFile(path.join(rootDir, "src/homepage.spec.ts"), "utf8"),
     ).resolves.toBe("export const check = true;\n");

@@ -67,6 +67,7 @@ function createEndpoint(
 
 function createRun(
   overrides: Partial<{
+    muted: boolean;
     runSource: string | null;
     status: string;
     testSession: { kind: string } | null;
@@ -84,6 +85,7 @@ function createRun(
       },
       id: "check_1",
       key: "homepage",
+      muted: overrides.muted ?? false,
       name: 'Homepage "critical"',
     },
     checkId: "check_1",
@@ -170,6 +172,20 @@ describe("deliverRunNotifications", () => {
       fetchImpl,
     });
 
+    expect(mocks.notificationCreate).not.toHaveBeenCalled();
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("does not deliver notifications for muted checks", async () => {
+    mocks.checkRunFindUnique.mockResolvedValue(createRun({ muted: true }));
+    const fetchImpl = vi.fn();
+
+    await deliverRunNotifications("run_1", {
+      fetchImpl,
+      logger: { warn: vi.fn() },
+    });
+
+    expect(mocks.checkRunFindFirst).not.toHaveBeenCalled();
     expect(mocks.notificationCreate).not.toHaveBeenCalled();
     expect(fetchImpl).not.toHaveBeenCalled();
   });

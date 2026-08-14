@@ -27,7 +27,6 @@ export default defineConfig({
   checks: {
     activated: true,
     frequency: Frequency.EVERY_15M,
-    checkMatch: "**/*.check.ts",
   },
 });
 ```
@@ -50,6 +49,29 @@ new BrowserCheck("homepage", {
 ```
 
 The entrypoint is a regular Playwright Test file.
+
+Define an API check with request assertions:
+
+```ts
+import { ApiCheck, AssertionBuilder } from "@selfchecks/selfchecks/constructs";
+
+new ApiCheck("health", {
+  maxResponseTime: 2_000,
+  request: {
+    method: "GET",
+    url: "{{API_URL}}/health",
+    queryParameters: { probe: "selfchecks" },
+    assertions: [
+      AssertionBuilder.statusCode().equals(200),
+      AssertionBuilder.jsonBody("$.data.ok").equals(true),
+    ],
+  },
+});
+```
+
+The Selfchecks CLI executes TypeScript manifests locally and compiles them into
+`DeploymentManifest v1`. Imported helpers, loops, and computed construct definitions
+are supported as long as their final properties belong to the compatibility profile.
 
 ## Checkly-compatible imports
 
@@ -82,9 +104,11 @@ import {
 ```
 
 Compatibility is intentionally limited to these constructs and their exported
-TypeScript types. Other Checkly constructs, CLI commands, cloud APIs, and runtime
-features are not supported. Assertion and alert objects are accepted for source
-compatibility, but Selfchecks does not currently deploy their Checkly configuration.
+TypeScript types. API request assertions and webhook alert channels attached through
+groups are deployed. Unsupported properties produce a compiler error instead of being
+silently ignored. Checkly locations, runtimes, secrets, status pages, maintenance
+windows, alert escalation policies, REST APIs, CLI commands, and cloud runtime
+behavior are not supported.
 
 See the complete [migration guide](https://selfchecks.github.io/getting-started.html#migration)
 and [Selfchecks documentation](https://selfchecks.github.io/getting-started.html).

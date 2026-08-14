@@ -35,8 +35,6 @@ type ParsedCheck = {
   constructName: "ApiCheck" | "BrowserCheck" | "createApiCheck" | "createBrowserCheck";
 };
 
-type RequestFactoryKind = "api" | "bff" | "unknown";
-
 type GroupDefinition = {
   alertChannelLogicalIds: string[];
   key: string;
@@ -60,8 +58,6 @@ type ManifestImportContext = {
 
 type ParseContext = {
   retryStrategies: Map<string, RetryStrategy>;
-  requestFactoryKind: RequestFactoryKind;
-  requestVariables: Map<string, ApiRequest>;
 };
 
 const ignoredDirectories = new Set([
@@ -888,81 +884,13 @@ function isCheckGroupConstructName(name: string | undefined): boolean {
 }
 
 function buildParseContext(
-  sourceFile: ts.SourceFile,
-  filePath: string,
+  _sourceFile: ts.SourceFile,
+  _filePath: string,
   importContext: ManifestImportContext,
 ): ParseContext {
-  const requestFactoryKind = getRequestFactoryKind(sourceFile);
-  const requestVariables = new Map<string, ApiRequest>();
-
-  sourceFile.forEachChild((node) => {
-    if (!ts.isVariableStatement(node)) {
-      return;
-    }
-
-    for (const declaration of node.declarationList.declarations) {
-      if (
-        ts.isIdentifier(declaration.name) &&
-        declaration.initializer &&
-        ts.isCallExpression(declaration.initializer) &&
-        getExpressionName(declaration.initializer.expression) === "createRequest"
-      ) {
-        const request = inferCreateRequest(
-          declaration.initializer,
-          requestFactoryKind,
-          filePath,
-        );
-
-        if (request) {
-          requestVariables.set(declaration.name.text, request);
-        }
-      }
-    }
-  });
-
   return {
     retryStrategies: importContext.retryStrategies,
-    requestFactoryKind,
-    requestVariables,
   };
-}
-
-function getRequestFactoryKind(sourceFile: ts.SourceFile): RequestFactoryKind {
-  for (const statement of sourceFile.statements) {
-    if (!ts.isImportDeclaration(statement)) {
-      continue;
-    }
-
-    const importClause = statement.importClause;
-    const moduleSpecifier = statement.moduleSpecifier;
-
-    if (
-      !importClause?.namedBindings ||
-      !ts.isNamedImports(importClause.namedBindings) ||
-      !ts.isStringLiteral(moduleSpecifier)
-    ) {
-      continue;
-    }
-
-    const importsCreateRequest = importClause.namedBindings.elements.some(
-      (element) =>
-        (element.propertyName?.text ?? element.name.text) === "createRequest",
-    );
-
-    if (!importsCreateRequest) {
-      continue;
-    }
-
-    if (moduleSpecifier.text.endsWith("/requestBff")) {
-      return "bff";
-    }
-
-    if (moduleSpecifier.text.endsWith("/request")) {
-      return "api";
-    }
-  }
-
-  return "unknown";
 }
 
 function parseCheckNewExpression(
@@ -1032,11 +960,11 @@ function parseCheckHelperCall(
       check: {
         ...buildCheckFromConfig({
           config,
+          context,
           defaultKey: name ? getLogicalId(name) : undefined,
           defaultName: name,
           filePath,
           type: "browser",
-          context,
         }),
         entrypoint,
       },
@@ -1053,11 +981,11 @@ function parseCheckHelperCall(
     return {
       check: buildCheckFromConfig({
         config,
+        context,
         defaultKey: name ? getLogicalId(name) : undefined,
         defaultName: name,
         filePath,
         type: "api",
-        context,
       }),
       constructName: helperName,
     };
@@ -1422,7 +1350,7 @@ function getCodeEntrypoint(
 function getApiRequest(
   objectLiteral: ts.ObjectLiteralExpression,
   filePath: string,
-  context: ParseContext,
+  _context: ParseContext,
 ): ApiRequest | undefined {
   const requestProperty = getPropertyAssignment(objectLiteral, "request");
 
@@ -1430,26 +1358,13 @@ function getApiRequest(
     return undefined;
   }
 
-  if (ts.isIdentifier(requestProperty.initializer)) {
-    return context.requestVariables.get(requestProperty.initializer.text);
-  }
-
-  if (ts.isCallExpression(requestProperty.initializer)) {
-    return inferCreateRequest(
-      requestProperty.initializer,
-      context.requestFactoryKind,
-      filePath,
-    );
-  }
-
   if (!ts.isObjectLiteralExpression(requestProperty.initializer)) {
     return undefined;
   }
 
   const request = requestProperty.initializer;
-  const baseRequest = getBaseRequestFromSpreads(request, context);
-  const method = getStringProperty(request, "method", filePath) ?? baseRequest?.method;
-  const url = getStringProperty(request, "url", filePath) ?? baseRequest?.url;
+  const method = getStringProperty(request, "method", filePath);
+  const url = getStringProperty(request, "url", filePath);
 
   if (!method || !url) {
     return undefined;
@@ -1457,64 +1372,12 @@ function getApiRequest(
 
   return {
     assertions: [],
-    body: getStringProperty(request, "body", filePath) ?? baseRequest?.body,
-    headers:
-      getRecordProperty(request, "headers", filePath) ?? baseRequest?.headers ?? {},
+    body: getStringProperty(request, "body", filePath),
+    headers: getRecordProperty(request, "headers", filePath) ?? {},
     method,
+    queryParameters: getRecordProperty(request, "queryParameters", filePath) ?? {},
     url,
   };
-}
-
-function getBaseRequestFromSpreads(
-  objectLiteral: ts.ObjectLiteralExpression,
-  context: ParseContext,
-): ApiRequest | undefined {
-  for (const property of objectLiteral.properties) {
-    if (
-      ts.isSpreadAssignment(property) &&
-      ts.isIdentifier(property.expression) &&
-      context.requestVariables.has(property.expression.text)
-    ) {
-      return context.requestVariables.get(property.expression.text);
-    }
-  }
-
-  return undefined;
-}
-
-function inferCreateRequest(
-  expression: ts.CallExpression,
-  kind: RequestFactoryKind,
-  filePath: string,
-): ApiRequest | undefined {
-  if (getExpressionName(expression.expression) !== "createRequest") {
-    return undefined;
-  }
-
-  if (kind === "bff") {
-    const urlPath = expression.arguments[0]
-      ? extractStringValue(expression.arguments[0], filePath)
-      : "";
-
-    return {
-      assertions: [],
-      headers: {},
-      method: "GET",
-      url: `https://bff.sndsy.ru/${urlPath ?? ""}`,
-    };
-  }
-
-  if (kind === "api") {
-    return {
-      assertions: [],
-      body: expression.arguments[1]?.getText(),
-      headers: {},
-      method: "POST",
-      url: "{{API_URL}}/general/api/v100/json/{{ACCOUNT}}",
-    };
-  }
-
-  return undefined;
 }
 
 function getNumberProperty(

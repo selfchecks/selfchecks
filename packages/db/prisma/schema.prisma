@@ -128,6 +128,9 @@ model Check {
   enabled              Boolean     @default(true)
   frequencyMinutes     Int?
   degradedResponseTime Int?
+  maxResponseTime      Int?
+  muted                Boolean     @default(false)
+  shouldFail           Boolean     @default(false)
   tags                 String[]
   entrypoint           String?
   request              Json?

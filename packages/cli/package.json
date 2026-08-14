@@ -35,6 +35,7 @@
   "dependencies": {
     "@selfchecks/core": "workspace:*",
     "@selfchecks/db": "workspace:*",
+    "@selfchecks/selfchecks": "workspace:*",
     "commander": "^14.0.0"
   },
   "devDependencies": {

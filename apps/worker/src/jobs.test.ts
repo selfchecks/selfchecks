@@ -302,6 +302,70 @@ describe("handleCheckJob", () => {
     );
   });
 
+  it("persists DeploymentManifest v1 without reparsing project source", async () => {
+    const deploymentManifest = {
+      alertChannels: [],
+      checks: [
+        {
+          alertChannelLogicalIds: [],
+          enabled: true,
+          key: "health",
+          muted: false,
+          name: "Health",
+          request: {
+            assertions: [],
+            headers: {},
+            method: "GET",
+            queryParameters: {},
+            url: "https://example.test/health",
+          },
+          shouldFail: false,
+          tags: [],
+          type: "api" as const,
+        },
+      ],
+      project: { logicalId: "demo", name: "Demo" },
+      version: 1 as const,
+      warnings: [],
+    };
+    const summary = {
+      checks: deploymentManifest.checks,
+      created: 1,
+      projectSlug: "demo",
+      removed: 0,
+      updated: 0,
+      warnings: [],
+    };
+    mocks.persistDeploySummary.mockResolvedValue(summary);
+    mocks.spawn.mockImplementation(() => {
+      const child = new EventEmitter();
+      setImmediate(() => child.emit("close", 0));
+      return child;
+    });
+
+    await expect(
+      handleDeploymentJob({
+        data: {
+          allowRemovals: false,
+          deploymentManifest,
+          kind: "deployment",
+          projectSlug: "demo",
+          rootDir: "/runtime/deployments/deployment_2",
+        },
+      }),
+    ).resolves.toEqual(summary);
+
+    expect(mocks.importCheckDefinitions).not.toHaveBeenCalled();
+    expect(mocks.persistDeploySummary).toHaveBeenCalledWith(
+      expect.objectContaining({
+        summary: expect.objectContaining({
+          checks: deploymentManifest.checks,
+          projectSlug: "demo",
+        }),
+      }),
+    );
+  });
+
   it("runs a remote trigger through the shared runner", async () => {
     const summary = {
       durationMs: 10,

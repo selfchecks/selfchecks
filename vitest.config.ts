@@ -15,6 +15,10 @@ export default defineConfig({
       ),
       "@selfchecks/core": path.resolve(__dirname, "packages/core/src/index.ts"),
       "@selfchecks/db": path.resolve(__dirname, "packages/db/src/index.ts"),
+      "@selfchecks/selfchecks/compiler": path.resolve(
+        __dirname,
+        "packages/checkly-compat/src/compiler.ts",
+      ),
     },
   },
   test: {

@@ -221,6 +221,14 @@ export function createRemoteSelfchecksProgram(
       const summary = await deployRemotely({
         allowRemovals: Boolean(commandOptions.force),
         ...remote,
+        ...(typeof commandOptions.config === "string"
+          ? {
+              configPath:
+                typeof commandOptions.root === "string"
+                  ? commandOptions.config
+                  : path.basename(commandOptions.config),
+            }
+          : {}),
         projectSlug,
         rootDir,
       });

@@ -9,9 +9,12 @@ import { NextResponse } from "next/server";
 import { getRunEnvironment } from "@selfchecks/cli/environment";
 import {
   type CheckDefinition,
+  deploymentManifestSchema,
   importCheckDefinitions,
+  manifestToImportResult,
   normalizeCheckQueueName,
   normalizeTags,
+  type DeploymentManifest,
 } from "@selfchecks/core";
 
 import { isCliRequestAuthorized } from "@/lib/cli-auth";
@@ -23,6 +26,7 @@ type TestSessionMetadata = {
   checkKeys: string[];
   checkTypes: CheckDefinition["type"][];
   commitSha?: string;
+  deploymentManifest?: DeploymentManifest;
   env: Array<{ name: string; value: string }>;
   jobUrl?: string;
   pipelineUrl?: string;
@@ -72,10 +76,12 @@ export async function POST(request: Request) {
 
     await writeBundle(workspaceRoot, bundle);
 
-    const imported = await importCheckDefinitions({
-      projectSlug: metadata.projectSlug,
-      rootDir: workspaceRoot,
-    });
+    const imported = metadata.deploymentManifest
+      ? manifestToImportResult(metadata.deploymentManifest, metadata.projectSlug)
+      : await importCheckDefinitions({
+          projectSlug: metadata.projectSlug,
+          rootDir: workspaceRoot,
+        });
     const checks = selectChecks(imported.checks, metadata);
 
     if (checks.length === 0) {
@@ -401,6 +407,13 @@ function parseMetadata(value: FormDataEntryValue | null): TestSessionMetadata {
     checkKeys: readStringArray(metadata.checkKeys),
     checkTypes: readCheckTypes(metadata.checkTypes),
     commitSha: readOptionalString(metadata.commitSha),
+    ...(metadata.deploymentManifest
+      ? {
+          deploymentManifest: deploymentManifestSchema.parse(
+            metadata.deploymentManifest,
+          ),
+        }
+      : {}),
     env: readEnv(metadata.env),
     jobUrl: readOptionalString(metadata.jobUrl),
     pipelineUrl: readOptionalString(metadata.pipelineUrl),

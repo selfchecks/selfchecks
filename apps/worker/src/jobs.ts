@@ -15,10 +15,12 @@ import {
 import { persistDeploySummary } from "@selfchecks/cli/storage";
 import {
   importCheckDefinitions,
+  manifestToImportResult,
   summarizeTerminalRunStatuses,
   type CheckDefinition,
   type CheckType,
   type DeploySummary,
+  type DeploymentManifest,
 } from "@selfchecks/core";
 import { prisma } from "@selfchecks/db";
 
@@ -39,6 +41,7 @@ export type RunCheckJob = {
 
 export type DeploymentJob = {
   allowRemovals: boolean;
+  deploymentManifest?: DeploymentManifest;
   kind: "deployment";
   projectSlug: string;
   rootDir: string;
@@ -182,10 +185,12 @@ export async function handleDeploymentJob(
   job: Pick<Job<DeploymentJob>, "data">,
 ): Promise<DeploySummary> {
   const { data } = job;
-  const summary = await importCheckDefinitions({
-    projectSlug: data.projectSlug,
-    rootDir: data.rootDir,
-  });
+  const summary = data.deploymentManifest
+    ? manifestToImportResult(data.deploymentManifest, data.projectSlug)
+    : await importCheckDefinitions({
+        projectSlug: data.projectSlug,
+        rootDir: data.rootDir,
+      });
 
   if (summary.checks.length === 0) {
     throw new Error(`No selfchecks definitions were imported from ${data.rootDir}.`);

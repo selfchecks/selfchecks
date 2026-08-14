@@ -68,6 +68,47 @@ describe("createRemoteSelfchecksProgram", () => {
     );
   });
 
+  it("passes an inferred config path to the project compiler", async () => {
+    const deployRemotely = vi.fn().mockResolvedValue({
+      checks: [],
+      created: 0,
+      projectSlug: "demo",
+      removed: 0,
+      updated: 0,
+      warnings: [],
+    });
+    const program = createRemoteSelfchecksProgram({
+      deployRemotely,
+      write: vi.fn(),
+    });
+
+    await program.parseAsync(
+      [
+        "node",
+        "selfchecks",
+        "deploy",
+        "--api-url",
+        "https://checks.example.test",
+        "--api-token",
+        "token",
+        "--project",
+        "demo",
+        "--config",
+        "monitoring/checkly.config.ts",
+      ],
+      { from: "node" },
+    );
+
+    expect(deployRemotely).toHaveBeenCalledWith({
+      allowRemovals: false,
+      apiToken: "token",
+      apiUrl: "https://checks.example.test",
+      configPath: "checkly.config.ts",
+      projectSlug: "demo",
+      rootDir: "monitoring",
+    });
+  });
+
   it("requires both remote credentials", async () => {
     const program = createRemoteSelfchecksProgram({ write: vi.fn() });
 

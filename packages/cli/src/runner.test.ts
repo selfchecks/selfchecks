@@ -766,6 +766,153 @@ describe("runChecks", () => {
     );
   });
 
+  it("executes the portable API request contract and validates assertions", async () => {
+    const fetchMock = vi.fn(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        expect(String(input)).toBe(
+          "https://api.example.test/health?token=runtime-token&verbose=true",
+        );
+        expect(init).toMatchObject({
+          body: '{"probe":"runtime-token"}',
+          headers: {
+            Authorization: "Basic bW9uaXRvcjpydW50aW1lLXRva2Vu",
+            "X-Probe": "runtime-token",
+          },
+          method: "POST",
+          redirect: "manual",
+        });
+
+        return new Response('{"data":{"empty":{},"ok":true,"tags":["ready"]}}', {
+          headers: { "content-type": "application/json; charset=utf-8" },
+          status: 201,
+          statusText: "Created",
+        });
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      runChecks({
+        checks: [
+          {
+            alertChannelLogicalIds: [],
+            enabled: true,
+            key: "api-health",
+            muted: false,
+            name: "API health",
+            request: {
+              assertions: [
+                { comparison: "EQUALS", source: "STATUS_CODE", target: 201 },
+                {
+                  comparison: "EQUALS",
+                  property: "$.data.ok",
+                  source: "JSON_BODY",
+                  target: true,
+                },
+                {
+                  comparison: "CONTAINS",
+                  property: "content-type",
+                  source: "HEADERS",
+                  target: "application/json",
+                },
+                {
+                  comparison: "CONTAINS",
+                  property: "$.data.tags",
+                  source: "JSON_BODY",
+                  target: "ready",
+                },
+                {
+                  comparison: "HAS_KEY",
+                  property: "$.data",
+                  source: "JSON_BODY",
+                  target: "ok",
+                },
+                {
+                  comparison: "IS_EMPTY",
+                  property: "$.data.empty",
+                  source: "JSON_BODY",
+                },
+              ],
+              basicAuth: { password: "{{TOKEN}}", username: "monitor" },
+              body: '{"probe":"{{TOKEN}}"}',
+              bodyType: "JSON",
+              followRedirects: false,
+              headers: { "X-Probe": "{{TOKEN}}" },
+              method: "POST",
+              queryParameters: {
+                token: "{{TOKEN}}",
+                verbose: "true",
+              },
+              url: "https://api.example.test/health",
+            },
+            shouldFail: false,
+            tags: ["api"],
+            type: "api",
+          },
+        ],
+        env: [{ name: "TOKEN", value: "runtime-token" }],
+        projectSlug: "demo",
+        record: false,
+        reporter: "list",
+        rootDir: "/repo",
+        tagSets: [],
+      }),
+    ).resolves.toMatchObject({
+      failed: 0,
+      passed: 1,
+      results: [{ checkKey: "api-health", status: "passed" }],
+      total: 1,
+    });
+  });
+
+  it("reports failed API assertions as the check error", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response("not ready", { status: 503 })),
+    );
+
+    await expect(
+      runChecks({
+        checks: [
+          {
+            alertChannelLogicalIds: [],
+            enabled: true,
+            key: "api-health",
+            muted: false,
+            name: "API health",
+            request: {
+              assertions: [
+                { comparison: "EQUALS", source: "STATUS_CODE", target: 200 },
+              ],
+              headers: {},
+              method: "GET",
+              queryParameters: {},
+              url: "https://api.example.test/health",
+            },
+            shouldFail: false,
+            tags: [],
+            type: "api",
+          },
+        ],
+        env: [],
+        projectSlug: "demo",
+        record: false,
+        reporter: "list",
+        rootDir: "/repo",
+        tagSets: [],
+      }),
+    ).resolves.toMatchObject({
+      failed: 1,
+      passed: 0,
+      results: [
+        {
+          errorMessage: "STATUS_CODE expected EQUALS 200, received 503.",
+          status: "failed",
+        },
+      ],
+    });
+  });
+
   it("creates recorded CLI test sessions with the target URL", async () => {
     mocks.projectFindUnique.mockResolvedValue({
       id: "project_1",

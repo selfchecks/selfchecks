@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   apiRequestSchema,
   checkDefinitionSchema,
+  deploymentManifestSchema,
   deploySummarySchema,
   frequencySchema,
   getCheckIdentity,
@@ -10,6 +11,7 @@ import {
   normalizePerformanceSettings,
   normalizeCheckQueueName,
   normalizeTags,
+  manifestToImportResult,
   retryStrategySchema,
   summarizeTerminalRunStatuses,
   webhookAlertChannelSchema,
@@ -64,6 +66,7 @@ describe("apiRequestSchema", () => {
       assertions: [],
       headers: {},
       method: "GET",
+      queryParameters: {},
       url: "https://example.test/health",
     });
   });
@@ -95,6 +98,83 @@ describe("apiRequestSchema", () => {
       ],
       method: "POST",
     });
+  });
+
+  it("normalizes the portable API request contract", () => {
+    expect(
+      apiRequestSchema.parse({
+        assertions: [{ comparison: "EQUALS", source: "STATUS_CODE", target: 200 }],
+        basicAuth: { password: "secret", username: "monitor" },
+        bodyType: "JSON",
+        followRedirects: false,
+        method: "post",
+        queryParameters: { verbose: "true" },
+        url: "https://example.test/health",
+      }),
+    ).toMatchObject({
+      assertions: [{ comparison: "EQUALS", source: "STATUS_CODE", target: 200 }],
+      basicAuth: { password: "secret", username: "monitor" },
+      bodyType: "JSON",
+      followRedirects: false,
+      method: "POST",
+      queryParameters: { verbose: "true" },
+    });
+  });
+});
+
+describe("deploymentManifestSchema", () => {
+  it("turns DeploymentManifest v1 into a deployable import result", () => {
+    const manifest = deploymentManifestSchema.parse({
+      alertChannels: [],
+      checks: [
+        {
+          enabled: true,
+          key: "health",
+          maxResponseTime: 5000,
+          muted: false,
+          name: "Health",
+          request: { method: "GET", url: "https://example.test/health" },
+          shouldFail: false,
+          tags: ["api"],
+          type: "api",
+        },
+      ],
+      project: { logicalId: "demo", name: "Demo" },
+      version: 1,
+      warnings: [],
+    });
+
+    expect(manifestToImportResult(manifest, "demo")).toMatchObject({
+      checks: [
+        {
+          key: "health",
+          maxResponseTime: 5000,
+          request: {
+            assertions: [],
+            headers: {},
+            method: "GET",
+            queryParameters: {},
+          },
+        },
+      ],
+      created: 1,
+      projectSlug: "demo",
+      removed: 0,
+      updated: 0,
+      warnings: [],
+    });
+  });
+
+  it("rejects unknown manifest versions", () => {
+    expect(() =>
+      deploymentManifestSchema.parse({
+        alertChannels: [],
+        checks: [],
+        project: { logicalId: "demo", name: "Demo" },
+        version: 2,
+        warnings: [],
+      }),
+    ).toThrow();
   });
 });
 
@@ -156,6 +236,18 @@ describe("retryStrategySchema", () => {
         type: "FIXED",
       }),
     ).toThrow();
+  });
+
+  it("accepts Checkly's single retry network-error shorthand", () => {
+    expect(
+      retryStrategySchema.parse({
+        onlyOn: "NETWORK_ERROR",
+        type: "SINGLE_RETRY",
+      }),
+    ).toEqual({
+      onlyOn: "NETWORK_ERROR",
+      type: "SINGLE_RETRY",
+    });
   });
 });
 

@@ -1,3 +1,5 @@
+import { compileProject } from "@selfchecks/selfchecks/compiler";
+
 import {
   createAuthorizationHeaders,
   createRemoteBundleFormData,
@@ -17,22 +19,35 @@ export type DeploySummary = {
     groupKey?: string;
     groupName?: string;
     key: string;
+    maxResponseTime?: number;
+    muted: boolean;
     name: string;
     request?: {
-      assertions: Array<{ operator: string; source: string; target?: unknown }>;
+      assertions: Array<{
+        comparison?: string;
+        operator?: string;
+        property?: string;
+        source: string;
+        target?: unknown;
+      }>;
+      basicAuth?: { password: string; username: string };
       body?: string;
+      bodyType?: "FORM" | "GRAPHQL" | "JSON" | "NONE" | "RAW";
+      followRedirects?: boolean;
       headers: Record<string, string>;
       method: string;
+      queryParameters: Record<string, string>;
       url: string;
     };
     retryStrategy?: {
       baseBackoffSeconds?: number;
       maxDurationSeconds?: number;
       maxRetries?: number;
-      onlyOn?: string[];
+      onlyOn?: "NETWORK_ERROR" | string[];
       sameRegion?: boolean;
-      type: "EXPONENTIAL" | "FIXED" | "LINEAR" | "NO_RETRIES";
+      type: "EXPONENTIAL" | "FIXED" | "LINEAR" | "NO_RETRIES" | "SINGLE_RETRY";
     };
+    shouldFail: boolean;
     tags: string[];
     type: "api" | "browser";
   }>;
@@ -47,6 +62,7 @@ export type RemoteDeployOptions = {
   allowRemovals: boolean;
   apiToken: string;
   apiUrl: string;
+  configPath?: string;
   projectSlug: string;
   rootDir: string;
 };
@@ -69,9 +85,14 @@ export async function runRemoteDeploy(
   options: RemoteDeployOptions,
 ): Promise<DeploySummary> {
   const apiUrl = normalizeApiUrl(options.apiUrl);
+  const deploymentManifest = await compileProject({
+    ...(options.configPath ? { configPath: options.configPath } : {}),
+    rootDir: options.rootDir,
+  });
   const response = await fetch(`${apiUrl}/api/cli/deployments`, {
     body: await createRemoteBundleFormData(options.rootDir, {
       allowRemovals: options.allowRemovals,
+      deploymentManifest,
       projectSlug: options.projectSlug,
     }),
     headers: createAuthorizationHeaders(options.apiToken),

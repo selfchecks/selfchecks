@@ -65,6 +65,7 @@ export async function deliverRunNotifications(
 
     if (
       !run?.check ||
+      run.check.muted ||
       !run.check.group ||
       run.testSession?.kind === "TEST" ||
       run.runSource === "MANUAL" ||
