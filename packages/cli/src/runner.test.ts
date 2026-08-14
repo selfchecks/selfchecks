@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -143,7 +142,7 @@ describe("runCheckById", () => {
     );
   });
 
-  it("preserves project trace settings and isolates Playwright artifacts per run", async () => {
+  it("disables Playwright retries, preserves trace settings, and isolates artifacts", async () => {
     const rootDir = await createTempProject();
     const runId = "run_1";
     const artifactsRootDir = path.join(rootDir, "runtime-artifacts");
@@ -269,19 +268,23 @@ describe("runCheckById", () => {
       status: "passed",
     });
 
-    expect(spawn).toHaveBeenCalledWith(
-      "npx",
-      [
-        "playwright",
-        "test",
-        "src/__checks__/UI/App/billing/rest.autopayment.spec.ts",
-        "--config",
-        "playwright.config.ts",
-        "--output",
-        isolatedOutputDir,
-        "--reporter",
-        "list",
-      ],
+    const spawnCall = mocks.spawn.mock.calls[0];
+
+    expect(spawnCall?.[0]).toBe("npx");
+    expect(spawnCall?.[1]).toEqual([
+      "playwright",
+      "test",
+      "src/__checks__/UI/App/billing/rest.autopayment.spec.ts",
+      "--config",
+      "playwright.config.ts",
+      "--output",
+      isolatedOutputDir,
+      "--reporter",
+      "list",
+      "--retries",
+      "0",
+    ]);
+    expect(spawnCall?.[2]).toEqual(
       expect.objectContaining({
         cwd: rootDir,
         env: expect.objectContaining({
