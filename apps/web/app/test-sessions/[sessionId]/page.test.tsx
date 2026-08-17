@@ -99,7 +99,11 @@ describe("TestSessionPage", () => {
     expect(screen.getByRole("heading", { name: "Nightly regression" })).toBeTruthy();
     expect(screen.getByText("Duration 1.2 s")).toBeTruthy();
     expect(screen.getAllByText("Regress")).toHaveLength(2);
-    expect(screen.getByText("https://example.test")).toBeTruthy();
+    const targetUrlLink = screen.getByRole("link", {
+      name: "https://example.test",
+    });
+    expect(targetUrlLink.getAttribute("href")).toBe("https://example.test");
+    expect(targetUrlLink.getAttribute("target")).toBe("_blank");
     expect(screen.getByText("Repository")).toBeTruthy();
     expect(screen.getByText("sendsay-ru/frontend/account")).toBeTruthy();
     expect(screen.getByText("Version")).toBeTruthy();

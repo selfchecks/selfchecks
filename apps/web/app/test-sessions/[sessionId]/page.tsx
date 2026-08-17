@@ -102,13 +102,16 @@ export default async function TestSessionPage({ params }: TestSessionPageProps) 
             <div className="text-slate-500">URL</div>
             <div className="min-w-0">
               {session.targetUrl ? (
-                <span
-                  className="inline-flex max-w-full items-center gap-2 truncate text-slate-200"
+                <a
+                  className="inline-flex max-w-full items-center gap-2 truncate text-blue-300 hover:text-blue-200"
+                  href={session.targetUrl}
+                  rel="noreferrer"
+                  target="_blank"
                   title={session.targetUrl}
                 >
                   <Link2 className="h-4 w-4 shrink-0 text-slate-500" />
                   <span className="truncate">{session.targetUrl}</span>
-                </span>
+                </a>
               ) : (
                 <span className="text-slate-600">-</span>
               )}
