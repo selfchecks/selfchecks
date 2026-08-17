@@ -41,6 +41,7 @@ COPY . .
 RUN yarn install --immutable
 RUN yarn workspace @selfchecks/core build \
   && yarn workspace @selfchecks/db build \
+  && yarn workspace @selfchecks/selfchecks build \
   && yarn workspace @selfchecks/cli build \
   && yarn workspaces focus @selfchecks/cli --production
 
