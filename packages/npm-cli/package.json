@@ -1,6 +1,6 @@
 {
   "name": "@selfchecks/selfchecks-cli",
-  "version": "0.1.27",
+  "version": "0.1.28",
   "description": "Remote CLI for Selfchecks",
   "license": "Elastic-2.0",
   "type": "module",
@@ -37,7 +37,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@selfchecks/selfchecks": "workspace:*",
+    "@selfchecks/selfchecks": "0.1.28",
     "commander": "^14.0.0"
   },
   "devDependencies": {
