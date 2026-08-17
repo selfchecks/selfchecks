@@ -1765,10 +1765,11 @@ describe("dashboard data", () => {
 
     expect(data?.session.checks).toHaveLength(1);
     expect(data?.session.checks[0]).toMatchObject({
-      checkHref: "/test-sessions/session_1/checks/signin",
-      checkId: "signin",
+      checkHref: "/test-sessions/session_1/checks/check_live",
+      checkId: "check_live",
       checkKey: "signin",
       latestRunHref: "/checks/check_live/runs/run_2",
+      projectSlug: "account",
       runCount: 2,
       runState: "queued",
     });
@@ -1779,6 +1780,94 @@ describe("dashboard data", () => {
         total: 1,
       },
     });
+  });
+
+  it("keeps same-key tests from different projects in separate session rows", async () => {
+    mocks.testSessionFindFirst.mockResolvedValue({
+      commitSha: null,
+      createdAt: new Date("2026-08-17T15:00:00.000Z"),
+      id: "session_full",
+      jobUrl: null,
+      name: "Full regression",
+      pipelineUrl: null,
+      project: {
+        slug: "account",
+      },
+      ref: "release/3.192.52",
+      repository: "frontend/account",
+      runs: [
+        {
+          artifacts: [],
+          check: {
+            degradedResponseTime: null,
+            enabled: true,
+            entrypoint: "account/health.spec.ts",
+            group: { name: "Core" },
+            id: "check_account_health",
+            key: "health",
+            name: "Account health",
+            project: { slug: "account" },
+            request: null,
+            tags: [],
+            type: "BROWSER",
+          },
+          checkId: "check_account_health",
+          createdAt: new Date("2026-08-17T15:00:00.000Z"),
+          durationMs: 100,
+          finishedAt: new Date("2026-08-17T15:00:00.100Z"),
+          id: "run_account_health",
+          logsPath: null,
+          result: null,
+          status: "PASSED",
+        },
+        {
+          artifacts: [],
+          check: {
+            degradedResponseTime: null,
+            enabled: true,
+            entrypoint: "api/health.spec.ts",
+            group: { name: "Core" },
+            id: "check_api_health",
+            key: "health",
+            name: "API health",
+            project: { slug: "api" },
+            request: null,
+            tags: [],
+            type: "BROWSER",
+          },
+          checkId: "check_api_health",
+          createdAt: new Date("2026-08-17T15:00:00.000Z"),
+          durationMs: 120,
+          finishedAt: new Date("2026-08-17T15:00:00.120Z"),
+          id: "run_api_health",
+          logsPath: null,
+          result: null,
+          status: "PASSED",
+        },
+      ],
+      source: null,
+      status: "PASSED",
+      targetUrl: "https://pr-331.app.example.test",
+    });
+
+    const data = await getTestSessionData("session_full");
+
+    expect(data?.session.checks).toHaveLength(2);
+    expect(data?.session.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          checkId: "check_account_health",
+          checkKey: "health",
+          projectSlug: "account",
+        }),
+        expect.objectContaining({
+          checkId: "check_api_health",
+          checkKey: "health",
+          projectSlug: "api",
+        }),
+      ]),
+    );
+    expect(data?.session.summary.total).toBe(2);
   });
 
   it("loads CLI test sessions with target URLs and test summaries", async () => {

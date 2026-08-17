@@ -134,6 +134,7 @@ export type TestSessionCheckRow = {
   groupName: string;
   latestRunHref: string;
   latestRunOccurredAt: string;
+  projectSlug: string;
   isRegress: boolean;
   runCount: number;
   runState: DashboardRunState;
@@ -1316,13 +1317,7 @@ export async function getTestSessionData(
         (runs[0] ? getRunCheckSnapshot(runs[0]).projectSlug : "default"),
       session: {
         ...mappedSession,
-        checks: mapTestSessionChecks(
-          runs,
-          session.id,
-          timeZone,
-          getTestSessionProjectSlug(typedSession),
-          dashboardStatuses,
-        ),
+        checks: mapTestSessionChecks(runs, session.id, timeZone, dashboardStatuses),
       },
     };
   } catch (error) {
@@ -1779,11 +1774,7 @@ function mapTestSession(
 ): TestSessionRow {
   const runs = session.runs;
   const latestRuns = getLatestRunsByCheck(runs);
-  const summary = summarizeTestSessionRuns(
-    latestRuns,
-    getTestSessionProjectSlug(session),
-    dashboardStatuses,
-  );
+  const summary = summarizeTestSessionRuns(latestRuns, dashboardStatuses);
   const status = resolveTestSessionStatus(session.status, latestRuns);
   const dashboardStatus =
     status === "PASSED"
@@ -1837,7 +1828,6 @@ function mapTestSessionChecks(
   runs: TestSessionRunWithCheck[],
   sessionId: string,
   timeZone: string,
-  projectSlug: string,
   dashboardStatuses: Map<string, string>,
 ): TestSessionCheckRow[] {
   const runsByCheck = new Map<string, TestSessionRunWithCheck[]>();
@@ -1845,7 +1835,9 @@ function mapTestSessionChecks(
   for (const run of runs) {
     const check = getRunCheckSnapshot(run);
 
-    runsByCheck.set(check.key, [...(runsByCheck.get(check.key) ?? []), run]);
+    const identity = getTestIdentity(check.projectSlug, check.key);
+
+    runsByCheck.set(identity, [...(runsByCheck.get(identity) ?? []), run]);
   }
 
   return [...runsByCheck.values()]
@@ -1854,7 +1846,7 @@ function mapTestSessionChecks(
       const check = getRunCheckSnapshot(latestRun);
       const isRegress = isRegression(
         latestRun,
-        projectSlug,
+        check.projectSlug,
         check.key,
         dashboardStatuses,
       );
@@ -1863,8 +1855,8 @@ function mapTestSessionChecks(
         aiAnalysis: formatAiAnalysis(latestRun.result),
         checkHref: `/test-sessions/${encodeURIComponent(
           sessionId,
-        )}/checks/${encodeURIComponent(check.key)}`,
-        checkId: check.key,
+        )}/checks/${encodeURIComponent(check.id)}`,
+        checkId: check.id,
         checkKey: check.key,
         checkName: check.name,
         checkType: check.type.toLowerCase() as DashboardCheckRow["type"],
@@ -1873,6 +1865,7 @@ function mapTestSessionChecks(
         isRegress,
         latestRunHref: buildRunHref(check.id, latestRun.id),
         latestRunOccurredAt: formatBarTimestamp(latestRun, timeZone),
+        projectSlug: check.projectSlug,
         runCount: checkRuns.length,
         runState: mapRunState(latestRun.status),
         status: getRunDashboardStatus(latestRun),
@@ -1932,10 +1925,11 @@ function getLatestRunsByCheck(
 
   for (const run of runs) {
     const check = getRunCheckSnapshot(run);
-    const current = runsByCheck.get(check.key);
+    const identity = getTestIdentity(check.projectSlug, check.key);
+    const current = runsByCheck.get(identity);
 
     if (!current || run.createdAt > current.createdAt) {
-      runsByCheck.set(check.key, run);
+      runsByCheck.set(identity, run);
     }
   }
 
@@ -1954,14 +1948,13 @@ async function loadLatestDashboardStatuses(
   const identities = new Map<string, { key: string; projectSlug: string }>();
 
   for (const session of sessions) {
-    const projectSlug = getTestSessionProjectSlug(session);
-
     for (const run of getLatestRunsByCheck(session.runs)) {
       if (run.status !== "FAILED") {
         continue;
       }
 
-      const key = getRunCheckSnapshot(run).key;
+      const check = getRunCheckSnapshot(run);
+      const { key, projectSlug } = check;
       identities.set(getTestIdentity(projectSlug, key), { key, projectSlug });
     }
   }
@@ -2011,13 +2004,6 @@ async function loadLatestDashboardStatuses(
   );
 }
 
-function getTestSessionProjectSlug(session: TestSessionWithRuns): string {
-  return (
-    session.project?.slug ??
-    (session.runs[0] ? getRunCheckSnapshot(session.runs[0]).projectSlug : "default")
-  );
-}
-
 function getTestIdentity(projectSlug: string, checkKey: string): string {
   return `${projectSlug}\u0000${checkKey}`;
 }
@@ -2036,7 +2022,6 @@ function isRegression(
 
 function summarizeTestSessionRuns(
   runs: TestSessionRunWithCheck[],
-  projectSlug: string,
   dashboardStatuses: Map<string, string>,
 ): TestSessionRunCountSummary {
   return runs.reduce<TestSessionRunCountSummary>(
@@ -2044,7 +2029,12 @@ function summarizeTestSessionRuns(
       const runState = mapRunState(run.status);
       const status = getRunDashboardStatus(run);
       const check = getRunCheckSnapshot(run);
-      const isRegress = isRegression(run, projectSlug, check.key, dashboardStatuses);
+      const isRegress = isRegression(
+        run,
+        check.projectSlug,
+        check.key,
+        dashboardStatuses,
+      );
 
       return {
         failed: summary.failed + (status === "failing" && !isRegress ? 1 : 0),

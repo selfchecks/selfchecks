@@ -46,6 +46,7 @@ const sessionDetailFixture: TestSessionDetailData = {
         isRegress: true,
         latestRunHref: "/checks/check_1/runs/run_1",
         latestRunOccurredAt: "Jul 05 14:20",
+        projectSlug: "default",
         runCount: 2,
         runState: "failed",
         status: "failing",
@@ -98,6 +99,9 @@ describe("TestSessionPage", () => {
     ).toBe("/test-sessions");
     expect(screen.getByRole("heading", { name: "Nightly regression" })).toBeTruthy();
     expect(screen.getByText("Duration 1.2 s")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Rerun tests-session" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Rerun failed tests" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Make full regress" })).toBeTruthy();
     expect(screen.getAllByText("Regress")).toHaveLength(2);
     const targetUrlLink = screen.getByRole("link", {
       name: "https://example.test",

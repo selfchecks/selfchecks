@@ -748,6 +748,95 @@ describe("runCheckById", () => {
       }),
     );
   });
+
+  it("runs a pre-created check from another project inside a full regression session", async () => {
+    const runId = "run_cross_project";
+
+    mocks.checkFindFirst.mockResolvedValue({
+      degradedResponseTime: null,
+      entrypoint: null,
+      group: null,
+      id: "check_api",
+      key: "api-health",
+      name: "API health",
+      request: {
+        assertions: [],
+        headers: {},
+        method: "GET",
+        url: "https://example.test/health",
+      },
+      retryStrategy: null,
+      runs: [],
+      tags: ["api"],
+      type: "API",
+    });
+    mocks.projectFindUnique.mockResolvedValue({ id: "project_api" });
+    mocks.testSessionFindUnique.mockResolvedValue({
+      id: "session_full",
+      kind: "TEST",
+      projectId: "project_account",
+      status: "RUNNING",
+    });
+    mocks.testSessionUpdate.mockResolvedValue({
+      id: "session_full",
+      kind: "TEST",
+      projectId: "project_account",
+      status: "RUNNING",
+    });
+    mocks.checkRunFindFirst.mockResolvedValue({
+      checkId: "check_api",
+      id: runId,
+      projectId: "project_api",
+      testSessionId: "session_full",
+    });
+    mocks.checkRunUpdate.mockImplementation(async (args) => ({
+      checkId: "check_api",
+      id: args.where.id,
+      ...args.data,
+    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response('{"ok":true}', { status: 200 })),
+    );
+
+    await expect(
+      runCheckById({
+        checkId: "check_api",
+        env: [],
+        existingTestSessionId: "session_full",
+        projectSlug: "api",
+        record: true,
+        reporter: "list",
+        rootDir: "/repo/api",
+        runId,
+        runSource: "MANUAL",
+      }),
+    ).resolves.toMatchObject({
+      checkKey: "api-health",
+      runId,
+      status: "passed",
+    });
+
+    expect(mocks.checkRunFindFirst).toHaveBeenNthCalledWith(1, {
+      select: {
+        id: true,
+      },
+      where: {
+        id: runId,
+        projectId: "project_api",
+        testSessionId: "session_full",
+      },
+    });
+    expect(mocks.checkRunUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          checkSnapshotProjectSlug: "api",
+          testSessionId: "session_full",
+        }),
+        where: { id: runId },
+      }),
+    );
+  });
 });
 
 describe("runChecks", () => {

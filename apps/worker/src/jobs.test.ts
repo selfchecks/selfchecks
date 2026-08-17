@@ -85,6 +85,7 @@ vi.mock("@selfchecks/db", () => ({
 }));
 
 import {
+  finalizeTestSession,
   handleCheckJob,
   handleDeploymentJob,
   handleTestSessionCheckJob,
@@ -242,6 +243,37 @@ describe("handleCheckJob", () => {
         where: expect.objectContaining({
           id: "session_1",
         }),
+      }),
+    );
+  });
+
+  it("keeps same-key tests from different projects separate when finalizing", async () => {
+    mocks.checkRunFindFirst.mockResolvedValue(null);
+    mocks.checkRunFindMany.mockResolvedValue([
+      {
+        attempt: 1,
+        checkSnapshotKey: "health",
+        checkSnapshotProjectSlug: "account",
+        createdAt: new Date("2026-08-17T15:00:00.000Z"),
+        id: "run_account",
+        status: "FAILED",
+      },
+      {
+        attempt: 1,
+        checkSnapshotKey: "health",
+        checkSnapshotProjectSlug: "api",
+        createdAt: new Date("2026-08-17T15:01:00.000Z"),
+        id: "run_api",
+        status: "PASSED",
+      },
+    ]);
+
+    await finalizeTestSession("session_full");
+
+    expect(mocks.testSessionUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { status: "FAILED" },
+        where: expect.objectContaining({ id: "session_full" }),
       }),
     );
   });

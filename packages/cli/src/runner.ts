@@ -271,7 +271,7 @@ export async function runCheckById(
     tagSets: [],
   };
   const session = options.existingTestSessionId
-    ? await resolveRunSession(runOptions)
+    ? await resolveRunSession(runOptions, options.runId)
     : undefined;
 
   return runCheck(check, runOptions, session, options.runId);
@@ -306,7 +306,7 @@ export async function runTestSessionCheck(
     throw new Error(`Check ${options.check.key} was not found in the test session.`);
   }
 
-  const session = await resolveRunSession(runOptions);
+  const session = await resolveRunSession(runOptions, options.existingRunId);
 
   return runCheck(check, runOptions, session, options.existingRunId);
 }
@@ -403,7 +403,10 @@ function doesCheckMatchTags(check: { tags: string[] }, tagSets: string[][]): boo
   return tagSets.some((tagSet) => tagSet.every((tag) => checkTags.includes(tag)));
 }
 
-async function resolveRunSession(options: RunChecksOptions): Promise<TestSession> {
+async function resolveRunSession(
+  options: RunChecksOptions,
+  existingRunId?: string,
+): Promise<TestSession> {
   if (options.existingTestSessionId) {
     const session = await prisma.testSession.findUnique({
       where: {
@@ -424,7 +427,24 @@ async function resolveRunSession(options: RunChecksOptions): Promise<TestSession
       where: { slug: options.projectSlug },
     });
 
-    if (!project || (session.projectId && session.projectId !== project.id)) {
+    const crossProjectRun =
+      project && session.projectId && session.projectId !== project.id && existingRunId
+        ? await prisma.checkRun.findFirst({
+            select: {
+              id: true,
+            },
+            where: {
+              id: existingRunId,
+              projectId: project.id,
+              testSessionId: session.id,
+            },
+          })
+        : undefined;
+
+    if (
+      !project ||
+      (session.projectId && session.projectId !== project.id && !crossProjectRun)
+    ) {
       throw new Error(
         `Test session ${options.existingTestSessionId} does not belong to project ${options.projectSlug}.`,
       );

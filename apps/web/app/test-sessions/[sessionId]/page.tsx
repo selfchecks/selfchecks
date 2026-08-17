@@ -9,6 +9,7 @@ import { getDashboardAccountLabel } from "@/lib/settings-data";
 import { formatTestSessionSource } from "@/lib/test-session-source";
 
 import { RunStateBadge, SummaryPills } from "../test-session-components";
+import { SessionActions } from "./session-actions";
 import { SessionCheckActions } from "./session-check-actions";
 
 export const dynamic = "force-dynamic";
@@ -90,10 +91,21 @@ export default async function TestSessionPage({ params }: TestSessionPageProps) 
                 <span>Duration {session.duration}</span>
               </div>
             </div>
-            <div className="min-w-0 text-right text-sm text-slate-400">
-              <div>Project {data.projectSlug}</div>
-              <div className="mt-1 max-w-xl truncate" title={session.id}>
-                {session.id}
+            <div className="flex min-w-0 max-w-full flex-col items-end gap-3">
+              <SessionActions
+                attemptCount={session.checks.reduce(
+                  (total, check) => total + check.runCount,
+                  0,
+                )}
+                failedCount={session.summary.failed + session.summary.regress}
+                runState={session.runState}
+                sessionId={session.id}
+              />
+              <div className="min-w-0 text-right text-sm text-slate-400">
+                <div>Project {data.projectSlug}</div>
+                <div className="mt-1 max-w-xl truncate" title={session.id}>
+                  {session.id}
+                </div>
               </div>
             </div>
           </div>
@@ -143,11 +155,7 @@ export default async function TestSessionPage({ params }: TestSessionPageProps) 
             <SummaryPills summary={session.summary} />
           </section>
 
-          <SessionChecksTable
-            checks={session.checks}
-            projectSlug={data.projectSlug}
-            sessionId={session.id}
-          />
+          <SessionChecksTable checks={session.checks} sessionId={session.id} />
         </section>
       </div>
     </main>
@@ -156,11 +164,9 @@ export default async function TestSessionPage({ params }: TestSessionPageProps) 
 
 function SessionChecksTable({
   checks,
-  projectSlug,
   sessionId,
 }: {
   checks: TestSessionCheckRow[];
-  projectSlug: string;
   sessionId: string;
 }) {
   return (
@@ -183,7 +189,6 @@ function SessionChecksTable({
                 <SessionCheckTableRow
                   check={check}
                   key={check.checkId}
-                  projectSlug={projectSlug}
                   sessionId={sessionId}
                 />
               ))
@@ -203,11 +208,9 @@ function SessionChecksTable({
 
 function SessionCheckTableRow({
   check,
-  projectSlug,
   sessionId,
 }: {
   check: TestSessionCheckRow;
-  projectSlug: string;
   sessionId: string;
 }) {
   return (
@@ -219,7 +222,7 @@ function SessionCheckTableRow({
         >
           <span className="truncate font-medium">{check.checkName}</span>
           <span className="mt-1 truncate text-xs text-slate-500">
-            {check.groupName} / {check.checkKey}
+            {check.projectSlug} / {check.groupName} / {check.checkKey}
           </span>
         </Link>
       </td>
@@ -240,7 +243,7 @@ function SessionCheckTableRow({
       <td className="px-4 py-3">
         <SessionCheckActions
           check={check}
-          projectSlug={projectSlug}
+          projectSlug={check.projectSlug}
           sessionId={sessionId}
         />
       </td>

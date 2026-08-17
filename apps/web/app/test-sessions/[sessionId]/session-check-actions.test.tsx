@@ -33,6 +33,7 @@ const failedCheck: TestSessionCheckRow = {
   isRegress: false,
   latestRunHref: "/checks/signin/runs/run_1",
   latestRunOccurredAt: "Jul 15 11:56",
+  projectSlug: "account",
   runCount: 3,
   runState: "failed",
   status: "failing",

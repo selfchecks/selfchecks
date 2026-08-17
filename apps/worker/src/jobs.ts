@@ -485,6 +485,7 @@ export async function finalizeTestSession(sessionId: string): Promise<void> {
     select: {
       attempt: true,
       checkSnapshotKey: true,
+      checkSnapshotProjectSlug: true,
       createdAt: true,
       id: true,
       status: true,
@@ -497,7 +498,9 @@ export async function finalizeTestSession(sessionId: string): Promise<void> {
   const finalRuns = new Map<string, (typeof runs)[number]>();
 
   runs.forEach((run) => {
-    const key = run.checkSnapshotKey ?? run.id;
+    const key = `${run.checkSnapshotProjectSlug ?? "default"}\u0000${
+      run.checkSnapshotKey ?? run.id
+    }`;
     const current = finalRuns.get(key);
 
     if (
