@@ -33,7 +33,22 @@ async function createRepositoryFixture(versions = ["1.2.3", "1.2.3", "1.2.3"]) {
       writeFixture(
         repositoryRoot,
         manifestPath,
-        `${JSON.stringify({ name: manifestPath, version: versions[index] }, null, 2)}\n`,
+        `${JSON.stringify(
+          {
+            name: manifestPath,
+            version: versions[index],
+            ...(manifestPath === "packages/npm-cli/package.json"
+              ? {
+                  dependencies: {
+                    "@selfchecks/selfchecks": "workspace:*",
+                    commander: "^14.0.0",
+                  },
+                }
+              : {}),
+          },
+          null,
+          2,
+        )}\n`,
       ),
     ),
   );
@@ -70,6 +85,17 @@ describe("bumpNpmPackageVersions", () => {
     await expect(
       readFile(path.join(repositoryRoot, "packages/npm-cli/src/version.ts"), "utf8"),
     ).resolves.toContain('SELFCHECKS_CLI_VERSION = "1.2.4"');
+    const npmCliManifest = JSON.parse(
+      await readFile(
+        path.join(repositoryRoot, "packages/npm-cli/package.json"),
+        "utf8",
+      ),
+    ) as { dependencies: Record<string, string> };
+
+    expect(npmCliManifest.dependencies).toEqual({
+      "@selfchecks/selfchecks": "1.2.4",
+      commander: "^14.0.0",
+    });
     await expect(
       readFile(
         path.join(repositoryRoot, "packages/create-selfchecks/src/templates.ts"),
