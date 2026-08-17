@@ -62,21 +62,10 @@ export async function bumpNpmPackageVersions(repositoryRoot, { write = true } = 
 
   const currentVersion = manifests[0].manifest.version;
   const nextVersion = nextPatchVersion(currentVersion);
-  const updates = manifests.map(({ absolutePath, manifest, manifestPath }) => {
-    const nextManifest = { ...manifest, version: nextVersion };
-
-    if (manifestPath === "packages/npm-cli/package.json") {
-      nextManifest.dependencies = {
-        ...manifest.dependencies,
-        "@selfchecks/selfchecks": nextVersion,
-      };
-    }
-
-    return {
-      absolutePath,
-      source: `${JSON.stringify(nextManifest, null, 2)}\n`,
-    };
-  });
+  const updates = manifests.map(({ absolutePath, manifest }) => ({
+    absolutePath,
+    source: `${JSON.stringify({ ...manifest, version: nextVersion }, null, 2)}\n`,
+  }));
 
   const versionMarkers = [
     {

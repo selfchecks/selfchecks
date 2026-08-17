@@ -37,7 +37,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@selfchecks/selfchecks": "0.1.28",
+    "@selfchecks/selfchecks": "workspace:*",
     "commander": "^14.0.0"
   },
   "devDependencies": {

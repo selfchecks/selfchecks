@@ -93,7 +93,7 @@ describe("bumpNpmPackageVersions", () => {
     ) as { dependencies: Record<string, string> };
 
     expect(npmCliManifest.dependencies).toEqual({
-      "@selfchecks/selfchecks": "1.2.4",
+      "@selfchecks/selfchecks": "workspace:*",
       commander: "^14.0.0",
     });
     await expect(

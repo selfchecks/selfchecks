@@ -309,6 +309,7 @@ jobs:
         shell: bash
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          YARN_NPM_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
 
@@ -321,7 +322,7 @@ jobs:
               continue
             fi
 
-            npm publish "./${package_dir}" --access public --provenance
+            (cd "${package_dir}" && yarn npm publish --access public --provenance)
           done
 
   smoke-create-selfchecks:
