@@ -122,6 +122,11 @@ type AiAnalysisDrawerState = {
   checkName: string;
   occurredAt: string;
 };
+type SettingsNotice = {
+  message: string;
+  tone: "error" | "success";
+};
+type PerformanceSettingsDraft = Record<keyof PerformanceSettingsData, string>;
 
 const AI_CUSTOM_ENDPOINT_VALUE = "__custom__";
 const DASHBOARD_ACTIVITY_REFRESH_INTERVAL_MS = 2000;
@@ -1784,22 +1789,14 @@ function SettingsScreen({
     model: settings.ai.model,
     responseLanguage: settings.ai.responseLanguage,
   }));
-  const [performanceDraft, setPerformanceDraft] = useState(() => ({
-    failedArtifactRetentionDays: settings.performance.failedArtifactRetentionDays,
-    historyRetentionDays: settings.performance.historyRetentionDays,
-    passedArtifactRetentionDays: settings.performance.passedArtifactRetentionDays,
-    queuedRunTimeoutMinutes: settings.performance.queuedRunTimeoutMinutes,
-    runningRunTimeoutMinutes: settings.performance.runningRunTimeoutMinutes,
-    testSessionTimeoutMinutes: settings.performance.testSessionTimeoutMinutes,
-    testSessionWorkspaceRetentionDays:
-      settings.performance.testSessionWorkspaceRetentionDays,
-    workerConcurrency: settings.performance.workerConcurrency,
-  }));
+  const [performanceDraft, setPerformanceDraft] = useState(() =>
+    createPerformanceSettingsDraft(settings.performance),
+  );
   const [apiKeyName, setApiKeyName] = useState("");
   const [generatedApiKey, setGeneratedApiKey] = useState<
     { id: string; value: string } | undefined
   >();
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState<SettingsNotice>();
   const [secretRows, setSecretRows] = useState<RuntimeSecretDraft[]>(() =>
     settings.environment.secrets.map(createSecretDraft),
   );
@@ -1840,17 +1837,7 @@ function SettingsScreen({
   }, [settings.ai]);
 
   useEffect(() => {
-    setPerformanceDraft({
-      failedArtifactRetentionDays: settings.performance.failedArtifactRetentionDays,
-      historyRetentionDays: settings.performance.historyRetentionDays,
-      passedArtifactRetentionDays: settings.performance.passedArtifactRetentionDays,
-      queuedRunTimeoutMinutes: settings.performance.queuedRunTimeoutMinutes,
-      runningRunTimeoutMinutes: settings.performance.runningRunTimeoutMinutes,
-      testSessionTimeoutMinutes: settings.performance.testSessionTimeoutMinutes,
-      testSessionWorkspaceRetentionDays:
-        settings.performance.testSessionWorkspaceRetentionDays,
-      workerConcurrency: settings.performance.workerConcurrency,
-    });
+    setPerformanceDraft(createPerformanceSettingsDraft(settings.performance));
   }, [settings.performance]);
 
   useEffect(() => {
@@ -1888,7 +1875,7 @@ function SettingsScreen({
   async function saveBasic(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSavingBasic(true);
-    setNotice("");
+    setNotice(undefined);
 
     try {
       const basicSettings = await postBasicSettings({
@@ -1907,9 +1894,12 @@ function SettingsScreen({
         domain: basicSettings.domain,
         timeZone: basicSettings.timeZone,
       }));
-      setNotice("Basic settings saved.");
+      setNotice({ message: "Basic settings saved.", tone: "success" });
     } catch (error) {
-      setNotice(getErrorMessage(error));
+      setNotice({
+        message: `Basic settings were not saved. ${getErrorMessage(error)}`,
+        tone: "error",
+      });
     } finally {
       setSavingBasic(false);
     }
@@ -1918,7 +1908,7 @@ function SettingsScreen({
   async function saveSecurity(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSavingSecurity(true);
-    setNotice("");
+    setNotice(undefined);
 
     try {
       await postBasicSettings({
@@ -1934,9 +1924,12 @@ function SettingsScreen({
         password: "",
         passwordConfirm: "",
       });
-      setNotice("Security settings saved.");
+      setNotice({ message: "Security settings saved.", tone: "success" });
     } catch (error) {
-      setNotice(getErrorMessage(error));
+      setNotice({
+        message: `Security settings were not saved. ${getErrorMessage(error)}`,
+        tone: "error",
+      });
     } finally {
       setSavingSecurity(false);
     }
@@ -1945,7 +1938,7 @@ function SettingsScreen({
   async function generateApiKey(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSavingApiKey(true);
-    setNotice("");
+    setNotice(undefined);
 
     try {
       const payload = await postSettingsJson<{
@@ -1972,9 +1965,9 @@ function SettingsScreen({
         value: payload.apiKey,
       });
       setApiKeyName("");
-      setNotice("API key generated.");
+      setNotice({ message: "API key generated.", tone: "success" });
     } catch (error) {
-      setNotice(getErrorMessage(error));
+      setNotice({ message: getErrorMessage(error), tone: "error" });
     } finally {
       setSavingApiKey(false);
     }
@@ -1987,9 +1980,9 @@ function SettingsScreen({
 
     try {
       await navigator.clipboard.writeText(generatedApiKey.value);
-      setNotice("API key copied.");
+      setNotice({ message: "API key copied.", tone: "success" });
     } catch {
-      setNotice("Unable to copy API key.");
+      setNotice({ message: "Unable to copy API key.", tone: "error" });
     }
   }
 
@@ -1999,7 +1992,7 @@ function SettingsScreen({
     }
 
     setRevokingApiKeyId(id);
-    setNotice("");
+    setNotice(undefined);
 
     try {
       const response = await fetch(`/api/settings/api-keys/${encodeURIComponent(id)}`, {
@@ -2016,9 +2009,9 @@ function SettingsScreen({
         apiKeys: settings.apiKeys.filter((key) => key.id !== id),
       });
       setGeneratedApiKey((current) => (current?.id === id ? undefined : current));
-      setNotice("API key revoked.");
+      setNotice({ message: "API key revoked.", tone: "success" });
     } catch (error) {
-      setNotice(getErrorMessage(error));
+      setNotice({ message: getErrorMessage(error), tone: "error" });
     } finally {
       setRevokingApiKeyId(undefined);
     }
@@ -2027,7 +2020,7 @@ function SettingsScreen({
   async function saveAi(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSavingAi(true);
-    setNotice("");
+    setNotice(undefined);
 
     try {
       const payload = await postSettingsJson<{
@@ -2056,9 +2049,12 @@ function SettingsScreen({
         model: aiSettings.model,
         responseLanguage: aiSettings.responseLanguage,
       }));
-      setNotice("AI settings saved.");
+      setNotice({ message: "AI settings saved.", tone: "success" });
     } catch (error) {
-      setNotice(getErrorMessage(error));
+      setNotice({
+        message: `AI settings were not saved. ${getErrorMessage(error)}`,
+        tone: "error",
+      });
     } finally {
       setSavingAi(false);
     }
@@ -2067,14 +2063,14 @@ function SettingsScreen({
   async function savePerformance(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSavingPerformance(true);
-    setNotice("");
+    setNotice(undefined);
 
     try {
       const payload = await postSettingsJson<{
         error?: string;
         settings?: DashboardSettingsData["performance"];
       }>("/api/settings/performance", {
-        ...performanceDraft,
+        ...normalizePerformanceSettingsDraft(performanceDraft),
         projectSlug: settings.projectSlug,
       });
 
@@ -2086,9 +2082,12 @@ function SettingsScreen({
         ...settings,
         performance: payload.settings,
       });
-      setNotice("Performance settings saved.");
+      setNotice({ message: "Performance settings saved.", tone: "success" });
     } catch (error) {
-      setNotice(getErrorMessage(error));
+      setNotice({
+        message: `Performance settings were not saved. ${getErrorMessage(error)}`,
+        tone: "error",
+      });
     } finally {
       setSavingPerformance(false);
     }
@@ -2097,7 +2096,7 @@ function SettingsScreen({
   async function saveRuntime(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSavingRuntime(true);
-    setNotice("");
+    setNotice(undefined);
 
     try {
       const payload = await postSettingsJson<{
@@ -2125,9 +2124,12 @@ function SettingsScreen({
         ...settings,
         environment: payload.environment,
       });
-      setNotice("Environment settings saved.");
+      setNotice({ message: "Environment settings saved.", tone: "success" });
     } catch (error) {
-      setNotice(getErrorMessage(error));
+      setNotice({
+        message: `Environment settings were not saved. ${getErrorMessage(error)}`,
+        tone: "error",
+      });
     } finally {
       setSavingRuntime(false);
     }
@@ -2142,14 +2144,35 @@ function SettingsScreen({
         </div>
       </div>
 
-      {notice ? (
-        <div
-          className="rounded-md border border-slate-700 bg-[#111821] px-3 py-2 text-sm text-slate-300"
-          role="status"
-        >
-          {notice}
-        </div>
-      ) : null}
+      {notice
+        ? createPortal(
+            <div
+              className={cn(
+                "fixed bottom-4 left-4 right-4 z-50 flex items-center gap-3 rounded-md border px-4 py-3 text-sm shadow-xl shadow-black/30 sm:left-auto sm:w-full sm:max-w-md",
+                notice.tone === "success"
+                  ? "border-emerald-800 bg-emerald-950 text-emerald-100"
+                  : "border-red-800 bg-red-950 text-red-100",
+              )}
+              role={notice.tone === "success" ? "status" : "alert"}
+            >
+              {notice.tone === "success" ? (
+                <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" />
+              ) : (
+                <CircleAlert className="h-5 w-5 shrink-0 text-red-400" />
+              )}
+              <span className="min-w-0 flex-1">{notice.message}</span>
+              <button
+                aria-label="Dismiss notification"
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-current/70 hover:bg-white/10 hover:text-current"
+                onClick={() => setNotice(undefined)}
+                type="button"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>,
+            document.body,
+          )
+        : null}
 
       <form
         className="rounded-md border border-slate-800 bg-[#11161d]"
@@ -2429,7 +2452,9 @@ function SettingsScreen({
         <div className="grid gap-5 p-5">
           {performanceSettingFields.map((field) => {
             const fieldId = `settings-performance-${field.key}`;
-            const value = performanceDraft[field.key];
+            const rangeId = `${fieldId}-range`;
+            const inputValue = performanceDraft[field.key];
+            const value = normalizePerformanceSettingValue(field.key, inputValue);
 
             return (
               <div className="grid gap-3 lg:w-1/2" key={field.key}>
@@ -2446,29 +2471,47 @@ function SettingsScreen({
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
-                    <output
-                      className="flex h-10 w-20 items-center justify-end rounded-md border border-slate-700 bg-[#0f151d] px-3 text-sm font-semibold tabular-nums text-slate-100"
-                      htmlFor={fieldId}
-                    >
-                      {value}
-                    </output>
+                    <input
+                      className="h-10 w-20 rounded-md border border-slate-700 bg-[#0f151d] px-3 text-right text-sm font-semibold tabular-nums text-slate-100 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                      id={fieldId}
+                      max={field.max}
+                      min={field.min}
+                      onBlur={() =>
+                        setPerformanceDraft((current) => ({
+                          ...current,
+                          [field.key]: String(
+                            normalizePerformanceSettingValue(
+                              field.key,
+                              current[field.key],
+                            ),
+                          ),
+                        }))
+                      }
+                      onChange={(event) =>
+                        setPerformanceDraft((current) => ({
+                          ...current,
+                          [field.key]: event.target.value,
+                        }))
+                      }
+                      required
+                      step={1}
+                      type="number"
+                      value={inputValue}
+                    />
                     <span className="w-10 text-sm text-slate-500">{field.suffix}</span>
                   </div>
                 </div>
 
                 <input
-                  aria-label={field.label}
+                  aria-label={`${field.label} slider`}
                   className="settings-range w-full cursor-pointer"
-                  id={fieldId}
+                  id={rangeId}
                   max={field.max}
                   min={field.min}
                   onChange={(event) =>
                     setPerformanceDraft((current) => ({
                       ...current,
-                      [field.key]: normalizePerformanceSettingValue(
-                        field.key,
-                        event.target.value,
-                      ),
+                      [field.key]: event.target.value,
                     }))
                   }
                   style={getRangeFillStyle(value, field.min, field.max)}
@@ -2860,6 +2903,25 @@ function getRangeFillStyle(value: number, min: number, max: number): RangeFillSt
   return {
     "--settings-range-fill": `${clampedFill}%`,
   };
+}
+
+function createPerformanceSettingsDraft(
+  settings: PerformanceSettingsData,
+): PerformanceSettingsDraft {
+  return Object.fromEntries(
+    performanceSettingFields.map((field) => [field.key, String(settings[field.key])]),
+  ) as PerformanceSettingsDraft;
+}
+
+function normalizePerformanceSettingsDraft(
+  draft: PerformanceSettingsDraft,
+): PerformanceSettingsData {
+  return Object.fromEntries(
+    performanceSettingFields.map((field) => [
+      field.key,
+      normalizePerformanceSettingValue(field.key, draft[field.key]),
+    ]),
+  ) as PerformanceSettingsData;
 }
 
 function createVariableDraft(

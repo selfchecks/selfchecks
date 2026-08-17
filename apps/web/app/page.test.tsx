@@ -1911,9 +1911,24 @@ describe("DashboardPage", () => {
     expect(screen.getByText("Existing CI")).toBeTruthy();
     expect(screen.getByText("sck_example...cdef")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Performance" })).toBeTruthy();
-    expect(
-      (screen.getByLabelText("Concurrent test runs") as HTMLInputElement).value,
-    ).toBe("2");
+    const concurrencyInput = screen.getByRole("spinbutton", {
+      name: "Concurrent test runs",
+    }) as HTMLInputElement;
+    const concurrencySlider = screen.getByRole("slider", {
+      name: "Concurrent test runs slider",
+    }) as HTMLInputElement;
+
+    expect(concurrencyInput.value).toBe("2");
+    expect(concurrencyInput.readOnly).toBe(false);
+    expect(concurrencyInput.min).toBe("1");
+    expect(concurrencyInput.max).toBe("24");
+
+    await user.clear(concurrencyInput);
+    await user.type(concurrencyInput, "7");
+    expect(concurrencySlider.value).toBe("7");
+
+    fireEvent.change(concurrencySlider, { target: { value: "5" } });
+    expect(concurrencyInput.value).toBe("5");
     expect(
       (screen.getByLabelText("Queued run timeout") as HTMLInputElement).value,
     ).toBe("30");
@@ -1993,7 +2008,12 @@ describe("DashboardPage", () => {
       notificationEmail: "ops@example.com",
       timeZone: "Europe/Moscow",
     });
-    expect(screen.getByText("Basic settings saved.")).toBeTruthy();
+    const successNotification = screen
+      .getByText("Basic settings saved.")
+      .closest('[role="status"]');
+
+    expect(successNotification).toBeTruthy();
+    expect(successNotification?.className).toContain("fixed");
 
     await user.type(screen.getByLabelText("New password"), "supersecret");
     await user.type(screen.getByLabelText("Confirm password"), "supersecret");
@@ -2171,6 +2191,42 @@ describe("DashboardPage", () => {
     await user.click(screen.getByRole("button", { name: "Add secret" }));
     expect(screen.getByLabelText("Secret 2 name")).toBeTruthy();
   }, 15_000);
+
+  it("shows an error notification when settings are not saved", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ error: "Domain is unavailable." }), {
+            headers: {
+              "content-type": "application/json",
+            },
+            status: 500,
+          }),
+        ),
+      ),
+    );
+
+    renderDashboard({ activeView: "settings" });
+
+    const form = screen
+      .getByRole("heading", { name: "Basic settings" })
+      .closest("form");
+
+    expect(form).toBeTruthy();
+    await user.click(within(form as HTMLElement).getByRole("button", { name: "Save" }));
+
+    const notification = await screen.findByRole("alert");
+
+    expect(notification.textContent).toContain(
+      "Basic settings were not saved. Domain is unavailable.",
+    );
+    expect(notification.className).toContain("fixed");
+
+    await user.click(screen.getByRole("button", { name: "Dismiss notification" }));
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
 
   it("opens and closes custom filter dropdowns", async () => {
     const user = userEvent.setup();
