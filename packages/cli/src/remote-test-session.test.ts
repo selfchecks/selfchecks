@@ -310,4 +310,48 @@ describe("remote test sessions", () => {
       },
     );
   });
+
+  it("queues an asynchronous session without polling for completion", async () => {
+    const rootDir = await createProject();
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          sessionId: "session_1",
+          statusUrl: "/api/cli/test-sessions/session_1",
+          total: 1,
+        }),
+        { status: 202 },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      runRemoteTestSession({
+        apiToken: "secret-token",
+        apiUrl: "https://checks.example.test/",
+        checkKeys: [],
+        checkTypes: ["browser"],
+        env: [],
+        projectSlug: "account",
+        reporter: "github",
+        rootDir,
+        tagSets: [],
+        waitForCompletion: false,
+      }),
+    ).resolves.toEqual({
+      durationMs: 0,
+      failed: 0,
+      passed: 0,
+      results: [],
+      sessionId: "session_1",
+      skipped: 0,
+      total: 1,
+    });
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://checks.example.test/api/cli/test-sessions",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
 });

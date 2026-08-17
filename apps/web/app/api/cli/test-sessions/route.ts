@@ -141,6 +141,7 @@ export async function POST(request: Request) {
         sessionId: session.id,
         status: "queued",
         statusUrl: `/api/cli/test-sessions/${encodeURIComponent(session.id)}`,
+        total: checks.length,
       },
       { status: 202 },
     );

@@ -61,10 +61,46 @@ describe("createRemoteSelfchecksProgram", () => {
         projectSlug: "account",
         rootDir: "config/checkly",
         tagSets: [["app", "smoke"]],
+        waitForCompletion: true,
       }),
     );
     expect(write).toHaveBeenCalledWith(
       expect.objectContaining({ command: "test", status: "completed" }),
+    );
+  });
+
+  it("queues remote tests without waiting when --async is set", async () => {
+    const runChecksRemotely = vi.fn().mockResolvedValue({
+      ...successfulSummary,
+      passed: 0,
+      sessionId: "session_1",
+    });
+    const write = vi.fn();
+    const program = createRemoteSelfchecksProgram({ runChecksRemotely, write });
+
+    await program.parseAsync(
+      [
+        "node",
+        "selfchecks",
+        "test",
+        "--async",
+        "--api-url",
+        "https://checks.example.test",
+        "--api-token",
+        "token",
+      ],
+      { from: "node" },
+    );
+
+    expect(runChecksRemotely).toHaveBeenCalledWith(
+      expect.objectContaining({ waitForCompletion: false }),
+    );
+    expect(write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: "test",
+        status: "queued",
+        summary: expect.objectContaining({ sessionId: "session_1" }),
+      }),
     );
   });
 

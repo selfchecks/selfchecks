@@ -565,8 +565,65 @@ describe("createSelfchecksProgram", () => {
         repository: "sendsay-ru/frontend/account",
         rootDir,
         testSessionName: "Release 1.2.3",
+        waitForCompletion: true,
       }),
     );
+  });
+
+  it("queues remote test sessions without waiting when --async is set", async () => {
+    const rootDir = await createTempChecklyProject();
+    const runChecksRemotely = vi.fn(async () => ({
+      durationMs: 0,
+      failed: 0,
+      passed: 0,
+      results: [],
+      sessionId: "session_1",
+      skipped: 0,
+      total: 1,
+    }));
+    const write = vi.fn();
+    const program = createSelfchecksProgram({ runChecksRemotely, write });
+
+    program.exitOverride();
+    program.configureOutput({
+      writeErr: () => undefined,
+      writeOut: () => undefined,
+    });
+
+    await program.parseAsync([
+      "node",
+      "selfchecks",
+      "test",
+      "--async",
+      "--api-url",
+      "https://checks.example.test",
+      "--api-token",
+      "api-token",
+      "--root",
+      rootDir,
+    ]);
+
+    expect(runChecksRemotely).toHaveBeenCalledWith(
+      expect.objectContaining({ waitForCompletion: false }),
+    );
+    expect(write).toHaveBeenCalledWith(
+      expect.objectContaining({ command: "test", status: "queued" }),
+    );
+  });
+
+  it("rejects --async for local test sessions", async () => {
+    const rootDir = await createTempChecklyProject();
+    const program = createSelfchecksProgram({ write: vi.fn() });
+
+    program.exitOverride();
+    program.configureOutput({
+      writeErr: () => undefined,
+      writeOut: () => undefined,
+    });
+
+    await expect(
+      program.parseAsync(["node", "selfchecks", "test", "--async", "--root", rootDir]),
+    ).rejects.toThrow("--async requires remote Selfchecks API credentials.");
   });
 
   it("emits trigger command options", async () => {

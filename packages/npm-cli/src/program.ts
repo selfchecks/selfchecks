@@ -55,7 +55,7 @@ export type CliCommandOutput =
       record: boolean;
       reporter: string;
       rootDir: string;
-      status: "completed";
+      status: "completed" | "queued";
       summary: RunChecksSummary;
       tagSets: string[][];
     }
@@ -248,6 +248,7 @@ export function createRemoteSelfchecksProgram(
   program
     .command("test")
     .description("Upload and run selected checks in an isolated test session.")
+    .option("--async", "Queue the test session without waiting for completion")
     .option("--tags <tags>", "Comma-separated tag selector", collect, [])
     .option("--check <key>", "Run a specific check key", collect, [])
     .option("--type <type>", "Run checks of a specific type", collect, [])
@@ -302,6 +303,7 @@ export function createRemoteSelfchecksProgram(
         rootDir: commandOptions.root,
         tagSets,
         testSessionName: commandOptions.testSessionName,
+        waitForCompletion: !commandOptions.async,
       });
 
       write({
@@ -313,7 +315,7 @@ export function createRemoteSelfchecksProgram(
         record: Boolean(commandOptions.record),
         reporter: commandOptions.reporter,
         rootDir: commandOptions.root,
-        status: "completed",
+        status: commandOptions.async ? "queued" : "completed",
         summary,
         tagSets,
       });

@@ -45,6 +45,7 @@ export type RemoteTestSessionOptions = {
   source?: string;
   tagSets: string[][];
   testSessionName?: string;
+  waitForCompletion?: boolean;
 };
 
 type BundleFile = {
@@ -55,6 +56,7 @@ type BundleFile = {
 type RemoteSessionResponse = {
   sessionId: string;
   statusUrl: string;
+  total?: number;
 };
 
 type RemoteSessionStatusResponse = {
@@ -114,6 +116,18 @@ export async function runRemoteTestSession(
 
   if (!response.ok) {
     throw new Error(readApiError(session, "Unable to create remote test session."));
+  }
+
+  if (options.waitForCompletion === false) {
+    return {
+      durationMs: 0,
+      failed: 0,
+      passed: 0,
+      results: [],
+      sessionId: session.sessionId,
+      skipped: 0,
+      total: session.total ?? 0,
+    };
   }
 
   const unregisterSignalHandlers = registerCancellationSignalHandlers(

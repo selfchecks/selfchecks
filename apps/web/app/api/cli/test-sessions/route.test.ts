@@ -161,6 +161,7 @@ describe("CLI test session upload route", () => {
       sessionId: "session_1",
       status: "queued",
       statusUrl: "/api/cli/test-sessions/session_1",
+      total: 1,
     });
     expect(response.status).toBe(202);
     expect(mocks.importCheckDefinitions).not.toHaveBeenCalled();

@@ -41,7 +41,7 @@ export type TestCommandOutput = {
   record: boolean;
   reporter: string;
   rootDir: string;
-  status: "completed";
+  status: "completed" | "queued";
   summary: RunChecksSummary;
   tagSets: string[][];
 };
@@ -275,6 +275,7 @@ export function createSelfchecksProgram(
   program
     .command("test")
     .description("Run selected checks in an isolated test session.")
+    .option("--async", "Queue the test session without waiting for completion")
     .option("--tags <tags>", "Comma-separated tag selector", collect, [])
     .option("--check <key>", "Run a specific check key", collect, [])
     .option("--type <type>", "Run checks of a specific type", collect, [])
@@ -300,6 +301,7 @@ export function createSelfchecksProgram(
       async (commandOptions: {
         apiToken?: string;
         apiUrl?: string;
+        async?: boolean;
         check: string[];
         env: string[];
         commitSha?: string;
@@ -333,6 +335,10 @@ export function createSelfchecksProgram(
           "test",
         );
 
+        if (commandOptions.async && !hasRemoteConfig) {
+          throw new Error("--async requires remote Selfchecks API credentials.");
+        }
+
         const summary = hasRemoteConfig
           ? await runChecksRemotely({
               apiToken: commandOptions.apiToken!,
@@ -351,6 +357,7 @@ export function createSelfchecksProgram(
               rootDir: commandOptions.root,
               tagSets,
               testSessionName: commandOptions.testSessionName,
+              waitForCompletion: !commandOptions.async,
             })
           : await (async () => {
               const imported = await compileDefinitions(
@@ -383,7 +390,7 @@ export function createSelfchecksProgram(
           record: Boolean(commandOptions.record),
           reporter: commandOptions.reporter,
           rootDir: commandOptions.root,
-          status: "completed",
+          status: commandOptions.async ? "queued" : "completed",
           summary,
           tagSets,
         });
