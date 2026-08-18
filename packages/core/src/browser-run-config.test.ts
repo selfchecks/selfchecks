@@ -212,21 +212,29 @@ describe("resolveBrowserTraceModeConfig", () => {
 
 describe("resolveBrowserTraceModeForAttempt", () => {
   it.each([
-    ["off", 1, "off"],
-    ["off", 2, "off"],
-    ["on", 1, "on"],
-    ["on", 2, "on"],
-    ["retain-on-failure", 1, "retain-on-failure"],
-    ["retain-on-failure", 2, "retain-on-failure"],
-    ["on-first-retry", 1, "off"],
-    ["on-first-retry", 2, "on"],
-    ["on-first-retry", 3, "off"],
-    ["on-all-retries", 1, "off"],
-    ["on-all-retries", 2, "on"],
-    ["on-all-retries", 3, "on"],
-    ["retain-on-first-failure", 1, "retain-on-failure"],
-    ["retain-on-first-failure", 2, "off"],
-  ] as const)("maps %s on attempt %i to %s", (mode, attempt, expected) => {
-    expect(resolveBrowserTraceModeForAttempt(mode, attempt)).toBe(expected);
-  });
+    ["off", 1, 3, "off"],
+    ["off", 2, 3, "off"],
+    ["on", 1, 3, "on"],
+    ["on", 2, 3, "on"],
+    ["retain-on-failure", 1, 3, "retain-on-failure"],
+    ["retain-on-failure", 2, 3, "retain-on-failure"],
+    ["on-first-retry", 1, 1, "off"],
+    ["on-first-retry", 1, 2, "off"],
+    ["on-first-retry", 2, 2, "on"],
+    ["on-first-retry", 1, 3, "off"],
+    ["on-first-retry", 2, 3, "off"],
+    ["on-first-retry", 3, 3, "on"],
+    ["on-all-retries", 1, 3, "off"],
+    ["on-all-retries", 2, 3, "on"],
+    ["on-all-retries", 3, 3, "on"],
+    ["retain-on-first-failure", 1, 3, "retain-on-failure"],
+    ["retain-on-first-failure", 2, 3, "off"],
+  ] as const)(
+    "maps %s on attempt %i of %i to %s",
+    (mode, attempt, maxAttempts, expected) => {
+      expect(resolveBrowserTraceModeForAttempt(mode, attempt, maxAttempts)).toBe(
+        expected,
+      );
+    },
+  );
 });

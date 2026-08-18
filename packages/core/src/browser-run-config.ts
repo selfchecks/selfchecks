@@ -103,9 +103,10 @@ export async function resolveBrowserTraceModeConfig(
 export function resolveBrowserTraceModeForAttempt(
   mode: BrowserTraceMode,
   attempt: number,
+  maxAttempts: number,
 ): BrowserTraceMode {
   if (mode === "on-first-retry") {
-    return attempt === 2 ? "on" : "off";
+    return maxAttempts > 1 && attempt === maxAttempts ? "on" : "off";
   }
 
   if (mode === "on-all-retries") {

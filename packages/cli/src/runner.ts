@@ -543,7 +543,7 @@ async function runCheck(
           retryGroupId,
         })
       : undefined;
-    const result = await executeCheck(check, options, run, attempt);
+    const result = await executeCheck(check, options, run, attempt, maxAttempts);
     const finishedAt = new Date();
     const durationMs = finishedAt.getTime() - startedAt.getTime();
     const retryDelayMs = getRetryDelayMs(retryPlan, attempt);
@@ -979,10 +979,11 @@ async function executeCheck(
   options: RunChecksOptions,
   run: CheckRun | undefined,
   attempt: number,
+  maxAttempts: number,
 ): Promise<CheckExecutionResult> {
   try {
     return check.type === "BROWSER"
-      ? await runBrowserCheck(check, options, run, attempt)
+      ? await runBrowserCheck(check, options, run, attempt, maxAttempts)
       : await runApiCheck(check, options);
   } catch (error) {
     if (
@@ -1010,6 +1011,7 @@ async function runBrowserCheck(
   options: RunChecksOptions,
   run: CheckRun | undefined,
   attempt: number,
+  maxAttempts: number,
 ): Promise<CheckExecutionResult> {
   if (!check.entrypoint) {
     return {
@@ -1027,7 +1029,7 @@ async function runBrowserCheck(
     resolveBrowserTraceModeConfig(options.rootDir),
   ]);
   const effectiveTraceMode = traceModeConfig
-    ? resolveBrowserTraceModeForAttempt(traceModeConfig.mode, attempt)
+    ? resolveBrowserTraceModeForAttempt(traceModeConfig.mode, attempt, maxAttempts)
     : undefined;
   const traceModeOverride =
     effectiveTraceMode && effectiveTraceMode !== traceModeConfig?.mode

@@ -332,7 +332,7 @@ describe("runCheckById", () => {
     );
   });
 
-  it("maps on-first-retry tracing to the second SelfChecks attempt", async () => {
+  it("maps on-first-retry tracing to the final SelfChecks attempt", async () => {
     const rootDir = await createTempProject();
     const runId = "run_1";
     let createdRunNumber = 1;
@@ -412,8 +412,8 @@ describe("runCheckById", () => {
 
     expect(traceArguments).toEqual([
       ["--trace", "off"],
-      ["--trace", "on"],
       ["--trace", "off"],
+      ["--trace", "on"],
     ]);
   });
 
