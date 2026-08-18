@@ -737,7 +737,7 @@ export async function getCheckDetailShellData(
     };
 
     return {
-      check: mapCheck(shellCheck, timeZone),
+      check: mapCheck(shellCheck, timeZone, "latest"),
       groupName: check.group?.name ?? "Ungrouped",
       projectSlug: check.project.slug,
       updated: formatLatestUpdate([shellCheck], timeZone),
@@ -788,7 +788,7 @@ export async function getCheckDetailData(
     }
 
     return {
-      check: mapCheck(check, timeZone),
+      check: mapCheck(check, timeZone, "all"),
       groupName: check.group?.name ?? "Ungrouped",
       projectSlug: check.project.slug,
       updated: formatLatestUpdate([check], timeZone),
@@ -2541,7 +2541,7 @@ function buildGroups(checks: CheckWithRuns[], timeZone: string): DashboardGroupR
   return [...grouped.values()].map((groupChecks, index) => {
     const firstCheck = groupChecks[0]!;
     const name = firstCheck.group?.name ?? "Ungrouped";
-    const children = groupChecks.map((check) => mapCheck(check, timeZone));
+    const children = groupChecks.map((check) => mapCheck(check, timeZone, "latest"));
 
     return {
       checks: `${children.length} checks`,
@@ -2556,8 +2556,13 @@ function buildGroups(checks: CheckWithRuns[], timeZone: string): DashboardGroupR
   });
 }
 
-function mapCheck(check: CheckWithRuns, timeZone: string): DashboardCheckRow {
+function mapCheck(
+  check: CheckWithRuns,
+  timeZone: string,
+  runScope: "all" | "latest",
+): DashboardCheckRow {
   const latestRun = check.runs[0];
+  const mappedRuns = runScope === "all" ? check.runs : check.runs.slice(0, 1);
   const durations = check.runs
     .map((run) => run.durationMs)
     .filter((duration): duration is number => typeof duration === "number");
@@ -2585,7 +2590,7 @@ function mapCheck(check: CheckWithRuns, timeZone: string): DashboardCheckRow {
     name: check.name,
     p95: formatDuration(percentile(durations, 0.95)),
     runState: mapRunState(latestRun?.status),
-    runs: check.runs.slice(0, 1).map((run) => mapRun(run, timeZone, check)),
+    runs: mappedRuns.map((run) => mapRun(run, timeZone, check)),
     settings: {
       enabled: check.enabled,
       entrypoint: check.entrypoint ?? undefined,

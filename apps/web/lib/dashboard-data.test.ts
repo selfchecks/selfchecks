@@ -233,6 +233,49 @@ describe("dashboard data", () => {
     );
   });
 
+  it("returns the full run history for check details", async () => {
+    const makeRun = (id: string, createdAt: string) => ({
+      artifacts: [],
+      attempt: 1,
+      createdAt: new Date(createdAt),
+      durationMs: 1_000,
+      errorMessage: null,
+      id,
+      logsPath: null,
+      maxAttempts: 1,
+      result: null,
+      retryGroupId: `retry_${id}`,
+      status: "PASSED",
+    });
+
+    mocks.checkFindFirst.mockResolvedValue({
+      enabled: true,
+      entrypoint: "checks/homepage.spec.ts",
+      frequencyMinutes: 180,
+      group: { name: "App / Smoke" },
+      id: "check_1",
+      key: "homepage",
+      name: "Homepage",
+      project: { slug: "default" },
+      request: null,
+      runs: [
+        makeRun("run_2", "2026-08-18T06:00:00.000Z"),
+        makeRun("run_1", "2026-08-17T06:00:00.000Z"),
+      ],
+      tags: ["app", "regress"],
+      type: "BROWSER",
+    });
+
+    const detail = await getCheckDetailData("check_1");
+    const query = mocks.checkFindFirst.mock.calls[0]?.[0] as {
+      include?: { runs?: { take?: number } };
+    };
+
+    expect(query.include?.runs?.take).toBe(50);
+    expect(detail?.check.stats.totalRuns).toBe("2");
+    expect(detail?.check.runs.map((run) => run.id)).toEqual(["run_2", "run_1"]);
+  });
+
   it("loads a lightweight check detail shell without run result payloads", async () => {
     const createdAt = new Date("2026-07-05T13:20:03.000Z");
 
@@ -768,6 +811,7 @@ describe("dashboard data", () => {
     const check = dashboard.groups[0]?.children?.[0];
     const bars = check?.bars;
 
+    expect(check?.runs.map((run) => run.id)).toEqual(["run_slow"]);
     expect(bars).toEqual([
       expect.objectContaining({
         duration: "1.90 s",
