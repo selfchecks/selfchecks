@@ -1,8 +1,13 @@
 import { z } from "zod";
 
 export {
+  browserTraceModes,
   defaultBrowserRunTimeoutMs,
+  resolveBrowserTraceModeConfig,
+  resolveBrowserTraceModeForAttempt,
   resolveBrowserRunTimeoutConfig,
+  type BrowserTraceMode,
+  type BrowserTraceModeConfig,
   type BrowserRunTimeoutConfig,
 } from "./browser-run-config.js";
 

@@ -6,6 +6,8 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   defaultBrowserRunTimeoutMs,
+  resolveBrowserTraceModeConfig,
+  resolveBrowserTraceModeForAttempt,
   resolveBrowserRunTimeoutConfig,
 } from "./browser-run-config.js";
 
@@ -18,18 +20,18 @@ async function createTempRoot() {
   return directory;
 }
 
-describe("resolveBrowserRunTimeoutConfig", () => {
-  afterEach(async () => {
-    await Promise.all(
-      tempDirs.splice(0).map((directory) =>
-        rm(directory, {
-          force: true,
-          recursive: true,
-        }),
-      ),
-    );
-  });
+afterEach(async () => {
+  await Promise.all(
+    tempDirs.splice(0).map((directory) =>
+      rm(directory, {
+        force: true,
+        recursive: true,
+      }),
+    ),
+  );
+});
 
+describe("resolveBrowserRunTimeoutConfig", () => {
   it("uses the 10 minute selfchecks default when configs are absent", async () => {
     const rootDir = await createTempRoot();
 
@@ -130,5 +132,101 @@ describe("resolveBrowserRunTimeoutConfig", () => {
       source: "playwright.timeout (minimum run timeout)",
       timeoutMs: 900_000,
     });
+  });
+});
+
+describe("resolveBrowserTraceModeConfig", () => {
+  it("reads a string trace mode from playwright config", async () => {
+    const rootDir = await createTempRoot();
+
+    await writeFile(
+      path.join(rootDir, "playwright.config.ts"),
+      `
+        import { defineConfig } from '@playwright/test';
+
+        export default defineConfig({
+          use: {
+            trace: 'on-first-retry',
+          },
+        });
+      `,
+    );
+
+    await expect(resolveBrowserTraceModeConfig(rootDir)).resolves.toEqual({
+      configPath: path.join(rootDir, "playwright.config.ts"),
+      mode: "on-first-retry",
+      source: "playwright.use.trace",
+    });
+  });
+
+  it("reads an object trace mode and follows top-level constants", async () => {
+    const rootDir = await createTempRoot();
+
+    await writeFile(
+      path.join(rootDir, "playwright.config.ts"),
+      `
+        const TRACE_MODE = 'on-all-retries';
+        const config = {
+          use: {
+            trace: {
+              mode: TRACE_MODE,
+              screenshots: false,
+            },
+          },
+        };
+
+        export default config;
+      `,
+    );
+
+    await expect(resolveBrowserTraceModeConfig(rootDir)).resolves.toMatchObject({
+      mode: "on-all-retries",
+      source: "playwright.use.trace.mode",
+    });
+  });
+
+  it("falls back to checkly playwrightConfig trace mode", async () => {
+    const rootDir = await createTempRoot();
+
+    await writeFile(
+      path.join(rootDir, "checkly.config.ts"),
+      `
+        export default {
+          checks: {
+            playwrightConfig: {
+              use: {
+                trace: 'retain-on-failure',
+              },
+            },
+          },
+        };
+      `,
+    );
+
+    await expect(resolveBrowserTraceModeConfig(rootDir)).resolves.toMatchObject({
+      mode: "retain-on-failure",
+      source: "checkly.checks.playwrightConfig.use.trace",
+    });
+  });
+});
+
+describe("resolveBrowserTraceModeForAttempt", () => {
+  it.each([
+    ["off", 1, "off"],
+    ["off", 2, "off"],
+    ["on", 1, "on"],
+    ["on", 2, "on"],
+    ["retain-on-failure", 1, "retain-on-failure"],
+    ["retain-on-failure", 2, "retain-on-failure"],
+    ["on-first-retry", 1, "off"],
+    ["on-first-retry", 2, "on"],
+    ["on-first-retry", 3, "off"],
+    ["on-all-retries", 1, "off"],
+    ["on-all-retries", 2, "on"],
+    ["on-all-retries", 3, "on"],
+    ["retain-on-first-failure", 1, "retain-on-failure"],
+    ["retain-on-first-failure", 2, "off"],
+  ] as const)("maps %s on attempt %i to %s", (mode, attempt, expected) => {
+    expect(resolveBrowserTraceModeForAttempt(mode, attempt)).toBe(expected);
   });
 });

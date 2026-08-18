@@ -4,6 +4,23 @@ import ts from "typescript";
 
 export const defaultBrowserRunTimeoutMs = 10 * 60_000;
 
+export const browserTraceModes = [
+  "off",
+  "on",
+  "retain-on-failure",
+  "on-first-retry",
+  "on-all-retries",
+  "retain-on-first-failure",
+] as const;
+
+export type BrowserTraceMode = (typeof browserTraceModes)[number];
+
+export type BrowserTraceModeConfig = {
+  configPath: string;
+  mode: BrowserTraceMode;
+  source: string;
+};
+
 export type BrowserRunTimeoutConfig = {
   configPath?: string;
   configuredTestTimeoutMs?: number;
@@ -16,6 +33,8 @@ type TimeoutCandidate = {
   source: string;
   timeoutMs: number;
 };
+
+type TraceModeCandidate = BrowserTraceModeConfig;
 
 const playwrightConfigFileNames = [
   "playwright.config.ts",
@@ -73,6 +92,33 @@ export async function resolveBrowserRunTimeoutConfig(
   };
 }
 
+export async function resolveBrowserTraceModeConfig(
+  rootDir: string,
+): Promise<BrowserTraceModeConfig | undefined> {
+  const playwrightTraceMode = await readPlaywrightTraceMode(rootDir);
+
+  return playwrightTraceMode ?? readChecklyTraceMode(rootDir);
+}
+
+export function resolveBrowserTraceModeForAttempt(
+  mode: BrowserTraceMode,
+  attempt: number,
+): BrowserTraceMode {
+  if (mode === "on-first-retry") {
+    return attempt === 2 ? "on" : "off";
+  }
+
+  if (mode === "on-all-retries") {
+    return attempt > 1 ? "on" : "off";
+  }
+
+  if (mode === "retain-on-first-failure") {
+    return attempt === 1 ? "retain-on-failure" : "off";
+  }
+
+  return mode;
+}
+
 async function readPlaywrightTimeouts(rootDir: string) {
   const parsedConfig = await readFirstParsedConfig(rootDir, playwrightConfigFileNames);
 
@@ -94,6 +140,16 @@ async function readPlaywrightTimeouts(rootDir: string) {
   };
 }
 
+async function readPlaywrightTraceMode(
+  rootDir: string,
+): Promise<TraceModeCandidate | undefined> {
+  const parsedConfig = await readFirstParsedConfig(rootDir, playwrightConfigFileNames);
+
+  return parsedConfig
+    ? readTraceModeCandidate(parsedConfig, ["use", "trace"], "playwright.use.trace")
+    : undefined;
+}
+
 async function readChecklyTimeouts(rootDir: string) {
   const parsedConfig = await readFirstParsedConfig(rootDir, checklyConfigFileNames);
 
@@ -113,6 +169,20 @@ async function readChecklyTimeouts(rootDir: string) {
       "checkly.checks.playwrightConfig.timeout",
     ),
   };
+}
+
+async function readChecklyTraceMode(
+  rootDir: string,
+): Promise<TraceModeCandidate | undefined> {
+  const parsedConfig = await readFirstParsedConfig(rootDir, checklyConfigFileNames);
+
+  return parsedConfig
+    ? readTraceModeCandidate(
+        parsedConfig,
+        ["checks", "playwrightConfig", "use", "trace"],
+        "checkly.checks.playwrightConfig.use.trace",
+      )
+    : undefined;
 }
 
 async function readFirstParsedConfig(rootDir: string, fileNames: string[]) {
@@ -178,6 +248,43 @@ function readPositiveTimeoutCandidate(
     configPath: parsedConfig.configPath,
     source,
     timeoutMs,
+  };
+}
+
+function readTraceModeCandidate(
+  parsedConfig: ReturnType<typeof parseConfigSource>,
+  propertyPath: string[],
+  source: string,
+): TraceModeCandidate | undefined {
+  let expression: ts.Expression | undefined = parsedConfig.configObject;
+
+  for (const propertyName of propertyPath) {
+    const objectExpression = resolveObjectExpression(
+      expression,
+      parsedConfig.variables,
+    );
+
+    if (!objectExpression) {
+      return undefined;
+    }
+
+    expression = getObjectPropertyInitializer(objectExpression, propertyName);
+  }
+
+  if (!expression) {
+    return undefined;
+  }
+
+  const traceMode = evaluateTraceModeExpression(expression, parsedConfig.variables);
+
+  if (!traceMode) {
+    return undefined;
+  }
+
+  return {
+    configPath: parsedConfig.configPath,
+    mode: traceMode.mode,
+    source: traceMode.fromObject ? `${source}.mode` : source,
   };
 }
 
@@ -346,6 +453,78 @@ function evaluateNumberExpression(
   }
 
   return undefined;
+}
+
+function evaluateTraceModeExpression(
+  expression: ts.Expression,
+  variables: Map<string, ts.Expression>,
+): { fromObject: boolean; mode: BrowserTraceMode } | undefined {
+  const resolvedExpression = resolveExpression(expression, variables);
+
+  if (!resolvedExpression) {
+    return undefined;
+  }
+
+  const directMode = getBrowserTraceMode(resolvedExpression);
+
+  if (directMode) {
+    return {
+      fromObject: false,
+      mode: directMode,
+    };
+  }
+
+  const objectExpression = resolveObjectExpression(resolvedExpression, variables);
+  const modeExpression = objectExpression
+    ? getObjectPropertyInitializer(objectExpression, "mode")
+    : undefined;
+  const resolvedModeExpression = modeExpression
+    ? resolveExpression(modeExpression, variables)
+    : undefined;
+  const objectMode = resolvedModeExpression
+    ? getBrowserTraceMode(resolvedModeExpression)
+    : undefined;
+
+  return objectMode
+    ? {
+        fromObject: true,
+        mode: objectMode,
+      }
+    : undefined;
+}
+
+function resolveExpression(
+  expression: ts.Expression,
+  variables: Map<string, ts.Expression>,
+  seen = new Set<string>(),
+): ts.Expression | undefined {
+  const unwrappedExpression = unwrapExpression(expression);
+
+  if (!ts.isIdentifier(unwrappedExpression)) {
+    return unwrappedExpression;
+  }
+
+  if (seen.has(unwrappedExpression.text)) {
+    return undefined;
+  }
+
+  const initializer = variables.get(unwrappedExpression.text);
+
+  if (!initializer) {
+    return undefined;
+  }
+
+  seen.add(unwrappedExpression.text);
+  return resolveExpression(initializer, variables, seen);
+}
+
+function getBrowserTraceMode(expression: ts.Expression): BrowserTraceMode | undefined {
+  const value =
+    ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)
+      ? expression.text
+      : undefined;
+
+  return browserTraceModes.find((mode) => mode === value);
 }
 
 function unwrapExpression(expression: ts.Expression): ts.Expression {

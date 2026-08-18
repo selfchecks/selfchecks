@@ -12,6 +12,8 @@ import type {
 import {
   defaultDegradedResponseTimeMs,
   normalizeTags,
+  resolveBrowserTraceModeConfig,
+  resolveBrowserTraceModeForAttempt,
   resolveBrowserRunTimeoutConfig,
 } from "@selfchecks/core";
 import { prisma, Prisma, type CheckRun, type TestSession } from "@selfchecks/db";
@@ -541,7 +543,7 @@ async function runCheck(
           retryGroupId,
         })
       : undefined;
-    const result = await executeCheck(check, options, run);
+    const result = await executeCheck(check, options, run, attempt);
     const finishedAt = new Date();
     const durationMs = finishedAt.getTime() - startedAt.getTime();
     const retryDelayMs = getRetryDelayMs(retryPlan, attempt);
@@ -976,10 +978,11 @@ async function executeCheck(
   check: RunnableCheck,
   options: RunChecksOptions,
   run: CheckRun | undefined,
+  attempt: number,
 ): Promise<CheckExecutionResult> {
   try {
     return check.type === "BROWSER"
-      ? await runBrowserCheck(check, options, run)
+      ? await runBrowserCheck(check, options, run, attempt)
       : await runApiCheck(check, options);
   } catch (error) {
     if (
@@ -1006,6 +1009,7 @@ async function runBrowserCheck(
   check: RunnableCheck,
   options: RunChecksOptions,
   run: CheckRun | undefined,
+  attempt: number,
 ): Promise<CheckExecutionResult> {
   if (!check.entrypoint) {
     return {
@@ -1018,7 +1022,17 @@ async function runBrowserCheck(
 
   const artifactStartedAt = Date.now();
   const artifactPaths = createBrowserArtifactPaths(options.rootDir, run?.id);
-  const runTimeout = await resolveBrowserRunTimeoutConfig(options.rootDir);
+  const [runTimeout, traceModeConfig] = await Promise.all([
+    resolveBrowserRunTimeoutConfig(options.rootDir),
+    resolveBrowserTraceModeConfig(options.rootDir),
+  ]);
+  const effectiveTraceMode = traceModeConfig
+    ? resolveBrowserTraceModeForAttempt(traceModeConfig.mode, attempt)
+    : undefined;
+  const traceModeOverride =
+    effectiveTraceMode && effectiveTraceMode !== traceModeConfig?.mode
+      ? effectiveTraceMode
+      : undefined;
   const remainingSessionMs = getTestSessionRemainingMs(options.testSessionDeadline);
   const processTimeout =
     typeof remainingSessionMs === "number" && remainingSessionMs < runTimeout.timeoutMs
@@ -1057,6 +1071,7 @@ async function runBrowserCheck(
       options.reporter,
       "--retries",
       "0",
+      ...(traceModeOverride ? ["--trace", traceModeOverride] : []),
     ],
     command: "npx",
     env: options.env,

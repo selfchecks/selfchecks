@@ -149,6 +149,11 @@ describe("runCheckById", () => {
     vi.stubEnv("SELFCHECKS_ARTIFACTS_DIR", artifactsRootDir);
     vi.stubEnv("PLAYWRIGHT_BROWSERS_PATH", "/ms-playwright");
 
+    await writeFile(
+      path.join(rootDir, "playwright.config.ts"),
+      `export default { use: { trace: "retain-on-failure" } };\n`,
+    );
+
     const isolatedOutputDir = path.join(artifactsRootDir, runId, "test-results");
     const isolatedTracePath = path.join(
       isolatedOutputDir,
@@ -325,6 +330,91 @@ describe("runCheckById", () => {
     await expect(readFile(updateScreenshotPath, "utf8")).resolves.toBe(
       "actual screenshot payload",
     );
+  });
+
+  it("maps on-first-retry tracing to the second SelfChecks attempt", async () => {
+    const rootDir = await createTempProject();
+    const runId = "run_1";
+    let createdRunNumber = 1;
+
+    await writeFile(
+      path.join(rootDir, "playwright.config.ts"),
+      `
+        export default {
+          use: {
+            trace: "on-first-retry",
+          },
+        };
+      `,
+    );
+
+    mocks.checkFindFirst.mockResolvedValue({
+      entrypoint: "homepage.spec.ts",
+      id: "check_1",
+      key: "homepage",
+      name: "Homepage",
+      request: null,
+      retryStrategy: null,
+      runs: [],
+      type: "BROWSER",
+    });
+    mocks.checkRunFindFirst.mockResolvedValue({
+      checkId: "check_1",
+      id: runId,
+    });
+    mocks.checkRunCreate.mockImplementation(async (args) => ({
+      checkId: "check_1",
+      id: `run_${(createdRunNumber += 1)}`,
+      ...args.data,
+    }));
+    mocks.checkRunUpdate.mockImplementation(async (args) => ({
+      checkId: "check_1",
+      id: args.where.id,
+      ...args.data,
+    }));
+    mocks.artifactDeleteMany.mockResolvedValue({ count: 0 });
+    mocks.artifactCreateMany.mockResolvedValue({ count: 0 });
+    mocks.spawn.mockImplementation(() => {
+      const child = new EventEmitter() as EventEmitter & {
+        stderr: EventEmitter;
+        stdout: EventEmitter;
+      };
+      child.stderr = new EventEmitter();
+      child.stdout = new EventEmitter();
+
+      setImmediate(() => child.emit("close", 1));
+
+      return child;
+    });
+
+    await expect(
+      runCheckById({
+        checkId: "check_1",
+        env: [],
+        projectSlug: "default",
+        record: true,
+        reporter: "list",
+        retries: 2,
+        rootDir,
+        runId,
+      }),
+    ).resolves.toMatchObject({
+      runId: "run_3",
+      status: "failed",
+    });
+
+    const traceArguments = mocks.spawn.mock.calls.map((call) => {
+      const args = call[1] as string[];
+      const traceIndex = args.indexOf("--trace");
+
+      return traceIndex >= 0 ? args.slice(traceIndex, traceIndex + 2) : [];
+    });
+
+    expect(traceArguments).toEqual([
+      ["--trace", "off"],
+      ["--trace", "on"],
+      ["--trace", "off"],
+    ]);
   });
 
   it("marks browser checks as timed out and terminates Playwright", async () => {
