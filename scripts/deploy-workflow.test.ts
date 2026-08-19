@@ -19,6 +19,19 @@ describe("deploy workflow", () => {
     );
   });
 
+  it("waits for release package tarballs before running the create-selfchecks smoke test", async () => {
+    const workflow = await readFile(
+      path.join(process.cwd(), ".github/workflows/deploy.yml"),
+      "utf8",
+    );
+    const smokeJob = workflow.slice(
+      workflow.indexOf("  smoke-create-selfchecks:"),
+      workflow.indexOf("  deploy:"),
+    );
+
+    expect(smokeJob).toContain('npm pack "${package_name}@${RELEASE_VERSION}"');
+  });
+
   it("builds every TypeScript project referenced by the CLI image", async () => {
     const dockerfile = await readFile(
       path.join(process.cwd(), "docker/selfchecks/Dockerfile"),
