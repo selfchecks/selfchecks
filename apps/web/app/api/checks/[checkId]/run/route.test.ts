@@ -239,6 +239,7 @@ describe("run check route", () => {
     });
     expect(mocks.testSessionUpdate).toHaveBeenCalledWith({
       data: {
+        aiAnalysis: expect.anything(),
         status: "RUNNING",
       },
       where: {

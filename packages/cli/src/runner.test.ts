@@ -30,6 +30,9 @@ vi.mock("node:child_process", () => ({
 }));
 
 vi.mock("@selfchecks/db", () => ({
+  Prisma: {
+    DbNull: { type: "DbNull" },
+  },
   prisma: {
     artifact: {
       createMany: mocks.artifactCreateMany,
@@ -817,6 +820,7 @@ describe("runCheckById", () => {
 
     expect(mocks.testSessionUpdate).toHaveBeenCalledWith({
       data: {
+        aiAnalysis: expect.anything(),
         status: "RUNNING",
       },
       where: {
@@ -1399,6 +1403,7 @@ describe("runChecks", () => {
     expect(mocks.testSessionUpdate).toHaveBeenCalledTimes(1);
     expect(mocks.testSessionUpdate).toHaveBeenCalledWith({
       data: {
+        aiAnalysis: expect.anything(),
         status: "RUNNING",
       },
       where: {

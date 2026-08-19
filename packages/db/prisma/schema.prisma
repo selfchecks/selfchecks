@@ -159,6 +159,7 @@ model TestSession {
   jobUrl        String?
   targetUrl     String?
   workspacePath String?
+  aiAnalysis    Json?
   status        CheckRunStatus  @default(QUEUED)
   createdAt     DateTime        @default(now())
   runs          CheckRun[]

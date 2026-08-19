@@ -125,4 +125,120 @@ describe("SessionActions", () => {
     });
     expect(mocks.routerPush).toHaveBeenCalledWith("/test-sessions/session_clone");
   });
+
+  it("loads one aggregate AI analysis after the session finishes", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          analysis: {
+            content: "Таймауты связаны с ожиданием кнопки checkout.",
+            createdAt: "2026-08-19T08:30:00.000Z",
+            model: "gpt-5-mini",
+            responseLanguage: "Russian",
+            status: "completed",
+          },
+          categories: [
+            {
+              count: 1,
+              description: "Visual or reference screenshot differences.",
+              key: "screenshot",
+              label: "Screenshots",
+              tests: [
+                {
+                  category: "screenshot",
+                  checkId: "check_header",
+                  checkKey: "header",
+                  checkName: "Header visual",
+                  errorMessage: "Screenshot comparison failed",
+                  projectSlug: "account",
+                  runId: "run_header",
+                  status: "FAILED",
+                },
+              ],
+            },
+            {
+              count: 1,
+              description: "Execution, assertion, navigation, or waiting timeouts.",
+              key: "timeout",
+              label: "Timeouts",
+              tests: [
+                {
+                  category: "timeout",
+                  checkId: "check_checkout",
+                  checkKey: "checkout",
+                  checkName: "Checkout",
+                  errorMessage: "Timeout 30000ms exceeded",
+                  projectSlug: "account",
+                  runId: "run_checkout",
+                  status: "TIMED_OUT",
+                },
+              ],
+            },
+          ],
+          failedCount: 2,
+        }),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <SessionActions
+        attemptCount={12}
+        failedCount={2}
+        runState="failed"
+        sessionId="session_1"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "AI Analysis" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "AI analysis" });
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/test-sessions/session_1/analysis", {
+      method: "POST",
+    });
+    expect(dialog.textContent).toContain("2 failed tests");
+    expect(
+      screen.getByText("Таймауты связаны с ожиданием кнопки checkout."),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: "Header visual" }).getAttribute("href"),
+    ).toBe("/test-sessions/session_1/checks/check_header");
+    expect(screen.getByRole("link", { name: "Checkout" })).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Close AI analysis" }));
+    expect(dialog.isConnected).toBe(false);
+
+    await user.click(screen.getByRole("button", { name: "AI Analysis" }));
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("disables session AI analysis while tests are active or all passed", () => {
+    const { rerender } = render(
+      <SessionActions
+        attemptCount={12}
+        failedCount={2}
+        runState="running"
+        sessionId="session_1"
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "AI Analysis" }).hasAttribute("disabled"),
+    ).toBe(true);
+
+    rerender(
+      <SessionActions
+        attemptCount={12}
+        failedCount={0}
+        runState="passed"
+        sessionId="session_1"
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "AI Analysis" }).hasAttribute("disabled"),
+    ).toBe(true);
+  });
 });

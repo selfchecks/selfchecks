@@ -29,12 +29,29 @@ type ChatCompletionResponse = {
   };
 };
 
+export type TestSessionAiFailure = {
+  category: string;
+  checkKey: string;
+  checkName: string;
+  errorMessage?: string | null;
+  existingAnalysis?: string;
+  projectSlug: string;
+  status: string;
+};
+
+export type TestSessionAiCategory = {
+  count: number;
+  key: string;
+  label: string;
+};
+
 const CIPHER_PREFIX = "v1";
 const CIPHER_ALGORITHM = "aes-256-gcm";
 const MAX_SOURCE_CHARS = 24_000;
 const MAX_LOG_CHARS = 18_000;
 const MAX_ARTIFACT_TEXT_CHARS = 8_000;
 const MAX_RESULT_CHARS = 12_000;
+const MAX_SESSION_CONTEXT_CHARS = 48_000;
 const GLOBAL_SETTINGS_PROJECT_SLUG = "default";
 
 export async function analyzeFailedCheck({
@@ -57,6 +74,67 @@ export async function analyzeFailedCheck({
   try {
     const context = await buildFailureContext(check, options, result);
     const content = await requestAiAnalysis(settings, context);
+
+    return {
+      apiEndpoint: settings.apiEndpoint,
+      content,
+      createdAt,
+      model: settings.model,
+      responseLanguage: settings.responseLanguage,
+      status: "completed",
+    };
+  } catch (error) {
+    return {
+      apiEndpoint: settings.apiEndpoint,
+      createdAt,
+      error: getErrorMessage(error),
+      model: settings.model,
+      responseLanguage: settings.responseLanguage,
+      status: "failed",
+    };
+  }
+}
+
+export async function analyzeFailedTestSession({
+  categories,
+  failures,
+  projectSlug,
+  ref,
+  sessionName,
+  targetUrl,
+}: {
+  categories: TestSessionAiCategory[];
+  failures: TestSessionAiFailure[];
+  projectSlug: string;
+  ref?: string | null;
+  sessionName?: string | null;
+  targetUrl?: string | null;
+}): Promise<Record<string, unknown> | undefined> {
+  const settings = await readAiSettings(projectSlug);
+
+  if (!settings) {
+    return undefined;
+  }
+
+  const createdAt = new Date().toISOString();
+
+  try {
+    const content = await requestAiAnalysis(
+      settings,
+      buildTestSessionFailureContext({
+        categories,
+        failures,
+        ref,
+        sessionName,
+        targetUrl,
+      }),
+      [
+        "You analyze a completed synthetic monitoring test session.",
+        "Write a brief executive summary of the failed tests, group repeated root causes, cite concrete tests and evidence, and suggest the most useful next debugging steps.",
+        "The supplied category counts are authoritative: do not change, recalculate, or contradict them.",
+        "Do not discuss passed tests. Keep the answer concise and practical.",
+      ].join(" "),
+    );
 
     return {
       apiEndpoint: settings.apiEndpoint,
@@ -151,13 +229,16 @@ async function buildFailureContext(
     .join("\n\n");
 }
 
-async function requestAiAnalysis(settings: AiSettings, context: string) {
+async function requestAiAnalysis(
+  settings: AiSettings,
+  context: string,
+  systemPrompt = "You analyze failed synthetic monitoring checks. Identify the likely root cause, cite concrete evidence from logs/source/traces, and suggest the next debugging steps. Keep the answer concise and practical.",
+) {
   const response = await fetch(`${settings.apiEndpoint}/chat/completions`, {
     body: JSON.stringify({
       messages: [
         {
-          content:
-            "You analyze failed synthetic monitoring checks. Identify the likely root cause, cite concrete evidence from logs/source/traces, and suggest the next debugging steps. Keep the answer concise and practical.",
+          content: systemPrompt,
           role: "system",
         },
         {
@@ -192,6 +273,58 @@ async function requestAiAnalysis(settings: AiSettings, context: string) {
   }
 
   return content;
+}
+
+function buildTestSessionFailureContext({
+  categories,
+  failures,
+  ref,
+  sessionName,
+  targetUrl,
+}: {
+  categories: TestSessionAiCategory[];
+  failures: TestSessionAiFailure[];
+  ref?: string | null;
+  sessionName?: string | null;
+  targetUrl?: string | null;
+}) {
+  const counts = categories
+    .map((category) => `- ${category.label}: ${category.count}`)
+    .join("\n");
+  const failureDetails = failures
+    .map((failure, index) =>
+      [
+        `${index + 1}. ${failure.projectSlug}/${failure.checkName} (${failure.checkKey})`,
+        `   Category: ${failure.category}`,
+        `   Status: ${failure.status}`,
+        failure.errorMessage
+          ? `   Error: ${truncateText(failure.errorMessage, 2_000)}`
+          : "   Error: not recorded",
+        failure.existingAnalysis
+          ? `   Existing per-test analysis: ${truncateText(
+              failure.existingAnalysis,
+              1_200,
+            )}`
+          : undefined,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    )
+    .join("\n\n");
+
+  return truncateText(
+    [
+      `Session: ${sessionName || "Unnamed test session"}`,
+      ref ? `Version/ref: ${ref}` : undefined,
+      targetUrl ? `Target URL: ${targetUrl}` : undefined,
+      `Total failed tests: ${failures.length}`,
+      `Authoritative category counts:\n${counts}`,
+      `Failed tests:\n${failureDetails}`,
+    ]
+      .filter(Boolean)
+      .join("\n\n"),
+    MAX_SESSION_CONTEXT_CHARS,
+  );
 }
 
 async function readCheckSource(check: RunnableCheck, rootDir: string) {

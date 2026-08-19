@@ -18,6 +18,10 @@
       "import": "./dist/runner.js",
       "types": "./dist/runner.d.ts"
     },
+    "./ai-analysis": {
+      "import": "./dist/ai-analysis.js",
+      "types": "./dist/ai-analysis.d.ts"
+    },
     "./environment": {
       "import": "./dist/environment.js",
       "types": "./dist/environment.d.ts"

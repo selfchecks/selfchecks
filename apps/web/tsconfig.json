@@ -10,6 +10,7 @@
     "noEmit": true,
     "paths": {
       "@/*": ["./*"],
+      "@selfchecks/cli/ai-analysis": ["../../packages/cli/src/ai-analysis.ts"],
       "@selfchecks/cli/environment": ["../../packages/cli/src/environment.ts"],
       "@selfchecks/core": ["../../packages/core/src/index.ts"],
       "@selfchecks/core/performance-settings": [

@@ -1,7 +1,7 @@
 import { Queue } from "bullmq";
 import { NextResponse } from "next/server";
 
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { getRunEnvironment } from "@selfchecks/cli/environment";
 import { type CheckType } from "@selfchecks/core";
 
@@ -197,6 +197,7 @@ export async function POST(request: Request, context: RouteContext) {
     ? await prisma.$transaction(async (tx) => {
         await tx.testSession.update({
           data: {
+            aiAnalysis: Prisma.DbNull,
             status: "RUNNING",
           },
           where: {

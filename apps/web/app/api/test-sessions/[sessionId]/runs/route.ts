@@ -434,6 +434,7 @@ async function createQueuedRuns(
           })
         : await tx.testSession.update({
             data: {
+              aiAnalysis: Prisma.DbNull,
               status: "RUNNING",
             },
             select: {

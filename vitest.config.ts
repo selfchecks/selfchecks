@@ -9,6 +9,10 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "apps/web"),
+      "@selfchecks/cli/ai-analysis": path.resolve(
+        __dirname,
+        "packages/cli/src/ai-analysis.ts",
+      ),
       "@selfchecks/core/performance-settings": path.resolve(
         __dirname,
         "packages/core/src/performance-settings.ts",

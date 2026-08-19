@@ -17,7 +17,7 @@ vi.mock("@selfchecks/db", () => ({
   },
 }));
 
-import { analyzeFailedCheck } from "./ai-analysis.js";
+import { analyzeFailedCheck, analyzeFailedTestSession } from "./ai-analysis.js";
 import type { CheckExecutionResult, RunChecksOptions } from "./runner.js";
 
 const tempDirs: string[] = [];
@@ -153,6 +153,77 @@ describe("AI failure analysis", () => {
     expect(analysis).toMatchObject({
       content: "Селектор не найден, проверьте разметку поиска.",
       model: "openai/gpt-5-mini",
+      status: "completed",
+    });
+  });
+
+  it("sends authoritative aggregate counts for a completed test session", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: "2 теста упали по таймауту, 1 — из-за скриншота.",
+              },
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    mocks.projectFindUnique.mockResolvedValue({
+      aiSettings: {
+        apiEndpoint: "https://openrouter.ai/api/v1",
+        apiKeyCiphertext: "test-api-key",
+        model: "openai/gpt-5-mini",
+        responseLanguage: "Russian",
+      },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const analysis = await analyzeFailedTestSession({
+      categories: [
+        { count: 1, key: "screenshot", label: "Screenshots" },
+        { count: 2, key: "timeout", label: "Timeouts" },
+      ],
+      failures: [
+        {
+          category: "screenshot",
+          checkKey: "header-visual",
+          checkName: "Header visual",
+          errorMessage: "Screenshot comparison failed",
+          projectSlug: "account",
+          status: "FAILED",
+        },
+        {
+          category: "timeout",
+          checkKey: "checkout",
+          checkName: "Checkout",
+          errorMessage: "Timeout 30000ms exceeded",
+          existingAnalysis: "Checkout button never became visible.",
+          projectSlug: "account",
+          status: "TIMED_OUT",
+        },
+      ],
+      projectSlug: "account",
+      ref: "release/3.192.70",
+      sessionName: "Release release/3.192.70",
+      targetUrl: "https://pr-410.app.example.test",
+    });
+    const requestBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {
+      messages: Array<{ content: string; role: string }>;
+    };
+    const prompt = requestBody.messages.map((message) => message.content).join("\n");
+
+    expect(prompt).toContain("category counts are authoritative");
+    expect(prompt).toContain("Screenshots: 1");
+    expect(prompt).toContain("Timeouts: 2");
+    expect(prompt).toContain("account/Header visual");
+    expect(prompt).toContain("Checkout button never became visible");
+    expect(analysis).toMatchObject({
+      content: "2 теста упали по таймауту, 1 — из-за скриншота.",
       status: "completed",
     });
   });

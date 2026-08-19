@@ -185,7 +185,10 @@ describe("test session bulk run route", () => {
       }),
     );
     expect(mocks.testSessionUpdate).toHaveBeenCalledWith({
-      data: { status: "RUNNING" },
+      data: {
+        aiAnalysis: expect.anything(),
+        status: "RUNNING",
+      },
       select: { id: true },
       where: { id: "session_1" },
     });

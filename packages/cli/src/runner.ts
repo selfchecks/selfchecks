@@ -454,6 +454,7 @@ async function resolveRunSession(
 
     return prisma.testSession.update({
       data: {
+        aiAnalysis: Prisma.DbNull,
         status: "RUNNING",
       },
       where: {
