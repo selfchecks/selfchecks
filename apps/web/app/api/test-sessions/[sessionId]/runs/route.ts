@@ -132,7 +132,7 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   const checks = checksResult.checks;
-  const missingSources = checks.filter((check) => !resolveRootDir(check));
+  const missingSources = checks.filter((check) => !resolveRootDir(check, session));
 
   if (missingSources.length > 0) {
     return NextResponse.json(
@@ -155,7 +155,7 @@ export async function POST(request: Request, context: RouteContext) {
           checkKey: check.key,
           env: environments.get(check.project.slug) ?? [],
           projectSlug: check.project.slug,
-          rootDir: resolveRootDir(check)!,
+          rootDir: resolveRootDir(check, session)!,
           runId,
           runSource: "MANUAL" as const,
           testSessionId: queued.sessionId,
@@ -517,6 +517,7 @@ function applyTargetUrl(
     "APP_URL",
     "BASE_URL",
     "ENVIRONMENT_URL",
+    "PLAYWRIGHT_BASE_URL",
     "PLAYWRIGHT_TEST_BASE_URL",
     "TARGET_URL",
   ]);
@@ -532,10 +533,15 @@ function applyTargetUrl(
       value: targetUrl,
     };
   });
-
-  return replaced
+  const environmentWithBaseUrl = replaced
     ? updatedEnvironment
     : [...updatedEnvironment, { name: "BASE_URL", value: targetUrl }];
+
+  return environmentWithBaseUrl.some(
+    (variable) => variable.name === "PLAYWRIGHT_BASE_URL",
+  )
+    ? environmentWithBaseUrl
+    : [...environmentWithBaseUrl, { name: "PLAYWRIGHT_BASE_URL", value: targetUrl }];
 }
 
 async function markQueueFailure(
@@ -569,7 +575,18 @@ async function markQueueFailure(
   ]);
 }
 
-function resolveRootDir(check: RunnableCheck) {
+function resolveRootDir(
+  check: RunnableCheck,
+  session: NonNullable<Awaited<ReturnType<typeof loadSessionForActions>>>,
+) {
+  if (check.project.slug === session.project.slug) {
+    const workspacePath = session.workspacePath?.trim();
+
+    if (workspacePath) {
+      return workspacePath;
+    }
+  }
+
   return process.env.SELFCHECKS_CHECKS_ROOT?.trim() || check.deployment?.source?.trim();
 }
 

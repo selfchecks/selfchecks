@@ -154,6 +154,7 @@ describe("test session bulk run route", () => {
   });
 
   it("reruns only tests whose latest session run failed", async () => {
+    vi.stubEnv("SELFCHECKS_CHECKS_ROOT", "/runtime/deployments/stable");
     mocks.testSessionFindFirst.mockResolvedValue(sourceSession);
     mocks.checkFindMany.mockResolvedValue([createCheck()]);
 
@@ -192,11 +193,16 @@ describe("test session bulk run route", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           checkId: "check_signin",
-          env: [
+          env: expect.arrayContaining([
             { name: "BASE_URL", value: "https://pr-331.app.example.test" },
+            {
+              name: "PLAYWRIGHT_BASE_URL",
+              value: "https://pr-331.app.example.test",
+            },
             { name: "TOKEN", value: "secret" },
-          ],
+          ]),
           projectSlug: "account",
+          rootDir: "/runtime/test-sessions/session_1",
           runId: "run_new_1",
           testSessionId: "session_1",
         }),
@@ -212,6 +218,9 @@ describe("test session bulk run route", () => {
     mocks.checkFindMany.mockResolvedValue([
       createCheck(),
       createCheck({
+        deployment: {
+          source: "/repo/config/api",
+        },
         id: "check_health",
         key: "health",
         name: "API health",
@@ -263,7 +272,15 @@ describe("test session bulk run route", () => {
       expect.arrayContaining([
         expect.objectContaining({
           data: expect.objectContaining({
+            projectSlug: "account",
+            rootDir: "/runtime/test-sessions/session_1",
+            testSessionId: "session_clone",
+          }),
+        }),
+        expect.objectContaining({
+          data: expect.objectContaining({
             projectSlug: "api",
+            rootDir: "/repo/config/api",
             testSessionId: "session_clone",
           }),
         }),
