@@ -1,6 +1,6 @@
 {
   "name": "@selfchecks/selfchecks",
-  "version": "0.1.36",
+  "version": "0.1.37",
   "description": "Checkly-compatible constructs supported by Selfchecks",
   "license": "Elastic-2.0",
   "type": "module",

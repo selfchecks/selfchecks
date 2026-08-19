@@ -1,6 +1,6 @@
 {
   "name": "@selfchecks/selfchecks-cli",
-  "version": "0.1.36",
+  "version": "0.1.37",
   "description": "Remote CLI for Selfchecks",
   "license": "Elastic-2.0",
   "type": "module",
