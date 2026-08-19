@@ -65,7 +65,7 @@ const sessionDetailFixture: TestSessionDetailData = {
       "sendsay-ru/frontend/account | v3.192.41 | c05713df | pipeline https://gitlab.sndsy.ru/sendsay-ru/frontend/account/-/pipelines/6569 | job https://gitlab.sndsy.ru/sendsay-ru/frontend/account/-/jobs/123",
     status: "failing",
     summary: {
-      failed: 0,
+      failed: 1,
       passed: 0,
       queued: 0,
       regress: 1,
@@ -74,6 +74,7 @@ const sessionDetailFixture: TestSessionDetailData = {
     },
     targetUrl: "https://example.test",
     tone: "bad",
+    workspacePath: "/app/runtime/test-sessions/session_1",
   },
 };
 
@@ -102,6 +103,9 @@ describe("TestSessionPage", () => {
     expect(screen.getByRole("button", { name: "Rerun tests-session" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Rerun failed tests" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Make full regress" })).toBeTruthy();
+    expect(
+      screen.getAllByText("Failed").some((label) => label.textContent === "Failed1"),
+    ).toBe(true);
     expect(screen.getAllByText("Regress")).toHaveLength(2);
     const targetUrlLink = screen.getByRole("link", {
       name: "https://example.test",
@@ -114,6 +118,8 @@ describe("TestSessionPage", () => {
     expect(screen.getByText("v3.192.41")).toBeTruthy();
     expect(screen.getByText("Commit")).toBeTruthy();
     expect(screen.getByText("c05713df")).toBeTruthy();
+    expect(screen.getByText("Path")).toBeTruthy();
+    expect(screen.getByText("/app/runtime/test-sessions/session_1")).toBeTruthy();
     expect(
       screen.getByRole("link", { name: /Homepage smoke/ }).getAttribute("href"),
     ).toBe("/checks/check_1/runs/run_1");

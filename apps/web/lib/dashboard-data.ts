@@ -90,6 +90,7 @@ export type TestSessionRow = {
   summary: TestSessionRunCountSummary;
   targetUrl?: string;
   tone?: DashboardResultTone;
+  workspacePath?: string;
 };
 
 export type TestSessionsData = {
@@ -453,6 +454,7 @@ type TestSessionWithRuns = {
   source: string | null;
   status: string;
   targetUrl: string | null;
+  workspacePath: string | null;
 };
 type DashboardBaselineCheck = {
   key: string;
@@ -600,9 +602,14 @@ export async function getDashboardActivityData(
         status: true,
       },
       where: {
-        status: {
-          in: [...DASHBOARD_ACTIVE_RUN_STATUSES],
-        },
+        AND: [
+          buildDashboardVisibleRunWhere(),
+          {
+            status: {
+              in: [...DASHBOARD_ACTIVE_RUN_STATUSES],
+            },
+          },
+        ],
       },
     }),
     fetchLatestTerminalRevisionRun(),
@@ -1521,6 +1528,7 @@ function buildJournalWhere(
   filters: JournalData["filters"],
 ): CheckRunWhere {
   const where: CheckRunWhere = {
+    AND: [buildDashboardVisibleRunWhere()],
     ...(projectSlug ? { project: { slug: projectSlug } } : {}),
     check: {
       enabled: true,
@@ -1750,11 +1758,6 @@ function buildDashboardVisibleRunWhere(): Prisma.CheckRunWhereInput {
         testSessionId: null,
       },
       {
-        status: {
-          in: [...DASHBOARD_ACTIVE_RUN_STATUSES],
-        },
-      },
-      {
         testSession: {
           is: {
             kind: {
@@ -1802,6 +1805,7 @@ function mapTestSession(
     summary,
     targetUrl: session.targetUrl ?? undefined,
     tone: mapRunTone(status, dashboardStatus),
+    workspacePath: session.workspacePath ?? undefined,
   };
 }
 
@@ -2037,7 +2041,7 @@ function summarizeTestSessionRuns(
       );
 
       return {
-        failed: summary.failed + (status === "failing" && !isRegress ? 1 : 0),
+        failed: summary.failed + (status === "failing" ? 1 : 0),
         passed: summary.passed + (runState === "passed" ? 1 : 0),
         queued: summary.queued + (runState === "queued" ? 1 : 0),
         regress: summary.regress + (isRegress ? 1 : 0),
@@ -2290,7 +2294,6 @@ async function fetchDashboardRuns(): Promise<DashboardRunRecord[]> {
         ON session."id" = run."testSessionId"
       WHERE
         run."testSessionId" IS NULL
-        OR run."status" IN ('QUEUED'::"CheckRunStatus", 'RUNNING'::"CheckRunStatus")
         OR (session."id" IS NOT NULL AND session."kind" <> 'TEST'::"TestSessionKind")
     ),
     ranked_groups AS (
@@ -2411,9 +2414,14 @@ async function fetchActiveQueue(timeZone: string): Promise<DashboardQueueRow[]> 
       createdAt: "asc",
     },
     where: {
-      status: {
-        in: [...DASHBOARD_ACTIVE_RUN_STATUSES],
-      },
+      AND: [
+        buildDashboardVisibleRunWhere(),
+        {
+          status: {
+            in: [...DASHBOARD_ACTIVE_RUN_STATUSES],
+          },
+        },
+      ],
     },
   });
 

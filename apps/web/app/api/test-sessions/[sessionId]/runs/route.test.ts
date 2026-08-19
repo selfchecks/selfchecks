@@ -92,6 +92,7 @@ const sourceSession = {
   source: "/runtime/source-session",
   status: "FAILED",
   targetUrl: "https://pr-331.app.example.test",
+  workspacePath: "/runtime/test-sessions/session_1",
 };
 
 describe("test session bulk run route", () => {
@@ -244,6 +245,7 @@ describe("test session bulk run route", () => {
         source: "/runtime/source-session",
         status: "RUNNING",
         targetUrl: "https://pr-331.app.example.test",
+        workspacePath: "/runtime/test-sessions/session_1",
       },
       select: { id: true },
     });

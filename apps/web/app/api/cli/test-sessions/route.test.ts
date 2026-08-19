@@ -181,6 +181,7 @@ describe("CLI test session upload route", () => {
         source: undefined,
         status: "QUEUED",
         targetUrl: "https://preview.example.test",
+        workspacePath: rootDir,
       }),
       select: { id: true },
     });

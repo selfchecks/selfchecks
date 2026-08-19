@@ -60,8 +60,8 @@ export function DashboardPageSkeleton({
 function DashboardSkeleton() {
   return (
     <>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {["PASSING", "DEGRADED", "FAILING"].map((label) => (
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {["PASSING", "DEGRADED", "FAILING", "QUEUED"].map((label) => (
           <div
             className="rounded-md border border-slate-800 bg-[#11161d] px-5 py-4 shadow-lg shadow-black/10"
             key={label}

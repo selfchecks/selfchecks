@@ -285,6 +285,7 @@ function renderDashboard(
   options: {
     activeView?: "dashboard" | "queue" | "settings";
     queue?: DashboardQueueRow[];
+    summary?: DashboardSummary;
   } = {},
 ) {
   render(
@@ -293,7 +294,7 @@ function renderDashboard(
       initialGroups={fixtureGroups}
       initialQueue={options.queue}
       initialSettings={fixtureSettings}
-      initialSummary={fixtureSummary}
+      initialSummary={options.summary ?? fixtureSummary}
     />,
   );
 }
@@ -324,8 +325,8 @@ describe("DashboardPage", () => {
     expect(screen.getByText("PASSING")).toBeTruthy();
     expect(screen.getByText("DEGRADED")).toBeTruthy();
     expect(screen.getByText("FAILING")).toBeTruthy();
+    expect(screen.getByRole("status", { name: "QUEUED 0" })).toBeTruthy();
     expect(screen.queryByText("RUNNING")).toBeNull();
-    expect(screen.queryByText("QUEUED")).toBeNull();
     const firewatchToggle = screen.getByRole("button", { name: "Firewatch" });
 
     expect(firewatchToggle.getAttribute("aria-expanded")).toBe("false");
@@ -345,6 +346,17 @@ describe("DashboardPage", () => {
     expect(screen.queryByRole("button", { name: "Open support chat" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Support" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+  });
+
+  it("shows the dashboard-only queued check count", () => {
+    renderDashboard({
+      summary: {
+        ...fixtureSummary,
+        queued: 7,
+      },
+    });
+
+    expect(screen.getByRole("status", { name: "QUEUED 7" })).toBeTruthy();
   });
 
   it("exposes the topbar action slot beside Run all checks", () => {

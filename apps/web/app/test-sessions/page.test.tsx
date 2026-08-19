@@ -49,7 +49,7 @@ const testSessionsFixture: TestSessionsData = {
       source: "selfchecks test --project default",
       status: "failing",
       summary: {
-        failed: 0,
+        failed: 1,
         passed: 2,
         queued: 0,
         regress: 1,
@@ -157,8 +157,8 @@ describe("TestSessionsPage", () => {
     expect(within(sessionRow).queryByText("session_1")).toBeNull();
     expect(within(sessionRow).getByRole("cell", { name: "3" })).toBeTruthy();
     expect(within(sessionRow).getByRole("cell", { name: "2" })).toBeTruthy();
-    expect(within(sessionRow).getByRole("cell", { name: "1" })).toBeTruthy();
-    expect(within(sessionRow).getAllByRole("cell", { name: "0" })).toHaveLength(3);
+    expect(within(sessionRow).getAllByRole("cell", { name: "1" })).toHaveLength(2);
+    expect(within(sessionRow).getAllByRole("cell", { name: "0" })).toHaveLength(2);
     expect(screen.getByText("2.4 s")).toBeTruthy();
     expect(screen.getByText("Page 2 of 2")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Previous" }).getAttribute("href")).toBe(

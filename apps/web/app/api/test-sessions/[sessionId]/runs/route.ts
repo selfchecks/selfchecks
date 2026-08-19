@@ -426,6 +426,7 @@ async function createQueuedRuns(
               source: session.source,
               status: "RUNNING",
               targetUrl: session.targetUrl,
+              workspacePath: session.workspacePath,
             },
             select: {
               id: true,

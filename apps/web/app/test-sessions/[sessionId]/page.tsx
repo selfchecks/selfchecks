@@ -97,7 +97,7 @@ export default async function TestSessionPage({ params }: TestSessionPageProps) 
                   (total, check) => total + check.runCount,
                   0,
                 )}
-                failedCount={session.summary.failed + session.summary.regress}
+                failedCount={session.summary.failed}
                 runState={session.runState}
                 sessionId={session.id}
               />
@@ -151,6 +151,13 @@ export default async function TestSessionPage({ params }: TestSessionPageProps) 
                 </div>
               </Fragment>
             ))}
+            <div className="text-slate-500">Path</div>
+            <div
+              className="min-w-0 break-all text-slate-300"
+              title={session.workspacePath}
+            >
+              {session.workspacePath || <span className="text-slate-600">-</span>}
+            </div>
             <div className="text-slate-500">Tests</div>
             <SummaryPills summary={session.summary} />
           </section>

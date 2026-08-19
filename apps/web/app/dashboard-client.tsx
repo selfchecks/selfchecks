@@ -28,6 +28,7 @@ import {
   Folder,
   Gauge,
   KeyRound,
+  ListTodo,
   LockKeyhole,
   MoreVertical,
   Plus,
@@ -418,9 +419,15 @@ export default function DashboardClient({
           tone: "border-red-950/80 bg-red-950/75 text-red-400 shadow-red-950/20",
           value: String(visibleSummary.failing),
         },
+        {
+          label: "QUEUED",
+          status: null,
+          tone: "border-amber-950/80 bg-amber-950/75 text-amber-300 shadow-amber-950/20",
+          value: String(visibleSummary.queued),
+        },
       ] satisfies Array<{
         label: string;
-        status: Exclude<StatusFilter, "all">;
+        status: Exclude<StatusFilter, "all"> | null;
         tone: string;
         value: string;
       }>,
@@ -827,35 +834,59 @@ export default function DashboardClient({
         <section className="mx-auto flex w-full max-w-[1760px] flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8">
           {activeView === "dashboard" ? (
             <>
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                {summaryCards.map((card) => (
-                  <button
-                    aria-pressed={statusFilter === card.status}
-                    className={cn(
-                      "rounded-md border px-5 py-4 text-left shadow-lg transition",
-                      "shadow-black/10",
-                      card.tone,
-                      statusFilter === card.status && "ring-2 ring-blue-500/70",
-                    )}
-                    key={card.label}
-                    onClick={() =>
-                      setStatusFilter((current) =>
-                        current === card.status ? "all" : card.status,
-                      )
-                    }
-                    type="button"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-xs font-semibold uppercase">
-                        {card.label}
-                      </span>
-                      <Settings2 className="h-4 w-4 opacity-60" />
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                {summaryCards.map((card) => {
+                  const content = (
+                    <>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-xs font-semibold uppercase">
+                          {card.label}
+                        </span>
+                        {card.status ? (
+                          <Settings2 className="h-4 w-4 opacity-60" />
+                        ) : (
+                          <ListTodo className="h-4 w-4 opacity-60" />
+                        )}
+                      </div>
+                      <div className="mt-1 text-3xl font-semibold leading-none">
+                        {card.value}
+                      </div>
+                    </>
+                  );
+
+                  return card.status ? (
+                    <button
+                      aria-pressed={statusFilter === card.status}
+                      className={cn(
+                        "rounded-md border px-5 py-4 text-left shadow-lg transition",
+                        "shadow-black/10",
+                        card.tone,
+                        statusFilter === card.status && "ring-2 ring-blue-500/70",
+                      )}
+                      key={card.label}
+                      onClick={() =>
+                        setStatusFilter((current) =>
+                          current === card.status ? "all" : card.status,
+                        )
+                      }
+                      type="button"
+                    >
+                      {content}
+                    </button>
+                  ) : (
+                    <div
+                      aria-label={`${card.label} ${card.value}`}
+                      className={cn(
+                        "rounded-md border px-5 py-4 text-left shadow-lg shadow-black/10",
+                        card.tone,
+                      )}
+                      key={card.label}
+                      role="status"
+                    >
+                      {content}
                     </div>
-                    <div className="mt-1 text-3xl font-semibold leading-none">
-                      {card.value}
-                    </div>
-                  </button>
-                ))}
+                  );
+                })}
               </div>
 
               <div className="flex flex-col gap-5">

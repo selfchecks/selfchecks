@@ -97,6 +97,7 @@ export async function POST(request: Request) {
       metadata,
       checks,
       env,
+      workspaceRoot,
     );
     const queue = createCheckQueue();
 
@@ -159,6 +160,7 @@ async function createQueuedSession(
   metadata: TestSessionMetadata,
   checks: CheckDefinition[],
   env: Array<{ name: string; value: string }>,
+  workspacePath: string,
 ) {
   return prisma.$transaction(async (tx) => {
     const project = await tx.project.upsert({
@@ -187,6 +189,7 @@ async function createQueuedSession(
         source: metadata.source,
         status: "QUEUED",
         targetUrl: resolveTargetUrl(env),
+        workspacePath,
       },
       select: {
         id: true,

@@ -157,9 +157,27 @@ describe("dashboard data", () => {
         status: true,
       },
       where: {
-        status: {
-          in: ["QUEUED", "RUNNING"],
-        },
+        AND: [
+          {
+            OR: [
+              { testSessionId: null },
+              {
+                testSession: {
+                  is: {
+                    kind: {
+                      not: "TEST",
+                    },
+                  },
+                },
+              },
+            ],
+          },
+          {
+            status: {
+              in: ["QUEUED", "RUNNING"],
+            },
+          },
+        ],
       },
     });
     expect(mocks.checkRunFindFirst).toHaveBeenCalledWith({
@@ -174,7 +192,6 @@ describe("dashboard data", () => {
           {
             OR: [
               { testSessionId: null },
-              { status: { in: ["QUEUED", "RUNNING"] } },
               {
                 testSession: {
                   is: {
@@ -1100,7 +1117,7 @@ describe("dashboard data", () => {
     });
   });
 
-  it("maps active queue rows for production checks and test session snapshots", async () => {
+  it("keeps active CLI test sessions out of the dashboard queue", async () => {
     mocks.projectFindUnique.mockResolvedValue({
       id: "project_1",
       slug: "default",
@@ -1114,49 +1131,11 @@ describe("dashboard data", () => {
         }),
         runSource: "MANUAL",
       },
-      {
-        artifacts: [],
-        check: null,
-        checkId: null,
-        checkSnapshotEntrypoint: "tests/signin.spec.ts",
-        checkSnapshotGroupName: "Browser",
-        checkSnapshotKey: "signin",
-        checkSnapshotName: "Sign in",
-        checkSnapshotProjectSlug: "default",
-        checkSnapshotRequest: null,
-        checkSnapshotTags: ["smoke"],
-        checkSnapshotType: "BROWSER",
-        createdAt: new Date("2026-07-05T09:39:00.000Z"),
-        durationMs: null,
-        errorMessage: null,
-        id: "run_cli",
-        logsPath: null,
-        result: null,
-        runSource: "CLI",
-        status: "RUNNING",
-        testSession: {
-          id: "session_1",
-          kind: "TEST",
-          ref: "release/3.192.42",
-          source: null,
-        },
-        testSessionId: "session_1",
-      },
     ]);
 
     const dashboard = await getDashboardData("default");
 
     expect(dashboard.queue).toEqual([
-      expect.objectContaining({
-        branch: "release/3.192.42",
-        checkHref: "/test-sessions/session_1/checks/signin",
-        checkId: "signin",
-        checkName: "Sign in",
-        runState: "running",
-        source: "cli",
-        sourceLabel: "CLI",
-        type: "browser",
-      }),
       expect.objectContaining({
         branch: "production",
         checkHref: "/checks/check_1",
@@ -1169,11 +1148,38 @@ describe("dashboard data", () => {
     ]);
     expect(dashboard.summary).toMatchObject({
       queued: 1,
-      running: 1,
+      running: 0,
     });
+    expect(mocks.checkRunFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          AND: [
+            {
+              OR: [
+                { testSessionId: null },
+                {
+                  testSession: {
+                    is: {
+                      kind: {
+                        not: "TEST",
+                      },
+                    },
+                  },
+                },
+              ],
+            },
+            {
+              status: {
+                in: ["QUEUED", "RUNNING"],
+              },
+            },
+          ],
+        },
+      }),
+    );
   });
 
-  it("keeps finished CLI test sessions out of dashboard run history", async () => {
+  it("keeps CLI test sessions out of dashboard run history", async () => {
     mocks.checkRunUpdateMany.mockResolvedValue({ count: 0 });
     mocks.projectFindUnique.mockResolvedValue({
       id: "project_1",
@@ -1199,15 +1205,6 @@ describe("dashboard data", () => {
         runs: [
           {
             artifacts: [],
-            createdAt: new Date("2026-07-05T09:40:00.000Z"),
-            durationMs: null,
-            id: "run_running_test",
-            logsPath: null,
-            result: null,
-            status: "RUNNING",
-          },
-          {
-            artifacts: [],
             createdAt: new Date("2026-07-05T09:38:00.000Z"),
             durationMs: 8,
             id: "run_monitoring",
@@ -1220,17 +1217,7 @@ describe("dashboard data", () => {
         type: "API",
       },
     ]);
-    mocks.checkRunFindMany.mockResolvedValue([
-      createActiveQueueRun({
-        id: "run_running_test",
-        status: "RUNNING",
-        testSession: {
-          id: "session_1",
-          kind: "TEST",
-          source: "selfchecks test",
-        },
-      }),
-    ]);
+    mocks.checkRunFindMany.mockResolvedValue([]);
 
     const dashboard = await getDashboardData("default");
     const [sql, firewatchDays, resultCount] = mocks.queryRaw.mock.calls[0] ?? [];
@@ -1240,12 +1227,15 @@ describe("dashboard data", () => {
     );
     expect(firewatchDays).toBe(7);
     expect(resultCount).toBe(24);
+    expect(Array.from(sql as TemplateStringsArray).join("?")).not.toContain(
+      'OR run."status" IN',
+    );
     expect(dashboard.summary).toMatchObject({
       degraded: 0,
       failing: 0,
-      passing: 0,
+      passing: 1,
       queued: 0,
-      running: 1,
+      running: 0,
     });
   });
 
@@ -1460,6 +1450,22 @@ describe("dashboard data", () => {
 
     expect(mocks.checkRunCount).toHaveBeenCalledWith({
       where: expect.objectContaining({
+        AND: [
+          {
+            OR: [
+              { testSessionId: null },
+              {
+                testSession: {
+                  is: {
+                    kind: {
+                      not: "TEST",
+                    },
+                  },
+                },
+              },
+            ],
+          },
+        ],
         check: expect.objectContaining({
           enabled: true,
           type: "API",
@@ -1695,6 +1701,7 @@ describe("dashboard data", () => {
       source: null,
       status: "FAILED",
       targetUrl: "https://example.test",
+      workspacePath: "/app/runtime/test-sessions/session_1",
     });
 
     const data = await getTestSessionData("session_1");
@@ -1713,9 +1720,10 @@ describe("dashboard data", () => {
       runState: "failed",
     });
     expect(data?.session.summary).toMatchObject({
-      failed: 0,
+      failed: 1,
       regress: 1,
     });
+    expect(data?.session.workspacePath).toBe("/app/runtime/test-sessions/session_1");
     expect(mocks.checkFindMany).toHaveBeenCalledWith({
       select: expect.objectContaining({
         runs: expect.objectContaining({
@@ -2081,7 +2089,7 @@ describe("dashboard data", () => {
       source: "/repo/config/checkly",
       status: "failing",
       summary: {
-        failed: 0,
+        failed: 1,
         passed: 1,
         queued: 0,
         regress: 1,

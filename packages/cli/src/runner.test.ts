@@ -1136,6 +1136,7 @@ describe("runChecks", () => {
         source: undefined,
         status: "RUNNING",
         targetUrl: "https://example.test",
+        workspacePath: "/repo",
       },
     });
     expect(mocks.testSessionUpdate).toHaveBeenCalledWith({
@@ -1233,6 +1234,7 @@ describe("runChecks", () => {
         source: undefined,
         status: "RUNNING",
         targetUrl: undefined,
+        workspacePath: "/repo/config/checkly",
       },
     });
     expect(mocks.checkRunCreate).toHaveBeenCalledWith(

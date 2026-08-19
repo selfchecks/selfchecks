@@ -491,6 +491,7 @@ async function resolveRunSession(
       source: options.source ?? (isTestSession ? undefined : options.rootDir),
       status: "RUNNING",
       targetUrl: isTestSession ? resolveTestSessionTargetUrl(options.env) : undefined,
+      ...(isTestSession ? { workspacePath: options.rootDir } : {}),
     },
   });
 }
