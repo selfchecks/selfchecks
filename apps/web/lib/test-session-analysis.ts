@@ -33,6 +33,8 @@ export type TestSessionFailureSummary = {
   failedCount: number;
 };
 
+export const TEST_SESSION_FAILURE_CLASSIFIER_VERSION = 2;
+
 const CATEGORY_DEFINITIONS: Array<
   Pick<TestSessionFailureCategory, "description" | "key" | "label">
 > = [
@@ -65,6 +67,13 @@ const CATEGORY_DEFINITIONS: Array<
 
 const SCREENSHOT_PATTERN =
   /\b(tohavescreenshot|screenshot|snapshot|visual (?:comparison|difference|regression)|pixel(?:s|match)?|baseline image|image comparison)\b/i;
+const SCREENSHOT_MISMATCH_PATTERNS = [
+  /\btohavescreenshot\b/i,
+  /\b(?:screenshot|image) (?:comparison )?(?:failed|mismatch|differ(?:ed|ence|ent|s)?)\b/i,
+  /\bpixels?\b[^\n]{0,160}\b(?:different|differ(?:ed|ent|s)?)\b/i,
+  /\bexpected an image\b[^\n]{0,160}\breceived\b/i,
+  /\bbaseline image\b[^\n]{0,160}\b(?:different|differ(?:ed|ent|s)?|mismatch)\b/i,
+];
 const TIMEOUT_PATTERN =
   /\b(timeout|timed out|time limit|test timeout|exceeded.*(?:ms|seconds?|minutes?))\b/i;
 const LOCATOR_PATTERN =
@@ -111,6 +120,10 @@ export function classifyTestSessionFailure(
 ): TestSessionFailureCategoryKey {
   const resultText = stringifyResultWithoutAiAnalysis(failure.result);
   const evidence = `${failure.errorMessage ?? ""}\n${resultText}`;
+
+  if (SCREENSHOT_MISMATCH_PATTERNS.some((pattern) => pattern.test(evidence))) {
+    return "screenshot";
+  }
 
   if (failure.status === "TIMED_OUT" || TIMEOUT_PATTERN.test(evidence)) {
     return "timeout";

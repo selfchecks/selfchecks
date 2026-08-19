@@ -20,6 +20,35 @@ describe("test session failure analysis", () => {
     );
   });
 
+  it.each([
+    [
+      "FAILED",
+      "expect(page).toHaveScreenshot: Timeout 30000ms exceeded. 12212 pixels (ratio 0.01 of all image pixels) are different.",
+    ],
+    ["TIMED_OUT", "Expected an image 1400px by 870px, received 1400px by 918px."],
+  ])(
+    "prioritizes an explicit screenshot mismatch over a %s timeout signal",
+    (status, errorMessage) => {
+      expect(classifyTestSessionFailure(createFailure({ errorMessage, status }))).toBe(
+        "screenshot",
+      );
+    },
+  );
+
+  it("does not treat a screenshot artifact as a screenshot mismatch", () => {
+    expect(
+      classifyTestSessionFailure(
+        createFailure({
+          errorMessage: "locator.waitFor: Timeout 30000ms exceeded",
+          result: {
+            artifacts: [{ path: "test-results/failure-screenshot.png" }],
+          },
+          status: "TIMED_OUT",
+        }),
+      ),
+    ).toBe("timeout");
+  });
+
   it("uses result details but ignores a previous per-test AI analysis", () => {
     expect(
       classifyTestSessionFailure(

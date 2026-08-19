@@ -129,6 +129,7 @@ describe("test session AI analysis route", () => {
     expect(mocks.testSessionUpdate).toHaveBeenCalledWith({
       data: {
         aiAnalysis: expect.objectContaining({
+          failureClassifierVersion: 2,
           failedCount: 3,
           failedRunIds: ["run_checkout_2", "run_header", "run_profile"],
         }),
@@ -147,6 +148,7 @@ describe("test session AI analysis route", () => {
           status: "completed",
         },
         categories: [],
+        failureClassifierVersion: 2,
         failedCount: 1,
         failedRunIds: ["run_1"],
       },
@@ -177,6 +179,67 @@ describe("test session AI analysis route", () => {
     });
     expect(mocks.analyzeFailedTestSession).not.toHaveBeenCalled();
     expect(mocks.testSessionUpdate).not.toHaveBeenCalled();
+  });
+
+  it("rebuilds a stored analysis created by an older failure classifier", async () => {
+    mocks.testSessionFindFirst.mockResolvedValue({
+      aiAnalysis: {
+        analysis: {
+          content: "Старая сводка с неверными категориями.",
+          status: "completed",
+        },
+        categories: [],
+        failureClassifierVersion: 1,
+        failedCount: 1,
+        failedRunIds: ["run_1"],
+      },
+      id: "session_1",
+      name: "Release",
+      project: { slug: "account" },
+      ref: "stable",
+      runs: [
+        createRun({
+          errorMessage:
+            "expect(page).toHaveScreenshot: Timeout 30000ms exceeded. 12212 pixels are different.",
+        }),
+      ],
+      status: "FAILED",
+      targetUrl: "https://app.example.test",
+    });
+    mocks.analyzeFailedTestSession.mockResolvedValue({
+      content: "Обновлённая сводка: ошибка сравнения скриншота.",
+      status: "completed",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/test-sessions/session_1/analysis", {
+        method: "POST",
+      }),
+      createContext(),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({
+        analysis: expect.objectContaining({
+          content: "Обновлённая сводка: ошибка сравнения скриншота.",
+        }),
+        categories: expect.arrayContaining([
+          expect.objectContaining({ count: 1, key: "screenshot" }),
+        ]),
+      }),
+    );
+    expect(mocks.analyzeFailedTestSession).toHaveBeenCalledOnce();
+    expect(mocks.testSessionUpdate).toHaveBeenCalledWith({
+      data: {
+        aiAnalysis: expect.objectContaining({
+          failureClassifierVersion: 2,
+        }),
+      },
+      where: {
+        id: "session_1",
+      },
+    });
   });
 
   it("waits until every test in the session is finished", async () => {

@@ -128,6 +128,16 @@ describe("SessionActions", () => {
 
   it("loads one aggregate AI analysis after the session finishes", async () => {
     const user = userEvent.setup();
+    const timeoutTests = Array.from({ length: 8 }, (_, index) => ({
+      category: "timeout",
+      checkId: `check_checkout_${index + 1}`,
+      checkKey: `checkout-${index + 1}`,
+      checkName: `Checkout ${index + 1}`,
+      errorMessage: `\u001b[2mTimeout ${index + 1}\u001b[22m exceeded`,
+      projectSlug: "account",
+      runId: `run_checkout_${index + 1}`,
+      status: "TIMED_OUT",
+    }));
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -158,25 +168,14 @@ describe("SessionActions", () => {
               ],
             },
             {
-              count: 1,
+              count: 8,
               description: "Execution, assertion, navigation, or waiting timeouts.",
               key: "timeout",
               label: "Timeouts",
-              tests: [
-                {
-                  category: "timeout",
-                  checkId: "check_checkout",
-                  checkKey: "checkout",
-                  checkName: "Checkout",
-                  errorMessage: "Timeout 30000ms exceeded",
-                  projectSlug: "account",
-                  runId: "run_checkout",
-                  status: "TIMED_OUT",
-                },
-              ],
+              tests: timeoutTests,
             },
           ],
-          failedCount: 2,
+          failedCount: 9,
         }),
       ),
     );
@@ -198,14 +197,20 @@ describe("SessionActions", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/test-sessions/session_1/analysis", {
       method: "POST",
     });
-    expect(dialog.textContent).toContain("2 failed tests");
+    expect(dialog.textContent).toContain("9 failed tests");
     expect(
       screen.getByText("Таймауты связаны с ожиданием кнопки checkout."),
     ).toBeTruthy();
     expect(
       screen.getByRole("link", { name: "Header visual" }).getAttribute("href"),
     ).toBe("/test-sessions/session_1/checks/check_header");
-    expect(screen.getByRole("link", { name: "Checkout" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Checkout 1" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Checkout 7" })).toBeNull();
+    expect(screen.getByTitle("Timeout 1 exceeded")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Show 2 more" }));
+    expect(screen.getByRole("link", { name: "Checkout 7" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Show less" })).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "Close AI analysis" }));
     expect(dialog.isConnected).toBe(false);

@@ -6,6 +6,10 @@ import { getRunEnvironment } from "@selfchecks/cli/environment";
 import type { CheckType } from "@selfchecks/core";
 
 import { prisma } from "@/lib/prisma";
+import {
+  cloneTestSessionWorkspace,
+  resolveTestSessionSourceWorkspace,
+} from "@/lib/test-session-workspace";
 
 export const runtime = "nodejs";
 
@@ -132,7 +136,25 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   const checks = checksResult.checks;
-  const missingSources = checks.filter((check) => !resolveRootDir(check, session));
+  const fullRegressionSourceWorkspace =
+    body.action === "full-regression"
+      ? resolveTestSessionSourceWorkspace(session.workspacePath)
+      : undefined;
+
+  if (body.action === "full-regression" && !fullRegressionSourceWorkspace) {
+    return NextResponse.json(
+      {
+        error:
+          "The source test session workspace is unavailable. Start a new test session for this branch before running a full regression.",
+      },
+      { status: 422 },
+    );
+  }
+
+  const missingSources =
+    body.action === "full-regression"
+      ? []
+      : checks.filter((check) => !resolveRootDir(check, session));
 
   if (missingSources.length > 0) {
     return NextResponse.json(
@@ -145,6 +167,36 @@ export async function POST(request: Request, context: RouteContext) {
 
   const environments = await loadProjectEnvironments(checks, session.targetUrl);
   const queued = await createQueuedRuns(session, checks, body.action);
+  let fullRegressionWorkspacePath: string | undefined;
+
+  if (fullRegressionSourceWorkspace) {
+    try {
+      fullRegressionWorkspacePath = await cloneTestSessionWorkspace(
+        fullRegressionSourceWorkspace,
+        queued.sessionId,
+      );
+      await prisma.testSession.update({
+        data: {
+          workspacePath: fullRegressionWorkspacePath,
+        },
+        where: {
+          id: queued.sessionId,
+        },
+      });
+    } catch (error) {
+      await markQueueFailure(
+        queued.sessionId,
+        queued.runs.map((run) => run.runId),
+        error instanceof Error ? error.message : String(error),
+      );
+
+      return NextResponse.json(
+        { error: "Unable to clone the source test session workspace." },
+        { status: 503 },
+      );
+    }
+  }
+
   const queue = createCheckQueue();
 
   try {
@@ -155,7 +207,7 @@ export async function POST(request: Request, context: RouteContext) {
           checkKey: check.key,
           env: environments.get(check.project.slug) ?? [],
           projectSlug: check.project.slug,
-          rootDir: resolveRootDir(check, session)!,
+          rootDir: fullRegressionWorkspacePath ?? resolveRootDir(check, session)!,
           runId,
           runSource: "MANUAL" as const,
           testSessionId: queued.sessionId,
@@ -426,7 +478,7 @@ async function createQueuedRuns(
               source: session.source,
               status: "RUNNING",
               targetUrl: session.targetUrl,
-              workspacePath: session.workspacePath,
+              workspacePath: null,
             },
             select: {
               id: true,

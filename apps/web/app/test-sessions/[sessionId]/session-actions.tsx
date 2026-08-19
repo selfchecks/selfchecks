@@ -376,7 +376,7 @@ function SessionAnalysisDrawer({
                 </div>
               ) : null}
 
-              <div className="mt-6 space-y-4">
+              <div className="mt-4 space-y-2">
                 {analysis.categories
                   .filter((category) => category.count > 0)
                   .map((category) => (
@@ -403,41 +403,104 @@ function FailureCategorySection({
   category: TestSessionFailureCategory;
   sessionId: string;
 }) {
+  const [expanded, setExpanded] = useState(false);
+  const visibleTests = expanded ? category.tests : category.tests.slice(0, 6);
+  const hiddenCount = category.tests.length - visibleTests.length;
+
   return (
     <section className="overflow-hidden rounded-md border border-slate-800 bg-[#111821]">
-      <header className="border-b border-slate-800 px-4 py-3">
-        <div className="flex items-center justify-between gap-3">
-          <h3 className="font-medium text-slate-100">{category.label}</h3>
-          <span className="rounded bg-slate-800 px-2 py-0.5 text-xs font-semibold text-slate-300">
-            {category.count}
-          </span>
-        </div>
-        <p className="mt-1 text-xs text-slate-500">{category.description}</p>
+      <header className="flex items-center gap-2 border-b border-slate-800 px-3 py-2">
+        <h3 className="shrink-0 text-sm font-medium text-slate-100">
+          {category.label}
+        </h3>
+        <span
+          className="min-w-0 flex-1 truncate text-xs text-slate-500"
+          title={category.description}
+        >
+          {category.description}
+        </span>
+        <span className="shrink-0 rounded bg-slate-800 px-1.5 py-0.5 text-[11px] font-semibold leading-4 text-slate-300">
+          {category.count}
+        </span>
       </header>
       <ul className="divide-y divide-slate-800">
-        {category.tests.map((test) => (
-          <li className="px-4 py-3" key={test.runId}>
-            <a
-              className="text-sm font-medium text-blue-300 hover:text-blue-200"
-              href={`/test-sessions/${encodeURIComponent(
-                sessionId,
-              )}/checks/${encodeURIComponent(test.checkId ?? test.checkKey)}`}
-            >
-              {test.checkName}
-            </a>
-            <div className="mt-0.5 text-xs text-slate-500">
-              {test.projectSlug} · {test.status.toLowerCase().replaceAll("_", " ")}
-            </div>
-            {test.errorMessage ? (
-              <div className="mt-2 line-clamp-3 whitespace-pre-wrap break-words text-xs leading-5 text-slate-400">
-                {test.errorMessage}
+        {visibleTests.map((test) => {
+          const errorPreview = formatCompactError(test.errorMessage);
+
+          return (
+            <li className="px-3 py-2" key={test.runId}>
+              <div className="flex min-w-0 items-baseline gap-2">
+                <a
+                  className="min-w-0 flex-1 truncate text-sm font-medium leading-5 text-blue-300 hover:text-blue-200"
+                  href={`/test-sessions/${encodeURIComponent(
+                    sessionId,
+                  )}/checks/${encodeURIComponent(test.checkId ?? test.checkKey)}`}
+                  title={test.checkName}
+                >
+                  {test.checkName}
+                </a>
+                <span className="shrink-0 text-[11px] leading-4 text-slate-500">
+                  {test.projectSlug} · {test.status.toLowerCase().replaceAll("_", " ")}
+                </span>
               </div>
-            ) : null}
-          </li>
-        ))}
+              {errorPreview ? (
+                <div
+                  className="mt-0.5 truncate font-mono text-[11px] leading-4 text-slate-500"
+                  title={errorPreview}
+                >
+                  {errorPreview}
+                </div>
+              ) : null}
+            </li>
+          );
+        })}
       </ul>
+      {hiddenCount > 0 || expanded ? (
+        <button
+          className="flex h-8 w-full items-center justify-center border-t border-slate-800 text-xs font-medium text-blue-300 transition-colors hover:bg-slate-900/60 hover:text-blue-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-400"
+          onClick={() => setExpanded((current) => !current)}
+          type="button"
+        >
+          {expanded ? "Show less" : `Show ${hiddenCount} more`}
+        </button>
+      ) : null}
     </section>
   );
+}
+
+function formatCompactError(value: string | null | undefined) {
+  return value
+    ? stripAnsiEscapeSequences(value)
+        .replace(/\[(?:\d{1,2};?)+m/g, "")
+        .replace(/\s+/g, " ")
+        .trim()
+    : undefined;
+}
+
+function stripAnsiEscapeSequences(value: string) {
+  let output = "";
+
+  for (let index = 0; index < value.length; index += 1) {
+    if (value.charCodeAt(index) === 27 && value[index + 1] === "[") {
+      index += 2;
+
+      while (index < value.length) {
+        const charCode = value.charCodeAt(index);
+
+        if (charCode >= 64 && charCode <= 126) {
+          break;
+        }
+
+        index += 1;
+      }
+
+      continue;
+    }
+
+    output += value[index];
+  }
+
+  return output;
 }
 
 function FullRegressionDialog({

@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   checkFindMany: vi.fn(),
   checkRunCreate: vi.fn(),
   checkRunUpdateMany: vi.fn(),
+  copyWorkspace: vi.fn(),
   getRunEnvironment: vi.fn(),
   projectFindMany: vi.fn(),
   queueAddBulk: vi.fn(),
@@ -14,6 +15,15 @@ const mocks = vi.hoisted(() => ({
   testSessionUpdate: vi.fn(),
   transaction: vi.fn(),
 }));
+
+vi.mock("@/lib/test-session-workspace", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/test-session-workspace")>();
+
+  return {
+    ...actual,
+    cloneTestSessionWorkspace: mocks.copyWorkspace,
+  };
+});
 
 vi.mock("bullmq", () => ({
   Queue: mocks.queueConstructor.mockImplementation(() => ({
@@ -103,6 +113,9 @@ describe("test session bulk run route", () => {
       { name: "BASE_URL", value: "https://production.example.test" },
       { name: "TOKEN", value: "secret" },
     ]);
+    mocks.copyWorkspace.mockImplementation(async (_source, sessionId) =>
+      pathForClonedWorkspace(sessionId),
+    );
     mocks.queueAddBulk.mockResolvedValue([]);
     mocks.queueClose.mockResolvedValue(undefined);
     mocks.checkRunCreate.mockImplementation(async () => ({
@@ -216,6 +229,7 @@ describe("test session bulk run route", () => {
   });
 
   it("clones the session and queues every enabled test for selected projects", async () => {
+    vi.stubEnv("SELFCHECKS_TEST_SESSIONS_DIR", "/runtime/test-sessions");
     mocks.testSessionFindFirst.mockResolvedValue(sourceSession);
     mocks.projectFindMany.mockResolvedValue([{ slug: "account" }, { slug: "api" }]);
     mocks.checkFindMany.mockResolvedValue([
@@ -257,9 +271,21 @@ describe("test session bulk run route", () => {
         source: "/runtime/source-session",
         status: "RUNNING",
         targetUrl: "https://pr-331.app.example.test",
-        workspacePath: "/runtime/test-sessions/session_1",
+        workspacePath: null,
       },
       select: { id: true },
+    });
+    expect(mocks.copyWorkspace).toHaveBeenCalledWith(
+      "/runtime/test-sessions/session_1",
+      "session_clone",
+    );
+    expect(mocks.testSessionUpdate).toHaveBeenCalledWith({
+      data: {
+        workspacePath: "/runtime/test-sessions/session_clone",
+      },
+      where: {
+        id: "session_clone",
+      },
     });
     expect(mocks.checkRunCreate).toHaveBeenCalledTimes(2);
     expect(mocks.checkRunCreate).toHaveBeenLastCalledWith({
@@ -276,19 +302,83 @@ describe("test session bulk run route", () => {
         expect.objectContaining({
           data: expect.objectContaining({
             projectSlug: "account",
-            rootDir: "/runtime/test-sessions/session_1",
+            rootDir: "/runtime/test-sessions/session_clone",
             testSessionId: "session_clone",
           }),
         }),
         expect.objectContaining({
           data: expect.objectContaining({
             projectSlug: "api",
-            rootDir: "/repo/config/api",
+            rootDir: "/runtime/test-sessions/session_clone",
             testSessionId: "session_clone",
           }),
         }),
       ]),
     );
+  });
+
+  it("refuses a full regression when the branch workspace is unavailable", async () => {
+    mocks.testSessionFindFirst.mockResolvedValue({
+      ...sourceSession,
+      workspacePath: null,
+    });
+    mocks.projectFindMany.mockResolvedValue([{ slug: "account" }]);
+    mocks.checkFindMany.mockResolvedValue([createCheck()]);
+
+    const response = await POST(
+      createRequest({
+        action: "full-regression",
+        projectSlugs: ["account"],
+      }),
+      createContext(),
+    );
+
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toEqual({
+      error:
+        "The source test session workspace is unavailable. Start a new test session for this branch before running a full regression.",
+    });
+    expect(mocks.copyWorkspace).not.toHaveBeenCalled();
+    expect(mocks.testSessionCreate).not.toHaveBeenCalled();
+    expect(mocks.queueAddBulk).not.toHaveBeenCalled();
+  });
+
+  it("marks the cloned session failed when its workspace cannot be copied", async () => {
+    vi.stubEnv("SELFCHECKS_TEST_SESSIONS_DIR", "/runtime/test-sessions");
+    mocks.testSessionFindFirst.mockResolvedValue(sourceSession);
+    mocks.projectFindMany.mockResolvedValue([{ slug: "account" }]);
+    mocks.checkFindMany.mockResolvedValue([createCheck()]);
+    mocks.copyWorkspace.mockRejectedValueOnce(new Error("Source directory is gone"));
+
+    const response = await POST(
+      createRequest({
+        action: "full-regression",
+        projectSlugs: ["account"],
+      }),
+      createContext(),
+    );
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({
+      error: "Unable to clone the source test session workspace.",
+    });
+    expect(mocks.testSessionUpdate).toHaveBeenCalledWith({
+      data: {
+        status: "FAILED",
+      },
+      where: {
+        id: "session_clone",
+      },
+    });
+    expect(mocks.checkRunUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          errorMessage: "Source directory is gone",
+          status: "FAILED",
+        }),
+      }),
+    );
+    expect(mocks.queueAddBulk).not.toHaveBeenCalled();
   });
 
   it("requires a project for a full regression", async () => {
@@ -311,6 +401,10 @@ function createContext() {
       sessionId: "session_1",
     }),
   };
+}
+
+function pathForClonedWorkspace(sessionId: string) {
+  return `/runtime/test-sessions/${sessionId}`;
 }
 
 function createRequest(body: unknown) {

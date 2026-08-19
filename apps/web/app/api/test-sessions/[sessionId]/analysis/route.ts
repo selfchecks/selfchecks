@@ -6,6 +6,7 @@ import { analyzeFailedTestSession } from "@selfchecks/cli/ai-analysis";
 import { prisma } from "@/lib/prisma";
 import {
   summarizeTestSessionFailures,
+  TEST_SESSION_FAILURE_CLASSIFIER_VERSION,
   type TestSessionFailureInput,
 } from "@/lib/test-session-analysis";
 
@@ -143,6 +144,7 @@ export async function POST(_request: Request, context: RouteContext) {
       data: {
         aiAnalysis: toJsonValue({
           ...payload,
+          failureClassifierVersion: TEST_SESSION_FAILURE_CLASSIFIER_VERSION,
           failedRunIds,
         }),
       },
@@ -236,6 +238,7 @@ function readCachedAnalysis(value: unknown, failedRunIds: string[]) {
     : [];
 
   if (
+    stored.failureClassifierVersion !== TEST_SESSION_FAILURE_CLASSIFIER_VERSION ||
     storedRunIds.length !== failedRunIds.length ||
     storedRunIds.some((runId, index) => runId !== failedRunIds[index]) ||
     !stored.analysis ||
