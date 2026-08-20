@@ -18,6 +18,8 @@ export const runtime = "nodejs";
 type DeploymentJob = {
   allowRemovals: boolean;
   deploymentManifest?: DeploymentManifest;
+  gitRef?: string;
+  gitSha?: string;
   kind: "deployment";
   projectSlug: string;
   rootDir: string;
@@ -26,6 +28,8 @@ type DeploymentJob = {
 type DeploymentMetadata = {
   allowRemovals: boolean;
   deploymentManifest?: DeploymentManifest;
+  gitRef?: string;
+  gitSha?: string;
   projectSlug: string;
 };
 
@@ -50,6 +54,8 @@ export async function POST(request: Request) {
         {
           allowRemovals: metadata.allowRemovals,
           deploymentManifest: metadata.deploymentManifest,
+          gitRef: metadata.gitRef,
+          gitSha: metadata.gitSha,
           kind: "deployment",
           projectSlug: metadata.projectSlug,
           rootDir,
@@ -101,8 +107,14 @@ function parseMetadata(value: FormDataEntryValue | null): DeploymentMetadata {
           ),
         }
       : {}),
+    gitRef: readOptionalString(metadata.gitRef),
+    gitSha: readOptionalString(metadata.gitSha),
     projectSlug: metadata.projectSlug.trim(),
   };
+}
+
+function readOptionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
 function resolveDeploymentsRoot() {

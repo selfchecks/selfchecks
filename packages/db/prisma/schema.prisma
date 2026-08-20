@@ -93,6 +93,7 @@ model ApiKey {
 model Deployment {
   id         String   @id @default(cuid())
   projectId  String
+  gitRef     String?
   gitSha     String?
   source     String?
   deployedBy String?
@@ -100,6 +101,8 @@ model Deployment {
   createdAt  DateTime @default(now())
   checks     Check[]
   project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
 }
 
 model CheckGroup {

@@ -313,6 +313,8 @@ describe("handleCheckJob", () => {
       handleDeploymentJob({
         data: {
           allowRemovals: true,
+          gitRef: "refs/tags/v1.2.3",
+          gitSha: "1234567890abcdef",
           kind: "deployment",
           projectSlug: "account",
           rootDir: "/runtime/deployments/deployment_1",
@@ -328,6 +330,8 @@ describe("handleCheckJob", () => {
     expect(mocks.persistDeploySummary).toHaveBeenCalledWith(
       expect.objectContaining({
         allowRemovals: true,
+        gitRef: "refs/tags/v1.2.3",
+        gitSha: "1234567890abcdef",
         projectSlug: "account",
         source: "/runtime/deployments/deployment_1",
       }),

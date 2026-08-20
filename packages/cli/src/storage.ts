@@ -13,6 +13,8 @@ type PrismaTransaction = Parameters<Parameters<typeof prisma.$transaction>[0]>[0
 export type PersistDeployOptions = {
   allowRemovals?: boolean;
   deployedBy?: string;
+  gitRef?: string;
+  gitSha?: string;
   projectSlug: string;
   rootDir: string;
   source?: string;
@@ -29,6 +31,8 @@ type PersistedGroupDefinition = Pick<
 export async function persistDeploySummary({
   allowRemovals = false,
   deployedBy = "selfchecks deploy",
+  gitRef,
+  gitSha,
   projectSlug,
   rootDir,
   source = rootDir,
@@ -73,6 +77,8 @@ export async function persistDeploySummary({
     const deployment = await tx.deployment.create({
       data: {
         deployedBy,
+        ...(gitRef ? { gitRef } : {}),
+        ...(gitSha ? { gitSha } : {}),
         projectId: project.id,
         source,
         summary: publicSummary as unknown as Prisma.InputJsonValue,

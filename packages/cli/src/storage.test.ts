@@ -152,6 +152,8 @@ describe("persistDeploySummary", () => {
       persistDeploySummary({
         allowRemovals: true,
         deployedBy: "ci",
+        gitRef: "refs/tags/v1.2.3",
+        gitSha: "1234567890abcdef",
         projectSlug: "account",
         rootDir: "/repo",
         source: "git:abc123",
@@ -178,6 +180,8 @@ describe("persistDeploySummary", () => {
     expect(mocks.deploymentCreate).toHaveBeenCalledWith({
       data: {
         deployedBy: "ci",
+        gitRef: "refs/tags/v1.2.3",
+        gitSha: "1234567890abcdef",
         projectId: "project_1",
         source: "git:abc123",
         summary: {

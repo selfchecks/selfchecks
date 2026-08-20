@@ -204,6 +204,8 @@ export function createRemoteSelfchecksProgram(
     .option("--force", "Deploy even when the diff contains removals")
     .option("--project <slug>", "Project slug", "default")
     .option("--root <path>", "Repository root")
+    .option("--ref <ref>", "Git branch or tag", resolveCiRef())
+    .option("--commit-sha <sha>", "Git commit SHA", process.env.CI_COMMIT_SHA)
     .option("--api-url <url>", "Selfchecks API URL", process.env.SELFCHECKS_URL)
     .option(
       "--api-token <token>",
@@ -228,6 +230,12 @@ export function createRemoteSelfchecksProgram(
                   ? commandOptions.config
                   : path.basename(commandOptions.config),
             }
+          : {}),
+        ...(typeof commandOptions.ref === "string"
+          ? { gitRef: commandOptions.ref }
+          : {}),
+        ...(typeof commandOptions.commitSha === "string"
+          ? { gitSha: commandOptions.commitSha }
           : {}),
         projectSlug,
         rootDir,
@@ -394,5 +402,7 @@ export function createRemoteSelfchecksProgram(
 }
 
 function resolveCiRef(): string | undefined {
-  return process.env.CI_COMMIT_TAG || process.env.CI_COMMIT_REF_NAME;
+  const tag = process.env.CI_COMMIT_TAG?.trim();
+
+  return tag ? `refs/tags/${tag}` : process.env.CI_COMMIT_REF_NAME;
 }

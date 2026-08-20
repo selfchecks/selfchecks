@@ -845,6 +845,55 @@ describe("dashboard data", () => {
     expect(dashboard.summary.degraded).toBe(1);
   });
 
+  it("adds a Git ref or short commit SHA to dashboard result bars", async () => {
+    mocks.checkFindMany.mockResolvedValue([
+      {
+        degradedResponseTime: null,
+        enabled: true,
+        entrypoint: null,
+        frequencyMinutes: 180,
+        group: {
+          name: "API / Bff",
+        },
+        id: "check_1",
+        key: "bff-health",
+        name: "bff-health",
+        request: null,
+        runs: [
+          {
+            artifacts: [],
+            commitSha: "1234567890abcdef",
+            createdAt: new Date("2026-07-05T09:40:00.000Z"),
+            durationMs: 120,
+            gitRef: null,
+            id: "run_commit",
+            logsPath: null,
+            result: null,
+            status: "PASSED",
+          },
+          {
+            artifacts: [],
+            commitSha: "abcdef1234567890",
+            createdAt: new Date("2026-07-05T09:38:00.000Z"),
+            durationMs: 100,
+            gitRef: "refs/tags/v1.2.3",
+            id: "run_tag",
+            logsPath: null,
+            result: null,
+            status: "PASSED",
+          },
+        ],
+        tags: ["api", "bff"],
+        type: "API",
+      },
+    ]);
+
+    const dashboard = await getDashboardData("default");
+    const bars = dashboard.groups[0]?.children?.[0]?.bars;
+
+    expect(bars?.map((bar) => bar.version)).toEqual(["v1.2.3", "12345678"]);
+  });
+
   it("groups retry attempts into one dashboard result bar per logical run", async () => {
     mocks.checkRunUpdateMany.mockResolvedValue({ count: 0 });
     mocks.projectFindUnique.mockResolvedValue({

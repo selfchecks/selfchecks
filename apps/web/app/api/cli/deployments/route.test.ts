@@ -59,6 +59,8 @@ describe("CLI deployment route", () => {
           version: 1,
           warnings: [],
         },
+        gitRef: "refs/tags/v1.2.3",
+        gitSha: "1234567890abcdef",
         projectSlug: "account",
       }),
     );
@@ -81,6 +83,8 @@ describe("CLI deployment route", () => {
       expect.objectContaining({
         allowRemovals: true,
         deploymentManifest: expect.objectContaining({ version: 1 }),
+        gitRef: "refs/tags/v1.2.3",
+        gitSha: "1234567890abcdef",
         kind: "deployment",
         projectSlug: "account",
       }),

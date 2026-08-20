@@ -34,6 +34,7 @@ export type DashboardResultBar = {
   status: DashboardStatus;
   tone?: DashboardResultTone;
   value: number;
+  version?: string;
 };
 
 export type DashboardArtifactType =

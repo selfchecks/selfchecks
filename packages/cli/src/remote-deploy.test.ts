@@ -67,6 +67,8 @@ describe("remote deploy", () => {
         allowRemovals: true,
         apiToken: "secret",
         apiUrl: "https://checks.example.test",
+        gitRef: "refs/tags/v1.2.3",
+        gitSha: "1234567890abcdef",
         projectSlug: "account",
         rootDir,
       }),
@@ -89,6 +91,8 @@ describe("remote deploy", () => {
         project: { logicalId: "account", name: "Account" },
         version: 1,
       },
+      gitRef: "refs/tags/v1.2.3",
+      gitSha: "1234567890abcdef",
       projectSlug: "account",
     });
     expect(upload?.headers).toEqual({ Authorization: "Bearer secret" });

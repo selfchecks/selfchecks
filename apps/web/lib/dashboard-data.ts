@@ -381,7 +381,9 @@ type MappableRun = {
   checkSnapshotRequest?: unknown;
   checkSnapshotTags?: string[];
   checkSnapshotType?: string | null;
+  commitSha?: string | null;
   id: string;
+  gitRef?: string | null;
   logsPath: string | null;
   attempt?: number | null;
   maxAttempts?: number | null;
@@ -2278,6 +2280,16 @@ async function fetchDashboardRuns(): Promise<DashboardRunRecord[]> {
         run."retryGroupId",
         run."createdAt",
         run."durationMs",
+        CASE
+          WHEN session."commitSha" IS NOT NULL OR session."ref" IS NOT NULL
+            THEN session."commitSha"
+          ELSE deployment."gitSha"
+        END AS "commitSha",
+        CASE
+          WHEN session."commitSha" IS NOT NULL OR session."ref" IS NOT NULL
+            THEN session."ref"
+          ELSE deployment."gitRef"
+        END AS "gitRef",
         run."checkSnapshotDegradedResponseTime",
         run."checkSnapshotType"::text AS "checkSnapshotType",
         COALESCE(NULLIF(run."retryGroupId", ''), run."id") AS "logicalRunId",
@@ -2292,6 +2304,15 @@ async function fetchDashboardRuns(): Promise<DashboardRunRecord[]> {
         ON check_row."id" = run."checkId" AND check_row."enabled" = true
       LEFT JOIN "TestSession" AS session
         ON session."id" = run."testSessionId"
+      LEFT JOIN LATERAL (
+        SELECT deployed."gitRef", deployed."gitSha"
+        FROM "Deployment" AS deployed
+        WHERE
+          deployed."projectId" = run."projectId"
+          AND deployed."createdAt" <= run."createdAt"
+        ORDER BY deployed."createdAt" DESC, deployed."id" DESC
+        LIMIT 1
+      ) AS deployment ON true
       WHERE
         run."testSessionId" IS NULL
         OR (session."id" IS NOT NULL AND session."kind" <> 'TEST'::"TestSessionKind")
@@ -2350,6 +2371,8 @@ async function fetchDashboardRuns(): Promise<DashboardRunRecord[]> {
       run."retryGroupId",
       run."createdAt",
       run."durationMs",
+      run."commitSha",
+      run."gitRef",
       run."checkSnapshotDegradedResponseTime",
       run."checkSnapshotType",
       CASE
@@ -3500,6 +3523,7 @@ function mapResultBar(
       ? "bad"
       : getRunResultTone({ runState, status });
   const durationMs = latestAttempt?.durationMs;
+  const version = latestAttempt ? formatRunVersion(latestAttempt) : undefined;
 
   return {
     ...(hasRetries
@@ -3520,7 +3544,25 @@ function mapResultBar(
     status,
     tone,
     value: getRelativeBarHeight(durationMs, maxDurationMs),
+    ...(version ? { version } : {}),
   };
+}
+
+function formatRunVersion(run: MappableRun): string | undefined {
+  const gitRef = run.gitRef?.trim();
+  const tagMatch = gitRef?.match(/^refs\/tags\/(.+)$/);
+
+  if (tagMatch?.[1]) {
+    return tagMatch[1];
+  }
+
+  const commitSha = run.commitSha?.trim();
+
+  if (commitSha) {
+    return commitSha.slice(0, 8);
+  }
+
+  return gitRef?.replace(/^refs\/heads\//, "") || undefined;
 }
 
 function mapResultBarAttempt(

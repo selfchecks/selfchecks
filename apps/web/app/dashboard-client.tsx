@@ -3846,7 +3846,8 @@ function SparkBar({ bar, index }: { bar: SparkBarData; index: number }) {
   const tooltipContent = runStateTooltipContent[bar.runState];
   const attempts = getSparkBarAttempts(bar);
   const attemptCountLabel = attempts.length > 1 ? ` ${attempts.length} attempts` : "";
-  const ariaLabel = `${tooltipContent.title} ${bar.runner} ${bar.duration} ${bar.occurredAt}${attemptCountLabel}`;
+  const versionLabel = bar.version ? ` version ${bar.version}` : "";
+  const ariaLabel = `${tooltipContent.title} ${bar.runner} ${bar.duration} ${bar.occurredAt}${attemptCountLabel}${versionLabel}`;
   const className =
     "group relative flex h-11 w-2 items-end justify-center outline-none hover:z-20 focus-visible:ring-2 focus-visible:ring-blue-400/60 focus-within:z-20";
   const content = (
@@ -4009,7 +4010,12 @@ const SparkBarTooltipPortal = forwardRef<
     >
       <span className="flex items-center gap-2 text-base font-semibold text-slate-50">
         <ResultTooltipStatus runState={bar.runState} status={bar.status} />
-        {title}
+        <span>{title}</span>
+        {bar.version ? (
+          <span className="ml-auto rounded border border-slate-400/40 bg-slate-700/50 px-1.5 py-0.5 font-mono text-xs font-medium text-slate-200">
+            {bar.version}
+          </span>
+        ) : null}
       </span>
       {attempts.length > 1 ? (
         <span className="mt-3 grid gap-3">

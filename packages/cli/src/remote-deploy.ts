@@ -63,6 +63,8 @@ export type RemoteDeployOptions = {
   apiToken: string;
   apiUrl: string;
   configPath?: string;
+  gitRef?: string;
+  gitSha?: string;
   projectSlug: string;
   rootDir: string;
 };
@@ -93,6 +95,8 @@ export async function runRemoteDeploy(
     body: await createRemoteBundleFormData(options.rootDir, {
       allowRemovals: options.allowRemovals,
       deploymentManifest,
+      gitRef: options.gitRef,
+      gitSha: options.gitSha,
       projectSlug: options.projectSlug,
     }),
     headers: createAuthorizationHeaders(options.apiToken),

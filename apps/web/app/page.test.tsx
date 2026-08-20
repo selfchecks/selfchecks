@@ -1256,6 +1256,53 @@ describe("DashboardPage", () => {
     expect(screen.getAllByText("Local runner").length).toBeGreaterThan(0);
   });
 
+  it("renders the run Git version in the result popover", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <DashboardClient
+        initialGroups={[
+          {
+            checks: "1 checks",
+            children: [
+              createCheck({
+                bars: [
+                  {
+                    duration: "100 ms",
+                    occurredAt: "Aug 20 01:37",
+                    runner: "Local runner",
+                    runState: "passed",
+                    status: "passing",
+                    value: 12,
+                    version: "v1.2.3",
+                  },
+                ],
+              }),
+            ],
+            expanded: true,
+            name: "API / Bff",
+            status: "passing",
+            updated: "3 minutes ago",
+          },
+        ]}
+        initialSettings={fixtureSettings}
+        initialSummary={{
+          degraded: 0,
+          failing: 0,
+          passing: 1,
+          queued: 0,
+          running: 0,
+        }}
+      />,
+    );
+
+    await user.hover(
+      screen.getByLabelText("Passing Local runner 100 ms Aug 20 01:37 version v1.2.3"),
+    );
+
+    expect(await screen.findByText("v1.2.3")).toBeTruthy();
+  });
+
   it("renders failed and cancelled result bars with matching status colors", () => {
     render(
       <DashboardClient

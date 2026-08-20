@@ -42,6 +42,8 @@ export type RunCheckJob = {
 export type DeploymentJob = {
   allowRemovals: boolean;
   deploymentManifest?: DeploymentManifest;
+  gitRef?: string;
+  gitSha?: string;
   kind: "deployment";
   projectSlug: string;
   rootDir: string;
@@ -203,6 +205,8 @@ export async function handleDeploymentJob(
   return persistDeploySummary({
     allowRemovals: data.allowRemovals,
     deployedBy: "selfchecks deploy via API",
+    gitRef: data.gitRef,
+    gitSha: data.gitSha,
     projectSlug: data.projectSlug,
     rootDir: data.rootDir,
     source: data.rootDir,
