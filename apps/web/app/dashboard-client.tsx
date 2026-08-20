@@ -657,10 +657,6 @@ export default function DashboardClient({
     }));
   }
 
-  function toggleCheck(checkId: string) {
-    router.push(`/checks/${encodeURIComponent(checkId)}`);
-  }
-
   async function queueCheckRun(check: CheckRow) {
     const response = await fetch(`/api/checks/${encodeURIComponent(check.id)}/run`, {
       method: "POST",
@@ -969,7 +965,6 @@ export default function DashboardClient({
                 firewatch={visibleFirewatch}
                 onOpenChange={setFirewatchOpen}
                 onOpenAiAnalysis={openFirewatchAiAnalysis}
-                onOpenCheck={toggleCheck}
                 onRunFailedChecks={() => void runAllFailedChecks()}
                 onRunCheck={(row) => void runFirewatchCheck(row)}
                 open={firewatchOpen}
@@ -981,7 +976,6 @@ export default function DashboardClient({
                 onActionMenuToggle={(key) =>
                   setActiveActionMenu((current) => (current === key ? null : key))
                 }
-                onCheckToggle={toggleCheck}
                 onGroupToggle={toggleGroup}
                 onNotice={setNotice}
                 onOpenAiAnalysis={setAiAnalysisDrawer}
@@ -1462,7 +1456,6 @@ function FirewatchPanel({
   firewatch,
   onOpenChange,
   onOpenAiAnalysis,
-  onOpenCheck,
   onRunFailedChecks,
   onRunCheck,
   open,
@@ -1471,7 +1464,6 @@ function FirewatchPanel({
   firewatch: DashboardFirewatch;
   onOpenChange: (open: boolean) => void;
   onOpenAiAnalysis: (row: DashboardFirewatchRow) => void;
-  onOpenCheck: (checkId: string) => void;
   onRunFailedChecks: () => void;
   onRunCheck: (row: DashboardFirewatchRow) => void;
   open: boolean;
@@ -1537,7 +1529,6 @@ function FirewatchPanel({
                   <FirewatchProjectTable
                     key={section.projectSlug}
                     onOpenAiAnalysis={onOpenAiAnalysis}
-                    onOpenCheck={onOpenCheck}
                     onRunCheck={onRunCheck}
                     projectName={section.projectName}
                     rows={section.rows}
@@ -1558,13 +1549,11 @@ function FirewatchPanel({
 
 function FirewatchProjectTable({
   onOpenAiAnalysis,
-  onOpenCheck,
   onRunCheck,
   projectName,
   rows,
 }: {
   onOpenAiAnalysis: (row: DashboardFirewatchRow) => void;
-  onOpenCheck: (checkId: string) => void;
   onRunCheck: (row: DashboardFirewatchRow) => void;
   projectName: string;
   rows: DashboardFirewatchRow[];
@@ -1618,15 +1607,13 @@ function FirewatchProjectTable({
                       <CircleX className="h-3.5 w-3.5" />
                     </span>
                     <div className="min-w-0">
-                      <button
-                        className="max-w-full truncate text-left font-medium text-blue-400 underline decoration-blue-500/60 underline-offset-2 hover:text-blue-300"
-                        onClick={() => onOpenCheck(row.checkId)}
-                        role="link"
+                      <Link
+                        className="block max-w-full truncate text-left font-medium text-blue-400 underline decoration-blue-500/60 underline-offset-2 hover:text-blue-300"
+                        href={row.latestRunHref}
                         title={`${row.groupName} / ${row.name}`}
-                        type="button"
                       >
                         {row.groupName} / {row.name}
-                      </button>
+                      </Link>
                     </div>
                   </div>
                 </td>
@@ -3120,7 +3107,6 @@ function ChecksTable({
   activeActionMenu,
   groups: visibleGroups,
   onActionMenuToggle,
-  onCheckToggle,
   onGroupToggle,
   onNotice,
   onOpenAiAnalysis,
@@ -3129,7 +3115,6 @@ function ChecksTable({
   activeActionMenu: string | null;
   groups: GroupRow[];
   onActionMenuToggle: (key: string) => void;
-  onCheckToggle: (checkId: string) => void;
   onGroupToggle: (groupName: string) => void;
   onNotice: (notice: string) => void;
   onOpenAiAnalysis: (drawer: AiAnalysisDrawerState) => void;
@@ -3206,7 +3191,6 @@ function ChecksTable({
                     group={group}
                     key={getGroupKey(group)}
                     onActionMenuToggle={onActionMenuToggle}
-                    onCheckToggle={onCheckToggle}
                     onGroupToggle={onGroupToggle}
                     onNotice={onNotice}
                     onOpenAiAnalysis={onOpenAiAnalysis}
@@ -3226,7 +3210,6 @@ function GroupBlock({
   activeActionMenu,
   group,
   onActionMenuToggle,
-  onCheckToggle,
   onGroupToggle,
   onNotice,
   onOpenAiAnalysis,
@@ -3235,7 +3218,6 @@ function GroupBlock({
   activeActionMenu: string | null;
   group: GroupRow;
   onActionMenuToggle: (key: string) => void;
-  onCheckToggle: (checkId: string) => void;
   onGroupToggle: (groupName: string) => void;
   onNotice: (notice: string) => void;
   onOpenAiAnalysis: (drawer: AiAnalysisDrawerState) => void;
@@ -3329,7 +3311,6 @@ function GroupBlock({
               check={check}
               key={check.id}
               onActionMenuToggle={onActionMenuToggle}
-              onCheckToggle={onCheckToggle}
               onNotice={onNotice}
               onOpenAiAnalysis={onOpenAiAnalysis}
               onRunCheckNow={onRunCheckNow}
@@ -3344,7 +3325,6 @@ function CheckTableRow({
   activeActionMenu,
   check,
   onActionMenuToggle,
-  onCheckToggle,
   onNotice,
   onOpenAiAnalysis,
   onRunCheckNow,
@@ -3352,7 +3332,6 @@ function CheckTableRow({
   activeActionMenu: string | null;
   check: CheckRow;
   onActionMenuToggle: (key: string) => void;
-  onCheckToggle: (checkId: string) => void;
   onNotice: (notice: string) => void;
   onOpenAiAnalysis: (drawer: AiAnalysisDrawerState) => void;
   onRunCheckNow: (check: CheckRow) => void;
@@ -3363,32 +3342,21 @@ function CheckTableRow({
   const latestRunFailed = Boolean(
     latestRun && ["cancelled", "failed", "timed_out"].includes(latestRun.runState),
   );
-  const toggleLabel = `Open ${check.name}`;
 
   return (
     <>
-      <tr
-        aria-label={toggleLabel}
-        className={cn(
-          "cursor-pointer border-b border-slate-800 bg-[#141a21] text-slate-300 outline-none transition",
-          "hover:bg-[#18202a] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/50",
-        )}
-        onClick={() => onCheckToggle(check.id)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            onCheckToggle(check.id);
-          }
-        }}
-        role="link"
-        tabIndex={0}
-      >
+      <tr className="border-b border-slate-800 bg-[#141a21] text-slate-300 transition hover:bg-[#18202a]">
         <td className="px-5 py-3">
           <div className="flex items-center gap-3">
             <span aria-hidden="true" className="h-4 w-4 shrink-0" />
             <CheckStatus runState={check.runState} status={check.status} />
             <div className="min-w-0">
-              <div className="truncate font-semibold text-slate-200">{check.name}</div>
+              <Link
+                className="block truncate font-semibold text-slate-200 hover:text-blue-300"
+                href={`/checks/${encodeURIComponent(check.id)}`}
+              >
+                {check.name}
+              </Link>
               <div className="mt-1 flex flex-wrap items-center gap-1.5 text-sm text-slate-500">
                 <span
                   className={cn(
@@ -3443,7 +3411,7 @@ function CheckTableRow({
               name={check.name}
               onClose={() => onActionMenuToggle(actionKey)}
               onNotice={onNotice}
-              onOpen={() => onCheckToggle(check.id)}
+              openHref={`/checks/${encodeURIComponent(check.id)}`}
               onOpenAiAnalysis={
                 latestRunFailed && latestRun
                   ? () =>
@@ -3471,14 +3439,16 @@ function ActionMenu({
   onOpen,
   onOpenAiAnalysis,
   onRunNow,
+  openHref,
 }: {
   anchor: HTMLButtonElement | null;
   name: string;
   onClose: () => void;
   onNotice: (notice: string) => void;
-  onOpen: () => void;
+  onOpen?: () => void;
   onOpenAiAnalysis?: () => void;
   onRunNow?: () => void;
+  openHref?: string;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
@@ -3548,16 +3518,26 @@ function ActionMenu({
         visibility: position ? "visible" : "hidden",
       }}
     >
-      <button
-        className="block w-full rounded px-3 py-2 text-left text-sm text-slate-300 hover:bg-slate-800"
-        onClick={() => {
-          onOpen();
-          onClose();
-        }}
-        type="button"
-      >
-        Open
-      </button>
+      {openHref ? (
+        <Link
+          className="block w-full rounded px-3 py-2 text-left text-sm text-slate-300 hover:bg-slate-800"
+          href={openHref}
+          onClick={onClose}
+        >
+          Open
+        </Link>
+      ) : onOpen ? (
+        <button
+          className="block w-full rounded px-3 py-2 text-left text-sm text-slate-300 hover:bg-slate-800"
+          onClick={() => {
+            onOpen();
+            onClose();
+          }}
+          type="button"
+        >
+          Open
+        </button>
+      ) : null}
       {onRunNow ? (
         <button
           className="block w-full rounded px-3 py-2 text-left text-sm text-slate-300 hover:bg-slate-800"

@@ -562,8 +562,8 @@ describe("DashboardPage", () => {
   it("animates recent result bars from the bottom with a short stagger", () => {
     renderDashboard();
 
-    const row = screen.getByRole("link", { name: "Open issue.get" });
-    const bars = row.querySelectorAll(".spark-bar-grow");
+    const row = screen.getByText("issue.get").closest("tr");
+    const bars = row?.querySelectorAll(".spark-bar-grow") ?? [];
 
     expect(bars).toHaveLength(2);
     expect((bars[0] as HTMLElement).style.animationDelay).toBe("0ms");
@@ -789,6 +789,7 @@ describe("DashboardPage", () => {
               groupName: "API / Account",
               lastSeen: "about 1 hour ago",
               lastSeenAt: "2026-07-05T11:00:00.000Z",
+              latestRunHref: `/checks/${accountCheck.id}/runs/${accountCheck.runs[0]!.id}`,
               name: accountCheck.name,
               projectName: "Account",
               projectSlug: "account",
@@ -801,6 +802,7 @@ describe("DashboardPage", () => {
               groupName: "Browser / Navigation",
               lastSeen: "about 2 hours ago",
               lastSeenAt: "2026-07-05T10:00:00.000Z",
+              latestRunHref: `/checks/${storybookCheck.id}/runs/${storybookCheck.runs[0]!.id}`,
               name: storybookCheck.name,
               projectName: "Storybook",
               projectSlug: "storybook",
@@ -915,6 +917,7 @@ describe("DashboardPage", () => {
               groupName: "API / Bff",
               lastSeen: "about 1 hour ago",
               lastSeenAt: "2026-07-05T11:00:00.000Z",
+              latestRunHref: `/checks/${failingCheck.id}/runs/${failingCheck.runs[0]!.id}`,
               name: failingCheck.name,
               type: "api",
             },
@@ -965,9 +968,18 @@ describe("DashboardPage", () => {
       within(aiDrawer).getByRole("button", { name: "Close AI analysis" }),
     );
 
-    await user.click(screen.getByRole("link", { name: "API / Bff / bff-health" }));
+    const firewatchLink = screen.getByRole("link", {
+      name: "API / Bff / bff-health",
+    });
 
-    expect(mocks.routerPush).toHaveBeenCalledWith("/checks/check-bff-health");
+    expect(firewatchLink.tagName).toBe("A");
+    expect(firewatchLink.getAttribute("href")).toBe(
+      "/checks/check-bff-health/runs/run-bff-health",
+    );
+
+    fireEvent.contextMenu(firewatchLink);
+
+    expect(mocks.routerPush).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole("button", { name: "Schedule now" }));
 
@@ -2255,20 +2267,27 @@ describe("DashboardPage", () => {
     expect(screen.queryByRole("option", { name: "Passing" })).toBeNull();
   });
 
-  it("navigates to a dedicated check page from rows and menus", async () => {
+  it("exposes native check links in rows and menus", async () => {
     const user = userEvent.setup();
 
     renderDashboard();
 
-    await user.click(screen.getByRole("link", { name: "Open group.list" }));
+    const checkLink = screen.getByText("group.list").closest("a");
 
-    expect(mocks.routerPush).toHaveBeenCalledWith("/checks/check-group.list");
+    expect(checkLink?.getAttribute("href")).toBe("/checks/check-group.list");
+
+    fireEvent.contextMenu(screen.getByText("group.list"));
+
+    expect(mocks.routerPush).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole("button", { name: "issue.get actions" }));
-    await user.click(screen.getByRole("button", { name: "Open" }));
+    const openLink = screen.getByRole("link", { name: "Open" });
 
-    expect(mocks.routerPush).toHaveBeenCalledWith("/checks/check-issue.get");
-    expect(screen.queryByRole("button", { name: "Open" })).toBeNull();
+    expect(openLink.getAttribute("href")).toBe("/checks/check-issue.get");
+
+    fireEvent.contextMenu(openLink);
+
+    expect(mocks.routerPush).not.toHaveBeenCalled();
   });
 
   it("closes row action menus from outside clicks", async () => {
@@ -2277,7 +2296,7 @@ describe("DashboardPage", () => {
     renderDashboard();
 
     await user.click(screen.getByRole("button", { name: "issue.get actions" }));
-    const openAction = screen.getByRole("button", { name: "Open" });
+    const openAction = screen.getByRole("link", { name: "Open" });
     const actionMenu = openAction.parentElement;
 
     expect(actionMenu?.parentElement).toBe(document.body);
@@ -2286,7 +2305,7 @@ describe("DashboardPage", () => {
 
     await user.click(screen.getByRole("searchbox", { name: "Search checks" }));
 
-    expect(screen.queryByRole("button", { name: "Open" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Open" })).toBeNull();
   });
 
   it("queues a check run from the row action menu and refreshes live run state", async () => {

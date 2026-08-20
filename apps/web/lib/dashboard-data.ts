@@ -2640,7 +2640,7 @@ function mapFirewatchRow(
   cutoff: Date,
   timeZone: string,
 ): DashboardFirewatchRow | undefined {
-  const latestRun = check.runs[0];
+  const latestRun = getLatestLogicalRunAttempt(check.runs);
 
   if (!latestRun || getRunDashboardStatus(latestRun, check) !== "failing") {
     return undefined;
@@ -2673,6 +2673,14 @@ function mapFirewatchRow(
   return createFirewatchRow(check, latestRun, firstFailingRun.createdAt, timeZone);
 }
 
+function getLatestLogicalRunAttempt(
+  runs: CheckWithRuns["runs"],
+): CheckWithRuns["runs"][number] | undefined {
+  const latestRunAttempts = groupRetryAttempts(runs)[0];
+
+  return latestRunAttempts ? getLatestAttempt(latestRunAttempts) : undefined;
+}
+
 function createFirewatchRow(
   check: CheckWithRuns,
   latestRun: MappableRun,
@@ -2686,6 +2694,7 @@ function createFirewatchRow(
     groupName: check.group?.name ?? "Ungrouped",
     lastSeen: formatRelative(latestRun.createdAt, timeZone),
     lastSeenAt: latestRun.createdAt.toISOString(),
+    latestRunHref: buildRunHref(check.id, latestRun.id),
     name: check.name,
     projectName: check.project?.name ?? check.project?.slug ?? "default",
     projectSlug: check.project?.slug ?? "default",

@@ -149,6 +149,7 @@ export type DashboardFirewatchRow = {
   groupName: string;
   lastSeen: string;
   lastSeenAt: string;
+  latestRunHref: string;
   name: string;
   projectName?: string;
   projectSlug?: string;

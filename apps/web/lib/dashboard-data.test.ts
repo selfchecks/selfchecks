@@ -1271,11 +1271,24 @@ describe("dashboard data", () => {
         runs: [
           {
             artifacts: [],
+            attempt: 1,
+            createdAt: new Date("2026-07-05T10:59:00.000Z"),
+            durationMs: 8,
+            id: "run_recent_attempt_1",
+            logsPath: null,
+            result: null,
+            retryGroupId: "run_recent",
+            status: "FAILED",
+          },
+          {
+            artifacts: [],
+            attempt: 2,
             createdAt: new Date("2026-07-05T11:00:00.000Z"),
             durationMs: 9,
             id: "run_recent_latest",
             logsPath: null,
             result: null,
+            retryGroupId: "run_recent",
             status: "FAILED",
           },
           {
@@ -1387,6 +1400,7 @@ describe("dashboard data", () => {
           groupName: "API / Bff",
           lastSeen: "about 1 hours ago",
           lastSeenAt: "2026-07-05T11:00:00.000Z",
+          latestRunHref: "/checks/check_recent/runs/run_recent_latest",
           name: "bff-health",
           projectName: "Account",
           projectSlug: "account",
