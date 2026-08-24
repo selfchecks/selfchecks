@@ -234,6 +234,40 @@ describe("dashboard data", () => {
     expect(mocks.checkFindMany).not.toHaveBeenCalled();
   });
 
+  it("includes active CLI test sessions in the dedicated queue", async () => {
+    mocks.checkRunFindMany.mockResolvedValue([
+      createActiveQueueRun({
+        id: "run_cli",
+        status: "QUEUED",
+        testSession: {
+          id: "session_1",
+          kind: "TEST",
+          source: "selfchecks test --remote",
+        },
+      }),
+    ]);
+
+    const data = await getDashboardQueueData("default");
+
+    expect(data.queue).toEqual([
+      expect.objectContaining({
+        checkHref: "/test-sessions/session_1/checks/check_1",
+        id: "run_cli",
+        runState: "queued",
+        source: "cli",
+      }),
+    ]);
+    expect(mocks.checkRunFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          status: {
+            in: ["QUEUED", "RUNNING"],
+          },
+        },
+      }),
+    );
+  });
+
   it("does not mutate queued runs while reading check details", async () => {
     mocks.checkFindFirst.mockResolvedValue(null);
 

@@ -632,7 +632,7 @@ export async function getDashboardQueueData(
   const timeZone = getRuntimeTimeZone();
 
   try {
-    const queue = await fetchActiveQueue(timeZone);
+    const queue = await fetchActiveQueue(timeZone, { includeTestSessions: true });
 
     return {
       projectSlug: "default",
@@ -2401,7 +2401,10 @@ async function fetchDashboardRuns(): Promise<DashboardRunRecord[]> {
   }));
 }
 
-async function fetchActiveQueue(timeZone: string): Promise<DashboardQueueRow[]> {
+async function fetchActiveQueue(
+  timeZone: string,
+  { includeTestSessions = false }: { includeTestSessions?: boolean } = {},
+): Promise<DashboardQueueRow[]> {
   const runs = await prisma.checkRun.findMany({
     include: {
       artifacts: {
@@ -2436,16 +2439,22 @@ async function fetchActiveQueue(timeZone: string): Promise<DashboardQueueRow[]> 
     orderBy: {
       createdAt: "asc",
     },
-    where: {
-      AND: [
-        buildDashboardVisibleRunWhere(),
-        {
+    where: includeTestSessions
+      ? {
           status: {
             in: [...DASHBOARD_ACTIVE_RUN_STATUSES],
           },
+        }
+      : {
+          AND: [
+            buildDashboardVisibleRunWhere(),
+            {
+              status: {
+                in: [...DASHBOARD_ACTIVE_RUN_STATUSES],
+              },
+            },
+          ],
         },
-      ],
-    },
   });
 
   return (runs as ActiveQueueRunWithCheck[])
