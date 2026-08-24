@@ -1,1 +1,1 @@
-export const SELFCHECKS_CLI_VERSION = "0.1.43";
+export const SELFCHECKS_CLI_VERSION = "0.1.44";
