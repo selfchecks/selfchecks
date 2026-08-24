@@ -1080,6 +1080,7 @@ async function runBrowserCheck(
     command: "npx",
     env: options.env,
     processEnv: {
+      CI: "1",
       ...(managedPlaywrightBrowsersPath
         ? { PLAYWRIGHT_BROWSERS_PATH: managedPlaywrightBrowsersPath }
         : {}),

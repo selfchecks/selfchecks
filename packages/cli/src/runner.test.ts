@@ -149,6 +149,7 @@ describe("runCheckById", () => {
     const rootDir = await createTempProject();
     const runId = "run_1";
     const artifactsRootDir = path.join(rootDir, "runtime-artifacts");
+    vi.stubEnv("CI", "");
     vi.stubEnv("SELFCHECKS_ARTIFACTS_DIR", artifactsRootDir);
     vi.stubEnv("PLAYWRIGHT_BROWSERS_PATH", "/ms-playwright");
 
@@ -292,6 +293,7 @@ describe("runCheckById", () => {
       "--retries",
       "0",
     ]);
+    expect(spawnCall?.[2]?.env?.CI).toBe("1");
     expect(spawnCall?.[2]).toEqual(
       expect.objectContaining({
         cwd: rootDir,
