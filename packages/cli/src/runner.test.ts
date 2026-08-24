@@ -1114,6 +1114,55 @@ describe("runChecks", () => {
     });
   });
 
+  it("compares JSON numbers with serialized Checkly assertion targets", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response('{"obj":{"id":398}}', { status: 200 })),
+    );
+
+    await expect(
+      runChecks({
+        checks: [
+          {
+            alertChannelLogicalIds: [],
+            enabled: true,
+            key: "api-issue",
+            muted: false,
+            name: "API issue",
+            request: {
+              assertions: [
+                {
+                  comparison: "EQUALS",
+                  property: "$.obj.id",
+                  source: "JSON_BODY",
+                  target: "398",
+                },
+              ],
+              headers: {},
+              method: "POST",
+              queryParameters: {},
+              url: "https://api.example.test/issue",
+            },
+            shouldFail: false,
+            tags: [],
+            type: "api",
+          },
+        ],
+        env: [],
+        projectSlug: "demo",
+        record: false,
+        reporter: "list",
+        rootDir: "/repo",
+        tagSets: [],
+      }),
+    ).resolves.toMatchObject({
+      failed: 0,
+      passed: 1,
+      results: [{ checkKey: "api-issue", status: "passed" }],
+      total: 1,
+    });
+  });
+
   it("reports failed API assertions as the check error", async () => {
     vi.stubGlobal(
       "fetch",

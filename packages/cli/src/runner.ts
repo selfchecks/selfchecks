@@ -1359,9 +1359,9 @@ function compareAssertion(
 ): boolean {
   switch (comparison) {
     case "EQUALS":
-      return actual === target;
+      return assertionValuesEqual(actual, target);
     case "NOT_EQUALS":
-      return actual !== target;
+      return !assertionValuesEqual(actual, target);
     case "GREATER_THAN":
       return compareValues(actual, target, (left, right) => left > right);
     case "LESS_THAN":
@@ -1402,6 +1402,27 @@ function compareAssertion(
     default:
       return false;
   }
+}
+
+function assertionValuesEqual(actual: unknown, target: unknown): boolean {
+  if (actual === target) {
+    return true;
+  }
+
+  return (
+    isAssertionScalar(actual) &&
+    isAssertionScalar(target) &&
+    String(actual) === String(target)
+  );
+}
+
+function isAssertionScalar(value: unknown): boolean {
+  return (
+    value === null ||
+    typeof value === "boolean" ||
+    typeof value === "number" ||
+    typeof value === "string"
+  );
 }
 
 function isEmptyAssertionValue(value: unknown): boolean {
