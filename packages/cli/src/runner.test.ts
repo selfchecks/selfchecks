@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -78,8 +78,26 @@ const tempDirs: string[] = [];
 
 async function createTempProject() {
   const directory = await mkdtemp(path.join(os.tmpdir(), "selfchecks-runner-"));
+  const playwrightPackageDir = path.join(
+    directory,
+    "node_modules",
+    "@playwright",
+    "test",
+  );
 
   tempDirs.push(directory);
+  await mkdir(playwrightPackageDir, { recursive: true });
+  await writeFile(
+    path.join(playwrightPackageDir, "package.json"),
+    `${JSON.stringify({
+      exports: {
+        "./cli": "./cli.js",
+      },
+      name: "@playwright/test",
+      version: "1.58.2",
+    })}\n`,
+  );
+  await writeFile(path.join(playwrightPackageDir, "cli.js"), "");
   return directory;
 }
 
@@ -278,10 +296,13 @@ describe("runCheckById", () => {
     });
 
     const spawnCall = mocks.spawn.mock.calls[0];
+    const playwrightCliPath = await realpath(
+      path.join(rootDir, "node_modules", "@playwright", "test", "cli.js"),
+    );
 
-    expect(spawnCall?.[0]).toBe("npx");
+    expect(spawnCall?.[0]).toBe(process.execPath);
     expect(spawnCall?.[1]).toEqual([
-      "playwright",
+      playwrightCliPath,
       "test",
       "src/__checks__/UI/App/billing/rest.autopayment.spec.ts",
       "--config",

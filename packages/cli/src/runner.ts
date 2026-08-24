@@ -1,4 +1,5 @@
 import { copyFile, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -1062,9 +1063,10 @@ async function runBrowserCheck(
 
   await writeBrowserPerformanceCollector(artifactPaths.performanceCollectorPath);
   const managedPlaywrightBrowsersPath = process.env.PLAYWRIGHT_BROWSERS_PATH?.trim();
+  const playwrightCli = resolvePlaywrightCli(options.rootDir);
   const logs = await runProcess({
     args: [
-      "playwright",
+      playwrightCli,
       "test",
       check.entrypoint,
       "--config",
@@ -1077,7 +1079,7 @@ async function runBrowserCheck(
       "0",
       ...(traceModeOverride ? ["--trace", traceModeOverride] : []),
     ],
-    command: "npx",
+    command: process.execPath,
     env: options.env,
     processEnv: {
       CI: "1",
@@ -1142,6 +1144,19 @@ async function runBrowserCheck(
           ? "timed_out"
           : "failed",
   };
+}
+
+function resolvePlaywrightCli(rootDir: string) {
+  const projectRequire = createRequire(path.join(rootDir, "package.json"));
+
+  try {
+    return projectRequire.resolve("@playwright/test/cli");
+  } catch (error) {
+    throw new Error(
+      `Unable to resolve @playwright/test from the check project at ${rootDir}.`,
+      { cause: error },
+    );
+  }
 }
 
 async function runApiCheck(
