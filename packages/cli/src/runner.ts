@@ -1406,6 +1406,7 @@ function compareAssertion(
 
 function isEmptyAssertionValue(value: unknown): boolean {
   return (
+    value === undefined ||
     value === "" ||
     (Array.isArray(value) && value.length === 0) ||
     Boolean(
@@ -1428,11 +1429,11 @@ function compareValues(
 }
 
 function readJsonPath(value: unknown, jsonPath: string): unknown {
-  const pathParts = jsonPath
-    .replace(/^\$\.?/, "")
-    .replace(/\[(\d+)\]/g, ".$1")
-    .split(".")
-    .filter(Boolean);
+  const pathParts = parseJsonPathParts(jsonPath);
+
+  if (!pathParts) {
+    return undefined;
+  }
 
   return pathParts.reduce<unknown>((current, part) => {
     if (!current || typeof current !== "object") {
@@ -1440,6 +1441,86 @@ function readJsonPath(value: unknown, jsonPath: string): unknown {
     }
     return (current as Record<string, unknown>)[part];
   }, value);
+}
+
+function parseJsonPathParts(jsonPath: string): string[] | undefined {
+  const parts: string[] = [];
+  let cursor = jsonPath.startsWith("$") ? 1 : 0;
+
+  while (cursor < jsonPath.length) {
+    if (jsonPath[cursor] === ".") {
+      cursor += 1;
+      const start = cursor;
+
+      while (
+        cursor < jsonPath.length &&
+        jsonPath[cursor] !== "." &&
+        jsonPath[cursor] !== "["
+      ) {
+        cursor += 1;
+      }
+      if (cursor === start) {
+        return undefined;
+      }
+      parts.push(jsonPath.slice(start, cursor));
+      continue;
+    }
+
+    if (jsonPath[cursor] === "[") {
+      cursor += 1;
+      const quote = jsonPath[cursor];
+
+      if (quote === '"' || quote === "'") {
+        cursor += 1;
+        let part = "";
+
+        while (cursor < jsonPath.length && jsonPath[cursor] !== quote) {
+          if (jsonPath[cursor] === "\\") {
+            cursor += 1;
+            if (cursor >= jsonPath.length) {
+              return undefined;
+            }
+          }
+          part += jsonPath[cursor];
+          cursor += 1;
+        }
+        if (jsonPath[cursor] !== quote || jsonPath[cursor + 1] !== "]") {
+          return undefined;
+        }
+        parts.push(part);
+        cursor += 2;
+        continue;
+      }
+
+      const start = cursor;
+
+      while (cursor < jsonPath.length && /\d/.test(jsonPath[cursor] ?? "")) {
+        cursor += 1;
+      }
+      if (cursor === start || jsonPath[cursor] !== "]") {
+        return undefined;
+      }
+      parts.push(jsonPath.slice(start, cursor));
+      cursor += 1;
+      continue;
+    }
+
+    const start = cursor;
+
+    while (
+      cursor < jsonPath.length &&
+      jsonPath[cursor] !== "." &&
+      jsonPath[cursor] !== "["
+    ) {
+      cursor += 1;
+    }
+    if (cursor === start) {
+      return undefined;
+    }
+    parts.push(jsonPath.slice(start, cursor));
+  }
+
+  return parts;
 }
 
 function hasHeader(headers: Record<string, string>, name: string): boolean {

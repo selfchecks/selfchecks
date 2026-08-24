@@ -1048,6 +1048,72 @@ describe("runChecks", () => {
     });
   });
 
+  it("matches Checkly JSON assertions for missing and dotted properties", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(
+            '{"items":[{"id":1}],"list":{"limit.usage.raw":{"channel":{"email":1}}}}',
+            { status: 200 },
+          ),
+        ),
+    );
+
+    await expect(
+      runChecks({
+        checks: [
+          {
+            alertChannelLogicalIds: [],
+            enabled: true,
+            key: "api-settings",
+            muted: false,
+            name: "API settings",
+            request: {
+              assertions: [
+                {
+                  comparison: "IS_EMPTY",
+                  property: "$.errors",
+                  source: "JSON_BODY",
+                },
+                {
+                  comparison: "IS_NOT_NULL",
+                  property: '$.list["limit.usage.raw"]',
+                  source: "JSON_BODY",
+                },
+                {
+                  comparison: "EQUALS",
+                  property: "$.items[0].id",
+                  source: "JSON_BODY",
+                  target: 1,
+                },
+              ],
+              headers: {},
+              method: "POST",
+              queryParameters: {},
+              url: "https://api.example.test/settings",
+            },
+            shouldFail: false,
+            tags: [],
+            type: "api",
+          },
+        ],
+        env: [],
+        projectSlug: "demo",
+        record: false,
+        reporter: "list",
+        rootDir: "/repo",
+        tagSets: [],
+      }),
+    ).resolves.toMatchObject({
+      failed: 0,
+      passed: 1,
+      results: [{ checkKey: "api-settings", status: "passed" }],
+      total: 1,
+    });
+  });
+
   it("reports failed API assertions as the check error", async () => {
     vi.stubGlobal(
       "fetch",
