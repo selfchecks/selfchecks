@@ -228,7 +228,7 @@ describe("test session bulk run route", () => {
     ]);
   });
 
-  it("clones the session and queues every enabled test for selected projects", async () => {
+  it("clones the source project and uses deployed roots for other projects", async () => {
     vi.stubEnv("SELFCHECKS_TEST_SESSIONS_DIR", "/runtime/test-sessions");
     mocks.testSessionFindFirst.mockResolvedValue(sourceSession);
     mocks.projectFindMany.mockResolvedValue([{ slug: "account" }, { slug: "api" }]);
@@ -309,12 +309,45 @@ describe("test session bulk run route", () => {
         expect.objectContaining({
           data: expect.objectContaining({
             projectSlug: "api",
-            rootDir: "/runtime/test-sessions/session_clone",
+            rootDir: "/repo/config/api",
             testSessionId: "session_clone",
           }),
         }),
       ]),
     );
+  });
+
+  it("refuses a full regression when another project source is unavailable", async () => {
+    vi.stubEnv("SELFCHECKS_TEST_SESSIONS_DIR", "/runtime/test-sessions");
+    mocks.testSessionFindFirst.mockResolvedValue(sourceSession);
+    mocks.projectFindMany.mockResolvedValue([{ slug: "account" }, { slug: "api" }]);
+    mocks.checkFindMany.mockResolvedValue([
+      createCheck(),
+      createCheck({
+        deployment: { source: "" },
+        id: "check_health",
+        key: "health",
+        name: "API health",
+        project: { id: "project_api", slug: "api" },
+      }),
+    ]);
+
+    const response = await POST(
+      createRequest({
+        action: "full-regression",
+        projectSlugs: ["account", "api"],
+      }),
+      createContext(),
+    );
+
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toEqual({
+      error:
+        "Check source root is unknown for api/health. Redeploy checks or set SELFCHECKS_CHECKS_ROOT.",
+    });
+    expect(mocks.copyWorkspace).not.toHaveBeenCalled();
+    expect(mocks.testSessionCreate).not.toHaveBeenCalled();
+    expect(mocks.queueAddBulk).not.toHaveBeenCalled();
   });
 
   it("refuses a full regression when the branch workspace is unavailable", async () => {

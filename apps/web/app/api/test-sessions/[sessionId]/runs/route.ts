@@ -151,10 +151,12 @@ export async function POST(request: Request, context: RouteContext) {
     );
   }
 
-  const missingSources =
-    body.action === "full-regression"
-      ? []
-      : checks.filter((check) => !resolveRootDir(check, session));
+  const missingSources = checks.filter(
+    (check) =>
+      !(
+        body.action === "full-regression" && check.project.slug === session.project.slug
+      ) && !resolveRootDir(check, session),
+  );
 
   if (missingSources.length > 0) {
     return NextResponse.json(
@@ -207,7 +209,11 @@ export async function POST(request: Request, context: RouteContext) {
           checkKey: check.key,
           env: environments.get(check.project.slug) ?? [],
           projectSlug: check.project.slug,
-          rootDir: fullRegressionWorkspacePath ?? resolveRootDir(check, session)!,
+          rootDir:
+            body.action === "full-regression" &&
+            check.project.slug === session.project.slug
+              ? fullRegressionWorkspacePath!
+              : resolveRootDir(check, session)!,
           runId,
           runSource: "MANUAL" as const,
           testSessionId: queued.sessionId,
