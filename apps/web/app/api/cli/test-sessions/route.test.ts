@@ -67,6 +67,7 @@ function createRequest(token = "api-token") {
         alertChannels: [],
         checks: [
           {
+            accounts: ["free", "actionmedia-user2"],
             alertChannelLogicalIds: [],
             enabled: true,
             entrypoint: "src/homepage.spec.ts",
@@ -187,6 +188,7 @@ describe("CLI test session upload route", () => {
     });
     expect(mocks.checkRunCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({
+        checkSnapshotAccounts: ["free", "actionmedia-user2"],
         checkSnapshotKey: "homepage",
         checkSnapshotProjectSlug: "account",
         checkSnapshotType: "BROWSER",

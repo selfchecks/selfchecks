@@ -185,6 +185,10 @@ export type ApiRequest = z.infer<typeof apiRequestSchema>;
 
 export const checkDefinitionSchema = z
   .object({
+    accounts: z
+      .array(z.string().trim().min(1))
+      .default([])
+      .transform((accounts) => [...new Set(accounts)]),
     alertChannelLogicalIds: z.array(z.string().min(1)).default([]),
     degradedResponseTime: z.number().int().nonnegative().optional(),
     enabled: z.boolean().default(true),
@@ -203,6 +207,14 @@ export const checkDefinitionSchema = z
     type: z.enum(checkTypes),
   })
   .superRefine((value, context) => {
+    if (value.type === "api" && value.accounts.length > 0) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Only browser checks can require accounts.",
+        path: ["accounts"],
+      });
+    }
+
     if (value.type === "api" && !value.request) {
       context.addIssue({
         code: z.ZodIssueCode.custom,

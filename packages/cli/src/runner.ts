@@ -131,6 +131,7 @@ export type RunTestSessionCheckOptions = {
 };
 
 export type RunnableCheck = {
+  accounts: string[];
   degradedResponseTime: number | null;
   entrypoint: string | null;
   group?: {
@@ -151,6 +152,7 @@ export type RunnableCheck = {
 
 type CheckRunSnapshotData = Pick<
   Prisma.CheckRunUncheckedCreateInput,
+  | "checkSnapshotAccounts"
   | "checkSnapshotDegradedResponseTime"
   | "checkSnapshotEntrypoint"
   | "checkSnapshotGroupName"
@@ -327,6 +329,7 @@ async function findRunnableChecks(options: RunChecksOptions): Promise<RunnableCh
       )
       .filter((check) => doesCheckMatchTags(check, options.tagSets))
       .map((check) => ({
+        accounts: check.accounts,
         degradedResponseTime: check.degradedResponseTime ?? null,
         entrypoint: check.entrypoint ?? null,
         group: check.groupName
@@ -2112,6 +2115,7 @@ function buildCheckRunSnapshot(
   options: RunChecksOptions,
 ): CheckRunSnapshotData {
   return {
+    checkSnapshotAccounts: check.accounts,
     checkSnapshotDegradedResponseTime:
       check.type === "API"
         ? (check.degradedResponseTime ?? defaultDegradedResponseTimeMs)

@@ -167,6 +167,7 @@ export type ApiCheckProps = SharedCheckProps & {
 };
 
 export type BrowserCheckProps = SharedCheckProps & {
+  accounts?: string[];
   code: {
     entrypoint: string;
   };

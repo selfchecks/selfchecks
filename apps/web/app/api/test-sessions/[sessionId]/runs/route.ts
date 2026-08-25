@@ -528,6 +528,7 @@ function buildRunData(
 ): Prisma.CheckRunUncheckedCreateInput {
   return {
     checkId: check.id,
+    checkSnapshotAccounts: check.accounts,
     checkSnapshotDegradedResponseTime: check.degradedResponseTime,
     checkSnapshotEntrypoint: check.entrypoint,
     checkSnapshotGroupName: check.group?.name,

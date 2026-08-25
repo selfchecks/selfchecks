@@ -179,6 +179,35 @@ describe("deploymentManifestSchema", () => {
 });
 
 describe("checkDefinitionSchema", () => {
+  it("normalizes browser account requirements", () => {
+    expect(
+      checkDefinitionSchema.parse({
+        accounts: [" free ", "actionmedia-user2", "free"],
+        entrypoint: "signin.spec.ts",
+        key: "signin",
+        name: "Sign in",
+        type: "browser",
+      }),
+    ).toMatchObject({
+      accounts: ["free", "actionmedia-user2"],
+    });
+  });
+
+  it("rejects account requirements on API checks", () => {
+    expect(() =>
+      checkDefinitionSchema.parse({
+        accounts: ["free"],
+        key: "api-health",
+        name: "API health",
+        request: {
+          method: "GET",
+          url: "https://example.test/health",
+        },
+        type: "api",
+      }),
+    ).toThrow("Only browser checks can require accounts.");
+  });
+
   it("accepts a non-negative degraded response time in milliseconds", () => {
     expect(
       checkDefinitionSchema.parse({

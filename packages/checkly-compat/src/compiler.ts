@@ -20,6 +20,7 @@ export type CompiledApiRequest = Omit<
 };
 
 export type CompiledCheck = {
+  accounts: string[];
   alertChannelLogicalIds: string[];
   degradedResponseTime?: number;
   enabled: boolean;

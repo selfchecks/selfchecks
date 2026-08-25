@@ -149,6 +149,61 @@ describe("compileProject", () => {
       "ApiCheck private uses unsupported property: privateLocations",
     );
   });
+
+  it("compiles the account requirements of a browser check", async () => {
+    const rootDir = await createProject();
+    const constructsUrl = pathToFileURL(
+      path.join(resolvePackageRoot(), "src/constructs.ts"),
+    ).href;
+
+    await writeFile(
+      path.join(rootDir, "checkly.config.ts"),
+      `export default { logicalId: "demo", projectName: "Demo" };`,
+    );
+    await writeFile(
+      path.join(rootDir, "checks/signin.check.ts"),
+      `import { BrowserCheck } from ${JSON.stringify(constructsUrl)};
+       new BrowserCheck("signin", {
+         accounts: [" free ", "actionmedia-user2", "free"],
+         code: { entrypoint: "signin.spec.ts" }
+       });`,
+    );
+
+    await expect(compileProject({ rootDir })).resolves.toMatchObject({
+      checks: [
+        {
+          accounts: ["free", "actionmedia-user2"],
+          entrypoint: "signin.spec.ts",
+          key: "signin",
+          type: "browser",
+        },
+      ],
+    });
+  });
+
+  it("rejects invalid browser account requirements", async () => {
+    const rootDir = await createProject();
+    const constructsUrl = pathToFileURL(
+      path.join(resolvePackageRoot(), "src/constructs.ts"),
+    ).href;
+
+    await writeFile(
+      path.join(rootDir, "checkly.config.ts"),
+      `export default { logicalId: "demo", projectName: "Demo" };`,
+    );
+    await writeFile(
+      path.join(rootDir, "checks/signin.check.ts"),
+      `import { BrowserCheck } from ${JSON.stringify(constructsUrl)};
+       new BrowserCheck("signin", {
+         accounts: ["free", ""],
+         code: { entrypoint: "signin.spec.ts" }
+       });`,
+    );
+
+    await expect(compileProject({ rootDir })).rejects.toThrow(
+      "BrowserCheck signin account at index 1 must be a non-empty string.",
+    );
+  });
 });
 
 function resolvePackageRoot(): string {

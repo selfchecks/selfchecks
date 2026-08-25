@@ -145,6 +145,7 @@ describe("parseCheckManifestSource", () => {
           new BrowserCheck("homepage", {
             name: "Homepage",
             activated: false,
+            accounts: ["free", "actionmedia-user2"],
             tags: ["app", "smoke"],
             code: {
               entrypoint: path.join(__dirname, "homepage.spec.ts")
@@ -156,6 +157,7 @@ describe("parseCheckManifestSource", () => {
     ).toMatchObject({
       checks: [
         {
+          accounts: ["free", "actionmedia-user2"],
           enabled: false,
           entrypoint: "homepage.spec.ts",
           key: "homepage",

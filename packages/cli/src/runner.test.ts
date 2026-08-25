@@ -213,6 +213,7 @@ describe("runCheckById", () => {
     );
 
     mocks.checkFindFirst.mockResolvedValue({
+      accounts: ["free", "actionmedia-user2"],
       entrypoint: "src/__checks__/UI/App/billing/rest.autopayment.spec.ts",
       id: "check_1",
       key: "autopayment",
@@ -355,6 +356,13 @@ describe("runCheckById", () => {
     );
     await expect(readFile(updateScreenshotPath, "utf8")).resolves.toBe(
       "actual screenshot payload",
+    );
+    expect(mocks.checkRunUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          checkSnapshotAccounts: ["free", "actionmedia-user2"],
+        }),
+      }),
     );
   });
 

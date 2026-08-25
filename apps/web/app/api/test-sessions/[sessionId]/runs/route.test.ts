@@ -459,6 +459,7 @@ function createCheck(overrides: Partial<ReturnType<typeof buildCheck>> = {}) {
 
 function buildCheck() {
   return {
+    accounts: ["free", "actionmedia-user2"],
     degradedResponseTime: 10_000,
     deployment: {
       source: "/repo/config/checkly",

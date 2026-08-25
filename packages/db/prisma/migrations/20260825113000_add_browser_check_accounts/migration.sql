@@ -1,0 +1,5 @@
+ALTER TABLE "Check"
+ADD COLUMN "accounts" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
+
+ALTER TABLE "CheckRun"
+ADD COLUMN "checkSnapshotAccounts" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];

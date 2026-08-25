@@ -134,6 +134,7 @@ model Check {
   maxResponseTime      Int?
   muted                Boolean     @default(false)
   shouldFail           Boolean     @default(false)
+  accounts             String[]    @default([])
   tags                 String[]
   entrypoint           String?
   request              Json?
@@ -191,6 +192,7 @@ model CheckRun {
   checkSnapshotKey                  String?
   checkSnapshotName                 String?
   checkSnapshotType                 CheckType?
+  checkSnapshotAccounts             String[]        @default([])
   checkSnapshotTags                 String[]        @default([])
   checkSnapshotEntrypoint           String?
   checkSnapshotRequest              Json?

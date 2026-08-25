@@ -40,6 +40,7 @@ import { BrowserCheck, Frequency } from "@selfchecks/selfchecks/constructs";
 new BrowserCheck("homepage", {
   name: "Homepage",
   activated: true,
+  accounts: ["free"],
   frequency: Frequency.EVERY_15M,
   tags: ["smoke", "browser"],
   code: {
@@ -48,7 +49,8 @@ new BrowserCheck("homepage", {
 });
 ```
 
-The entrypoint is a regular Playwright Test file.
+The entrypoint is a regular Playwright Test file. `accounts` lists the logical
+account keys that the browser check needs together.
 
 Define an API check with request assertions:
 

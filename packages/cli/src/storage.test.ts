@@ -132,6 +132,7 @@ describe("persistDeploySummary", () => {
           type: "api",
         },
         {
+          accounts: ["free", "actionmedia-user2"],
           alertChannelLogicalIds: [],
           enabled: false,
           entrypoint: "checks/homepage.spec.ts",
@@ -312,11 +313,15 @@ describe("persistDeploySummary", () => {
     expect(mocks.checkUpsert).toHaveBeenCalledWith(
       expect.objectContaining({
         create: expect.objectContaining({
+          accounts: ["free", "actionmedia-user2"],
           enabled: false,
           entrypoint: "checks/homepage.spec.ts",
           groupId: undefined,
           key: "homepage",
           type: "BROWSER",
+        }),
+        update: expect.objectContaining({
+          accounts: ["free", "actionmedia-user2"],
         }),
       }),
     );

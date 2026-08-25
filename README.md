@@ -67,6 +67,7 @@ import { BrowserCheck, Frequency } from "@selfchecks/selfchecks/constructs";
 new BrowserCheck("homepage", {
   name: "Homepage",
   activated: true,
+  accounts: ["free"],
   frequency: Frequency.EVERY_15M,
   tags: ["smoke", "browser"],
   code: {
@@ -74,6 +75,8 @@ new BrowserCheck("homepage", {
   },
 });
 ```
+
+`accounts` lists the logical account keys that the browser check needs together.
 
 Or define an API check with a portable HTTP request and assertions:
 

@@ -219,6 +219,7 @@ function compileCheck(
   const allowedKeys = new Set(commonCheckKeys);
 
   if (type === "browser") {
+    allowedKeys.add("accounts");
     allowedKeys.add("code");
   } else {
     allowedKeys.add("degradedResponseTime");
@@ -246,6 +247,8 @@ function compileCheck(
     );
   }
   const base: CompiledCheck = {
+    accounts:
+      type === "browser" ? normalizeAccounts(props.accounts, construct.logicalId) : [],
     alertChannelLogicalIds,
     enabled: props.activated !== false,
     key: construct.logicalId,
@@ -321,6 +324,7 @@ function assertSupportedConfigDefaults(config: ProjectConfig): void {
 
   browserKeys.delete("alertChannels");
   browserKeys.delete("group");
+  browserKeys.add("accounts");
 
   for (const key of Object.keys(browserDefaults)) {
     if (!browserKeys.has(key)) {
@@ -636,6 +640,28 @@ function normalizeStrings(value: unknown): string[] {
   }
 
   return [...new Set(value.filter((item): item is string => typeof item === "string"))];
+}
+
+function normalizeAccounts(value: unknown, logicalId: string): string[] {
+  if (value === undefined) {
+    return [];
+  }
+
+  if (!Array.isArray(value)) {
+    throw new Error(`BrowserCheck ${logicalId} accounts must be an array.`);
+  }
+
+  const accounts = value.map((account, index) => {
+    if (typeof account !== "string" || !account.trim()) {
+      throw new Error(
+        `BrowserCheck ${logicalId} account at index ${index} must be a non-empty string.`,
+      );
+    }
+
+    return account.trim();
+  });
+
+  return [...new Set(accounts)];
 }
 
 function getLogicalId(value: unknown): string | undefined {

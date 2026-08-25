@@ -1021,6 +1021,10 @@ function buildCheckFromConfig({
       : undefined) ??
     (name ? slugify(name) : undefined);
   const check: Partial<CheckDefinition> = {
+    accounts:
+      type === "browser" && config
+        ? (getStringArrayProperty(config, "accounts", filePath) ?? [])
+        : [],
     degradedResponseTime:
       type === "api" && config
         ? getNumberProperty(config, "degradedResponseTime")

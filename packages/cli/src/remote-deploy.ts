@@ -11,6 +11,7 @@ import {
 
 export type DeploySummary = {
   checks: Array<{
+    accounts: string[];
     alertChannelLogicalIds: string[];
     degradedResponseTime?: number;
     enabled: boolean;
