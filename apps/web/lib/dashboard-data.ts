@@ -602,25 +602,26 @@ export async function getDashboardActivityData(
       select: {
         id: true,
         status: true,
+        testSession: {
+          select: {
+            kind: true,
+          },
+        },
       },
       where: {
-        AND: [
-          buildDashboardVisibleRunWhere(),
-          {
-            status: {
-              in: [...DASHBOARD_ACTIVE_RUN_STATUSES],
-            },
-          },
-        ],
+        status: {
+          in: [...DASHBOARD_ACTIVE_RUN_STATUSES],
+        },
       },
     }),
     fetchLatestTerminalRevisionRun(),
   ]);
+  const dashboardRuns = runs.filter((run) => run.testSession?.kind !== "TEST");
 
   return {
     projectSlug: "default",
     queued: runs.filter((run) => run.status === "QUEUED").length,
-    revision: formatDashboardRevision(runs, latestTerminalRun),
+    revision: formatDashboardRevision(dashboardRuns, latestTerminalRun),
     running: runs.filter((run) => run.status === "RUNNING").length,
   };
 }

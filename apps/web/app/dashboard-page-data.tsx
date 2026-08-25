@@ -1,4 +1,8 @@
-import { getDashboardData, getDashboardQueueData } from "@/lib/dashboard-data";
+import {
+  getDashboardActivityData,
+  getDashboardData,
+  getDashboardQueueData,
+} from "@/lib/dashboard-data";
 import type { DashboardSummary } from "@/lib/dashboard-types";
 import {
   getDashboardAccountLabel,
@@ -15,13 +19,17 @@ export async function DashboardData({
   activeView: DashboardActiveView;
 }) {
   if (activeView === "settings") {
-    const settings = await getDashboardSettingsData("default");
+    const [settings, serviceActivity] = await Promise.all([
+      getDashboardSettingsData("default"),
+      getDashboardActivityData("default"),
+    ]);
 
     return (
       <DashboardClient
         initialActiveView={activeView}
         initialGroups={[]}
         initialQueue={[]}
+        initialServiceActivity={serviceActivity}
         initialSettings={settings}
         initialSummary={createEmptySummary()}
       />
@@ -37,12 +45,16 @@ export async function DashboardData({
         initialActiveView={activeView}
         initialGroups={[]}
         initialQueue={queueData.queue}
+        initialServiceActivity={queueData.summary}
         initialSummary={queueData.summary}
       />
     );
   }
 
-  const dashboard = await getDashboardData("default");
+  const [dashboard, serviceActivity] = await Promise.all([
+    getDashboardData("default"),
+    getDashboardActivityData("default"),
+  ]);
 
   return (
     <DashboardClient
@@ -52,6 +64,7 @@ export async function DashboardData({
       initialGroups={dashboard.groups}
       initialQueue={dashboard.queue}
       initialRevision={dashboard.revision}
+      initialServiceActivity={serviceActivity}
       initialSummary={dashboard.summary}
     />
   );

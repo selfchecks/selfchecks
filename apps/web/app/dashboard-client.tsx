@@ -312,6 +312,7 @@ export default function DashboardClient({
   initialGroups,
   initialQueue,
   initialRevision,
+  initialServiceActivity,
   initialSettings,
   initialSummary,
 }: {
@@ -321,6 +322,7 @@ export default function DashboardClient({
   initialGroups: GroupRow[];
   initialQueue?: QueueRow[];
   initialRevision?: string;
+  initialServiceActivity?: Pick<DashboardSummary, "queued" | "running">;
   initialSettings?: DashboardSettingsData;
   initialSummary: DashboardSummary;
 }) {
@@ -334,6 +336,14 @@ export default function DashboardClient({
   }));
   const [settings, setSettings] = useState<DashboardSettingsData | undefined>(
     initialSettings,
+  );
+  const [serviceActivity, setServiceActivity] = useState(() =>
+    initialServiceActivity
+      ? { ...initialServiceActivity }
+      : {
+          queued: initialSummary.queued,
+          running: initialSummary.running,
+        },
   );
   const { firewatch, groups, queue, summary } = dashboard;
   const dashboardActivityRevisionRef = useRef(dashboard.revision);
@@ -497,6 +507,10 @@ export default function DashboardClient({
             dashboardActivityRevisionRef.current = createDashboardActivityRevision(
               nextQueue.queue,
             );
+            setServiceActivity({
+              queued: nextQueue.summary.queued,
+              running: nextQueue.summary.running,
+            });
             setDashboard((current) => ({
               ...current,
               queue: nextQueue.queue,
@@ -513,7 +527,16 @@ export default function DashboardClient({
 
         const activity = await fetchDashboardActivitySnapshot();
 
-        if (cancelled || activity.revision === dashboardActivityRevisionRef.current) {
+        if (cancelled) {
+          return;
+        }
+
+        setServiceActivity({
+          queued: activity.queued,
+          running: activity.running,
+        });
+
+        if (activity.revision === dashboardActivityRevisionRef.current) {
           return;
         }
 
@@ -674,6 +697,10 @@ export default function DashboardClient({
   function markChecksQueued(checkIds: string[]) {
     const checkIdSet = new Set(checkIds);
 
+    setServiceActivity((current) => ({
+      ...current,
+      queued: current.queued + checkIdSet.size,
+    }));
     optimisticQueuedCheckIdsRef.current = new Set([
       ...optimisticQueuedCheckIdsRef.current,
       ...checkIdSet,
@@ -803,8 +830,8 @@ export default function DashboardClient({
               ? "queue"
               : "home"
         }
-        initialQueuedCount={summary.queued}
-        initialRunningCount={summary.running}
+        initialQueuedCount={serviceActivity.queued}
+        initialRunningCount={serviceActivity.running}
         onHomeClick={resetDashboard}
         onQueueClick={openQueue}
         projectSlug={settings?.projectSlug ?? "default"}

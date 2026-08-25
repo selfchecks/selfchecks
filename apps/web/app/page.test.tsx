@@ -285,6 +285,7 @@ function renderDashboard(
   options: {
     activeView?: "dashboard" | "queue" | "settings";
     queue?: DashboardQueueRow[];
+    serviceActivity?: Pick<DashboardSummary, "queued" | "running">;
     summary?: DashboardSummary;
   } = {},
 ) {
@@ -293,6 +294,7 @@ function renderDashboard(
       initialActiveView={options.activeView}
       initialGroups={fixtureGroups}
       initialQueue={options.queue}
+      initialServiceActivity={options.serviceActivity}
       initialSettings={fixtureSettings}
       initialSummary={options.summary ?? fixtureSummary}
     />,
@@ -350,6 +352,10 @@ describe("DashboardPage", () => {
 
   it("shows the dashboard-only queued check count", () => {
     renderDashboard({
+      serviceActivity: {
+        queued: 8,
+        running: 1,
+      },
       summary: {
         ...fixtureSummary,
         queued: 7,
@@ -357,6 +363,7 @@ describe("DashboardPage", () => {
     });
 
     expect(screen.getByRole("status", { name: "QUEUED 7" })).toBeTruthy();
+    expect(screen.getByRole("status", { name: "Running 1, queued 8" })).toBeTruthy();
   });
 
   it("exposes the topbar action slot beside Run all checks", () => {

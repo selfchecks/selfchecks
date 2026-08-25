@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getDashboardAccountLabel: vi.fn(() => "admin@example.com"),
+  getDashboardActivityData: vi.fn(),
   getDashboardData: vi.fn(),
   getDashboardQueueData: vi.fn(),
   getDashboardSettingsData: vi.fn(),
@@ -10,6 +11,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/dashboard-data", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/dashboard-data")>()),
+  getDashboardActivityData: mocks.getDashboardActivityData,
   getDashboardData: mocks.getDashboardData,
   getDashboardQueueData: mocks.getDashboardQueueData,
 }));
@@ -24,14 +26,21 @@ vi.mock("./dashboard-client", () => ({
     initialAccountLabel,
     initialActiveView,
     initialQueue,
+    initialServiceActivity,
     initialSettings,
   }: {
     initialAccountLabel?: string;
     initialActiveView: string;
     initialQueue: unknown[];
+    initialServiceActivity?: { queued: number; running: number };
     initialSettings?: { basic: { login: string } };
   }) => (
-    <div data-queue-count={initialQueue.length} data-testid="dashboard-client">
+    <div
+      data-queue-count={initialQueue.length}
+      data-service-queued={initialServiceActivity?.queued}
+      data-service-running={initialServiceActivity?.running}
+      data-testid="dashboard-client"
+    >
       {initialActiveView}:{initialSettings?.basic.login ?? initialAccountLabel}
     </div>
   ),
@@ -44,7 +53,13 @@ describe("DashboardData", () => {
     vi.clearAllMocks();
   });
 
-  it("loads only settings data for the settings view", async () => {
+  it("loads settings and service activity for the settings view", async () => {
+    mocks.getDashboardActivityData.mockResolvedValue({
+      projectSlug: "default",
+      queued: 8,
+      revision: "terminal:",
+      running: 1,
+    });
     mocks.getDashboardSettingsData.mockResolvedValue({
       basic: {
         login: "admin@example.com",
@@ -56,8 +71,11 @@ describe("DashboardData", () => {
     expect(screen.getByTestId("dashboard-client").textContent).toBe(
       "settings:admin@example.com",
     );
+    expect(screen.getByTestId("dashboard-client").dataset.serviceQueued).toBe("8");
+    expect(screen.getByTestId("dashboard-client").dataset.serviceRunning).toBe("1");
     expect(mocks.getDashboardData).not.toHaveBeenCalled();
     expect(mocks.getDashboardQueueData).not.toHaveBeenCalled();
+    expect(mocks.getDashboardActivityData).toHaveBeenCalledWith("default");
     expect(mocks.getDashboardSettingsData).toHaveBeenCalledWith("default");
   });
 
@@ -82,7 +100,10 @@ describe("DashboardData", () => {
     render(await DashboardData({ activeView: "queue" }));
 
     expect(screen.getByTestId("dashboard-client").dataset.queueCount).toBe("1");
+    expect(screen.getByTestId("dashboard-client").dataset.serviceQueued).toBe("1");
+    expect(screen.getByTestId("dashboard-client").dataset.serviceRunning).toBe("0");
     expect(mocks.getDashboardQueueData).toHaveBeenCalledWith("default");
+    expect(mocks.getDashboardActivityData).not.toHaveBeenCalled();
     expect(mocks.getDashboardData).not.toHaveBeenCalled();
     expect(mocks.getDashboardSettingsData).not.toHaveBeenCalled();
   });

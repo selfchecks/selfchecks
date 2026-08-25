@@ -125,7 +125,7 @@ describe("dashboard data", () => {
     delete process.env.SELFCHECKS_QUEUED_RUN_TIMEOUT_MINUTES;
   });
 
-  it("counts queued and running checks for the sidebar", async () => {
+  it("counts dashboard and test-session runs for the sidebar", async () => {
     mocks.projectFindUnique.mockResolvedValue({
       id: "project_1",
       slug: "default",
@@ -134,6 +134,16 @@ describe("dashboard data", () => {
       { id: "queued_1", status: "QUEUED" },
       { id: "queued_2", status: "QUEUED" },
       { id: "running_1", status: "RUNNING" },
+      {
+        id: "test_queued_1",
+        status: "QUEUED",
+        testSession: { kind: "TEST" },
+      },
+      {
+        id: "test_running_1",
+        status: "RUNNING",
+        testSession: { kind: "TEST" },
+      },
     ]);
     mocks.checkRunFindFirst.mockResolvedValue({
       finishedAt: new Date("2026-07-05T09:39:00.000Z"),
@@ -143,10 +153,10 @@ describe("dashboard data", () => {
 
     await expect(getDashboardActivityData("default")).resolves.toEqual({
       projectSlug: "default",
-      queued: 2,
+      queued: 3,
       revision:
         "terminal:terminal_1:PASSED:2026-07-05T09:39:00.000Z|active:queued_1:QUEUED|active:queued_2:QUEUED|active:running_1:RUNNING",
-      running: 1,
+      running: 2,
     });
     expect(mocks.checkRunFindMany).toHaveBeenCalledWith({
       orderBy: {
@@ -155,29 +165,16 @@ describe("dashboard data", () => {
       select: {
         id: true,
         status: true,
+        testSession: {
+          select: {
+            kind: true,
+          },
+        },
       },
       where: {
-        AND: [
-          {
-            OR: [
-              { testSessionId: null },
-              {
-                testSession: {
-                  is: {
-                    kind: {
-                      not: "TEST",
-                    },
-                  },
-                },
-              },
-            ],
-          },
-          {
-            status: {
-              in: ["QUEUED", "RUNNING"],
-            },
-          },
-        ],
+        status: {
+          in: ["QUEUED", "RUNNING"],
+        },
       },
     });
     expect(mocks.checkRunFindFirst).toHaveBeenCalledWith({
