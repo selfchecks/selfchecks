@@ -288,6 +288,7 @@ export async function scheduleDueChecks({
       await queue.add(
         "run-check",
         {
+          accounts: check.accounts,
           checkId: check.id,
           checkKey: check.key,
           env,

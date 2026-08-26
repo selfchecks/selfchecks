@@ -231,24 +231,40 @@ describe("test session bulk run route", () => {
   it("clones the source project and uses deployed roots for other projects", async () => {
     vi.stubEnv("SELFCHECKS_TEST_SESSIONS_DIR", "/runtime/test-sessions");
     mocks.testSessionFindFirst.mockResolvedValue(sourceSession);
-    mocks.projectFindMany.mockResolvedValue([{ slug: "account" }, { slug: "api" }]);
+    mocks.projectFindMany.mockResolvedValue([
+      { slug: "account" },
+      { slug: "x-editor" },
+    ]);
+    mocks.getRunEnvironment.mockImplementation(async (projectSlug) =>
+      projectSlug === "x-editor"
+        ? [
+            {
+              name: "PLAYWRIGHT_BASE_URL",
+              value: "https://stable.x-editor.example.test",
+            },
+          ]
+        : [
+            { name: "BASE_URL", value: "https://production.example.test" },
+            { name: "TOKEN", value: "secret" },
+          ],
+    );
     mocks.checkFindMany.mockResolvedValue([
       createCheck(),
       createCheck({
         deployment: {
-          source: "/repo/config/api",
+          source: "/repo/config/x-editor",
         },
-        id: "check_health",
-        key: "health",
-        name: "API health",
-        project: { id: "project_api", slug: "api" },
+        id: "check_editor",
+        key: "editor",
+        name: "X Editor",
+        project: { id: "project_x_editor", slug: "x-editor" },
       }),
     ]);
 
     const response = await POST(
       createRequest({
         action: "full-regression",
-        projectSlugs: ["account", "api"],
+        projectSlugs: ["account", "x-editor"],
       }),
       createContext(),
     );
@@ -290,9 +306,9 @@ describe("test session bulk run route", () => {
     expect(mocks.checkRunCreate).toHaveBeenCalledTimes(2);
     expect(mocks.checkRunCreate).toHaveBeenLastCalledWith({
       data: expect.objectContaining({
-        checkId: "check_health",
-        checkSnapshotProjectSlug: "api",
-        projectId: "project_api",
+        checkId: "check_editor",
+        checkSnapshotProjectSlug: "x-editor",
+        projectId: "project_x_editor",
         testSessionId: "session_clone",
       }),
       select: { id: true },
@@ -301,6 +317,14 @@ describe("test session bulk run route", () => {
       expect.arrayContaining([
         expect.objectContaining({
           data: expect.objectContaining({
+            accounts: ["free", "actionmedia-user2"],
+            env: expect.arrayContaining([
+              { name: "BASE_URL", value: "https://pr-331.app.example.test" },
+              {
+                name: "PLAYWRIGHT_BASE_URL",
+                value: "https://pr-331.app.example.test",
+              },
+            ]),
             projectSlug: "account",
             rootDir: "/runtime/test-sessions/session_clone",
             testSessionId: "session_clone",
@@ -308,8 +332,15 @@ describe("test session bulk run route", () => {
         }),
         expect.objectContaining({
           data: expect.objectContaining({
-            projectSlug: "api",
-            rootDir: "/repo/config/api",
+            accounts: ["free", "actionmedia-user2"],
+            env: [
+              {
+                name: "PLAYWRIGHT_BASE_URL",
+                value: "https://stable.x-editor.example.test",
+              },
+            ],
+            projectSlug: "x-editor",
+            rootDir: "/repo/config/x-editor",
             testSessionId: "session_clone",
           }),
         }),

@@ -24,9 +24,11 @@ import {
 } from "@selfchecks/core";
 import { prisma } from "@selfchecks/db";
 
+import { accountLockManager } from "./account-locks.js";
 import { readPerformanceRuntimeSettings } from "./performance-settings.js";
 
 export type RunCheckJob = {
+  accounts?: string[];
   checkId: string;
   checkKey: string;
   env?: EnvVar[];
@@ -120,44 +122,46 @@ const activeRunStatuses = ["QUEUED", "RUNNING"] as const;
 export async function handleCheckJob(
   job: Pick<Job<RunCheckJob>, "data">,
 ): Promise<CheckJobResult> {
-  console.log(
-    `Running ${job.data.type} check ${job.data.checkKey} for ${job.data.projectSlug}`,
-  );
+  return accountLockManager.run(job.data.accounts, async () => {
+    console.log(
+      `Running ${job.data.type} check ${job.data.checkKey} for ${job.data.projectSlug}`,
+    );
 
-  try {
-    return await runCheckById({
-      checkId: job.data.checkId,
-      env: job.data.env ?? [],
-      ...(job.data.testSessionId
-        ? { existingTestSessionId: job.data.testSessionId }
-        : {}),
-      projectSlug: job.data.projectSlug,
-      record: true,
-      reporter: job.data.reporter ?? "list",
-      rootDir: job.data.rootDir,
-      runId: job.data.runId,
-      runSource: job.data.runSource,
-    });
-  } catch (error) {
-    if (job.data.runId) {
-      await prisma.checkRun.update({
-        data: {
-          errorMessage: error instanceof Error ? error.message : String(error),
-          finishedAt: new Date(),
-          status: "FAILED",
-        },
-        where: {
-          id: job.data.runId,
-        },
+    try {
+      return await runCheckById({
+        checkId: job.data.checkId,
+        env: job.data.env ?? [],
+        ...(job.data.testSessionId
+          ? { existingTestSessionId: job.data.testSessionId }
+          : {}),
+        projectSlug: job.data.projectSlug,
+        record: true,
+        reporter: job.data.reporter ?? "list",
+        rootDir: job.data.rootDir,
+        runId: job.data.runId,
+        runSource: job.data.runSource,
       });
-    }
+    } catch (error) {
+      if (job.data.runId) {
+        await prisma.checkRun.update({
+          data: {
+            errorMessage: error instanceof Error ? error.message : String(error),
+            finishedAt: new Date(),
+            status: "FAILED",
+          },
+          where: {
+            id: job.data.runId,
+          },
+        });
+      }
 
-    throw error;
-  } finally {
-    if (job.data.testSessionId) {
-      await finalizeTestSession(job.data.testSessionId);
+      throw error;
+    } finally {
+      if (job.data.testSessionId) {
+        await finalizeTestSession(job.data.testSessionId);
+      }
     }
-  }
+  });
 }
 
 export async function handleSelfchecksJob(
@@ -374,20 +378,25 @@ export async function handleTestSessionCheckJob(
       };
     }
 
-    return await runTestSessionCheck({
-      check: data.check,
-      env: data.env,
-      existingRunId: data.existingRunId,
-      existingTestSessionId: data.sessionId,
-      projectSlug: data.projectSlug,
-      reporter: data.reporter,
-      retries: data.retries,
-      rootDir: data.rootDir,
-      signal: cancellation.signal,
-      testSessionDeadline: data.testSessionDeadline,
-    });
+    return await accountLockManager.run(
+      data.check.accounts,
+      () =>
+        runTestSessionCheck({
+          check: data.check,
+          env: data.env,
+          existingRunId: data.existingRunId,
+          existingTestSessionId: data.sessionId,
+          projectSlug: data.projectSlug,
+          reporter: data.reporter,
+          retries: data.retries,
+          rootDir: data.rootDir,
+          signal: cancellation.signal,
+          testSessionDeadline: data.testSessionDeadline,
+        }),
+      { signal: cancellation.signal },
+    );
   } catch (error) {
-    if (error instanceof TestSessionCancelledError) {
+    if (cancellation.signal.aborted || error instanceof TestSessionCancelledError) {
       return {
         checkKey: existingRun.checkSnapshotKey ?? data.check.key,
         checkName: existingRun.checkSnapshotName ?? data.check.name,

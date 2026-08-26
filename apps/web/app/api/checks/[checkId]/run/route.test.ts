@@ -86,6 +86,7 @@ describe("run check route", () => {
     vi.stubEnv("REDIS_PORT", "6380");
     vi.stubEnv("SELFCHECKS_QUEUE_NAME", "custom-checks");
     mocks.checkFindUnique.mockResolvedValue({
+      accounts: [],
       deployment: {
         source: "/repo/config/checkly",
       },
@@ -138,6 +139,7 @@ describe("run check route", () => {
     expect(mocks.queueAdd).toHaveBeenCalledWith(
       "run-check",
       {
+        accounts: [],
         checkId: "check_1",
         checkKey: "issue.get",
         env: [
@@ -174,6 +176,7 @@ describe("run check route", () => {
   it("queues a new run inside the selected test session", async () => {
     mocks.checkFindUnique.mockResolvedValue(null);
     mocks.checkFindFirst.mockResolvedValue({
+      accounts: [],
       deployment: {
         source: "/repo/config/checkly",
       },
@@ -262,6 +265,7 @@ describe("run check route", () => {
     expect(mocks.queueAdd).toHaveBeenCalledWith(
       "run-check",
       expect.objectContaining({
+        accounts: [],
         runId: "run_1",
         testSessionId: "session_1",
       }),

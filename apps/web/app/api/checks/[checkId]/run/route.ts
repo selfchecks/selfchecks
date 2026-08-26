@@ -16,6 +16,7 @@ type RouteContext = {
 };
 
 type CheckJob = {
+  accounts: string[];
   checkId: string;
   checkKey: string;
   env?: Array<{
@@ -226,6 +227,7 @@ export async function POST(request: Request, context: RouteContext) {
     await queue.add(
       "run-check",
       {
+        accounts: check.accounts,
         checkId: check.id,
         checkKey: check.key,
         env,

@@ -78,6 +78,7 @@ function createQueue() {
 
 function createScheduledCheck(
   overrides: Partial<{
+    accounts: string[];
     deployment: { source: string | null } | null;
     frequencyMinutes: number | null;
     id: string;
@@ -88,6 +89,7 @@ function createScheduledCheck(
   }> = {},
 ) {
   return {
+    accounts: [],
     deployment: {
       source: "/repo/config/checkly",
     },
@@ -209,6 +211,7 @@ describe("scheduleDueChecks", () => {
     expect(mocks.queueAdd).toHaveBeenCalledWith(
       "run-check",
       {
+        accounts: [],
         checkId: "check_1",
         checkKey: "issue.get",
         env: [

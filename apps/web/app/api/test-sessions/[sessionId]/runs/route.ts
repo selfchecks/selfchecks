@@ -22,6 +22,7 @@ type RouteContext = {
 type SessionRunAction = "full-regression" | "rerun-failed" | "rerun-session";
 
 type CheckJob = {
+  accounts: string[];
   checkId: string;
   checkKey: string;
   env?: Array<{
@@ -167,7 +168,11 @@ export async function POST(request: Request, context: RouteContext) {
     );
   }
 
-  const environments = await loadProjectEnvironments(checks, session.targetUrl);
+  const environments = await loadProjectEnvironments(
+    checks,
+    session.project.slug,
+    session.targetUrl,
+  );
   const queued = await createQueuedRuns(session, checks, body.action);
   let fullRegressionWorkspacePath: string | undefined;
 
@@ -205,6 +210,7 @@ export async function POST(request: Request, context: RouteContext) {
     await queue.addBulk(
       queued.runs.map(({ check, runId }) => ({
         data: {
+          accounts: check.accounts,
           checkId: check.id,
           checkKey: check.key,
           env: environments.get(check.project.slug) ?? [],
@@ -549,6 +555,7 @@ function buildRunData(
 
 async function loadProjectEnvironments(
   checks: RunnableCheck[],
+  targetProjectSlug: string,
   targetUrl: string | null,
 ) {
   const projectSlugs = [...new Set(checks.map((check) => check.project.slug))];
@@ -557,7 +564,10 @@ async function loadProjectEnvironments(
       async (projectSlug) =>
         [
           projectSlug,
-          applyTargetUrl(await getRunEnvironment(projectSlug), targetUrl),
+          applyTargetUrl(
+            await getRunEnvironment(projectSlug),
+            projectSlug === targetProjectSlug ? targetUrl : null,
+          ),
         ] as const,
     ),
   );
