@@ -24,7 +24,6 @@ import {
 } from "@selfchecks/core";
 import { prisma } from "@selfchecks/db";
 
-import { accountLockManager } from "./account-locks.js";
 import { readPerformanceRuntimeSettings } from "./performance-settings.js";
 
 export type RunCheckJob = {
@@ -122,46 +121,44 @@ const activeRunStatuses = ["QUEUED", "RUNNING"] as const;
 export async function handleCheckJob(
   job: Pick<Job<RunCheckJob>, "data">,
 ): Promise<CheckJobResult> {
-  return accountLockManager.run(job.data.accounts, async () => {
-    console.log(
-      `Running ${job.data.type} check ${job.data.checkKey} for ${job.data.projectSlug}`,
-    );
+  console.log(
+    `Running ${job.data.type} check ${job.data.checkKey} for ${job.data.projectSlug}`,
+  );
 
-    try {
-      return await runCheckById({
-        checkId: job.data.checkId,
-        env: job.data.env ?? [],
-        ...(job.data.testSessionId
-          ? { existingTestSessionId: job.data.testSessionId }
-          : {}),
-        projectSlug: job.data.projectSlug,
-        record: true,
-        reporter: job.data.reporter ?? "list",
-        rootDir: job.data.rootDir,
-        runId: job.data.runId,
-        runSource: job.data.runSource,
+  try {
+    return await runCheckById({
+      checkId: job.data.checkId,
+      env: job.data.env ?? [],
+      ...(job.data.testSessionId
+        ? { existingTestSessionId: job.data.testSessionId }
+        : {}),
+      projectSlug: job.data.projectSlug,
+      record: true,
+      reporter: job.data.reporter ?? "list",
+      rootDir: job.data.rootDir,
+      runId: job.data.runId,
+      runSource: job.data.runSource,
+    });
+  } catch (error) {
+    if (job.data.runId) {
+      await prisma.checkRun.update({
+        data: {
+          errorMessage: error instanceof Error ? error.message : String(error),
+          finishedAt: new Date(),
+          status: "FAILED",
+        },
+        where: {
+          id: job.data.runId,
+        },
       });
-    } catch (error) {
-      if (job.data.runId) {
-        await prisma.checkRun.update({
-          data: {
-            errorMessage: error instanceof Error ? error.message : String(error),
-            finishedAt: new Date(),
-            status: "FAILED",
-          },
-          where: {
-            id: job.data.runId,
-          },
-        });
-      }
-
-      throw error;
-    } finally {
-      if (job.data.testSessionId) {
-        await finalizeTestSession(job.data.testSessionId);
-      }
     }
-  });
+
+    throw error;
+  } finally {
+    if (job.data.testSessionId) {
+      await finalizeTestSession(job.data.testSessionId);
+    }
+  }
 }
 
 export async function handleSelfchecksJob(
@@ -378,23 +375,18 @@ export async function handleTestSessionCheckJob(
       };
     }
 
-    return await accountLockManager.run(
-      data.check.accounts,
-      () =>
-        runTestSessionCheck({
-          check: data.check,
-          env: data.env,
-          existingRunId: data.existingRunId,
-          existingTestSessionId: data.sessionId,
-          projectSlug: data.projectSlug,
-          reporter: data.reporter,
-          retries: data.retries,
-          rootDir: data.rootDir,
-          signal: cancellation.signal,
-          testSessionDeadline: data.testSessionDeadline,
-        }),
-      { signal: cancellation.signal },
-    );
+    return await runTestSessionCheck({
+      check: data.check,
+      env: data.env,
+      existingRunId: data.existingRunId,
+      existingTestSessionId: data.sessionId,
+      projectSlug: data.projectSlug,
+      reporter: data.reporter,
+      retries: data.retries,
+      rootDir: data.rootDir,
+      signal: cancellation.signal,
+      testSessionDeadline: data.testSessionDeadline,
+    });
   } catch (error) {
     if (cancellation.signal.aborted || error instanceof TestSessionCancelledError) {
       return {

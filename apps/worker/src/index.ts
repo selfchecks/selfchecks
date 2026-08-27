@@ -2,6 +2,7 @@ import { Queue, Worker } from "bullmq";
 
 import { defaultPerformanceSettings } from "@selfchecks/core";
 
+import { accountJobDispatcher } from "./account-locks.js";
 import { getWorkerRuntimeConfig } from "./config.js";
 import { type CheckJob, handleSelfchecksJob } from "./jobs.js";
 import { readPerformanceRuntimeSettings } from "./performance-settings.js";
@@ -25,7 +26,10 @@ await checkQueue.setGlobalConcurrency(performanceSettings.workerConcurrency);
 
 const worker = new Worker<CheckJob>(
   config.queueName,
-  (job) => handleSelfchecksJob(job, checkQueue),
+  (job, token) =>
+    accountJobDispatcher.dispatch(job, token, () =>
+      handleSelfchecksJob(job, checkQueue),
+    ),
   {
     concurrency: performanceSettings.workerConcurrency,
     connection: config.connection,

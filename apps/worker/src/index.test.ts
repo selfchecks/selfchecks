@@ -16,6 +16,9 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("bullmq", () => ({
+  DelayedError: class DelayedError extends Error {
+    name = "DelayedError";
+  },
   Queue: mocks.Queue,
   Worker: mocks.Worker,
 }));
@@ -177,4 +180,78 @@ describe("worker entrypoint", () => {
     expect(mocks.workerClose).toHaveBeenCalled();
     expect(mocks.queueClose).toHaveBeenCalled();
   });
+
+  it("defers overlapping account jobs without blocking disjoint jobs", async () => {
+    const finishPaid = createDeferred<void>();
+
+    mocks.handleSelfchecksJob.mockImplementation(async (job) => {
+      if (job.id === "paid_1") {
+        await finishPaid.promise;
+      }
+
+      return job.id;
+    });
+    await import("./index.js");
+    const processor = mocks.Worker.mock.calls[0]?.[1] as (
+      job: ReturnType<typeof createAccountJob>,
+      token?: string,
+    ) => Promise<unknown>;
+    const paidJob = createAccountJob("paid_1", ["paid"]);
+    const blockedPaidJob = createAccountJob("paid_2", ["paid"]);
+    const freeJob = createAccountJob("free_1", ["free"]);
+    const paidRun = processor(paidJob, "token_paid_1");
+
+    await vi.waitFor(() => {
+      expect(mocks.handleSelfchecksJob).toHaveBeenCalledWith(
+        paidJob,
+        expect.any(Object),
+      );
+    });
+    await expect(processor(blockedPaidJob, "token_paid_2")).rejects.toMatchObject({
+      name: "DelayedError",
+    });
+    await expect(processor(freeJob, "token_free_1")).resolves.toBe("free_1");
+
+    expect(blockedPaidJob.moveToDelayed).toHaveBeenCalledWith(
+      expect.any(Number),
+      "token_paid_2",
+    );
+    expect(mocks.handleSelfchecksJob).not.toHaveBeenCalledWith(
+      blockedPaidJob,
+      expect.any(Object),
+    );
+
+    finishPaid.resolve();
+    await paidRun;
+
+    expect(blockedPaidJob.promote).toHaveBeenCalledTimes(1);
+    await expect(processor(blockedPaidJob, "token_paid_2_retry")).resolves.toBe(
+      "paid_2",
+    );
+  });
 });
+
+function createAccountJob(id: string, accounts: string[]) {
+  return {
+    data: {
+      accounts,
+      checkId: `check_${id}`,
+      checkKey: id,
+      projectSlug: "account",
+      rootDir: "/runtime/checks",
+      type: "browser" as const,
+    },
+    id,
+    moveToDelayed: vi.fn(async () => undefined),
+    promote: vi.fn(async () => undefined),
+  };
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve;
+  });
+
+  return { promise, resolve };
+}
