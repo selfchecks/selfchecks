@@ -181,6 +181,55 @@ describe("compileProject", () => {
     });
   });
 
+  it("resolves dot-relative browser entrypoints from their check files", async () => {
+    const rootDir = await createProject();
+    const constructsUrl = pathToFileURL(
+      path.join(resolvePackageRoot(), "src/constructs.ts"),
+    ).href;
+    const firstChecksDir = path.join(rootDir, "checks/first");
+    const secondChecksDir = path.join(rootDir, "checks/second");
+
+    await writeFile(
+      path.join(rootDir, "checkly.config.ts"),
+      `export default { logicalId: "demo", projectName: "Demo" };`,
+    );
+    await Promise.all([
+      mkdir(firstChecksDir, { recursive: true }),
+      mkdir(secondChecksDir, { recursive: true }),
+    ]);
+    await Promise.all([
+      writeFile(
+        path.join(firstChecksDir, "content.check.ts"),
+        `import { BrowserCheck } from ${JSON.stringify(constructsUrl)};
+         new BrowserCheck("first-content", {
+           code: { entrypoint: "./content.spec.ts" }
+         });`,
+      ),
+      writeFile(
+        path.join(secondChecksDir, "content.check.ts"),
+        `import { BrowserCheck } from ${JSON.stringify(constructsUrl)};
+         new BrowserCheck("second-content", {
+           code: { entrypoint: "./content.spec.ts" }
+         });`,
+      ),
+    ]);
+
+    await expect(compileProject({ rootDir })).resolves.toMatchObject({
+      checks: [
+        {
+          entrypoint: "checks/first/content.spec.ts",
+          key: "first-content",
+          type: "browser",
+        },
+        {
+          entrypoint: "checks/second/content.spec.ts",
+          key: "second-content",
+          type: "browser",
+        },
+      ],
+    });
+  });
+
   it("rejects invalid browser account requirements", async () => {
     const rootDir = await createProject();
     const constructsUrl = pathToFileURL(

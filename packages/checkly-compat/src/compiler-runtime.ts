@@ -100,12 +100,19 @@ async function run(options: CompileProjectOptions): Promise<DeploymentManifest> 
   const projectName = readRequiredString(config.projectName, "projectName");
   const logicalId = readRequiredString(config.logicalId, "logicalId");
   const collector: CollectedConstruct[] = [];
+  const constructFilePaths = new Map<CollectedConstruct, string>();
 
   (globalThis as CollectorGlobal)[constructCollectorSymbol] = collector;
 
   try {
     for (const filePath of await findCheckFiles(options.rootDir)) {
+      const collectorStartIndex = collector.length;
+
       await import(pathToFileURL(filePath).href);
+
+      for (const construct of collector.slice(collectorStartIndex)) {
+        constructFilePaths.set(construct, filePath);
+      }
     }
   } finally {
     delete (globalThis as CollectorGlobal)[constructCollectorSymbol];
@@ -150,7 +157,22 @@ async function run(options: CompileProjectOptions): Promise<DeploymentManifest> 
   assertSupportedConfigDefaults(config);
   const checks = collector
     .filter((item) => item.kind === "ApiCheck" || item.kind === "BrowserCheck")
-    .map((item) => compileCheck(item, config, groups, channels));
+    .map((item) => {
+      const checkFilePath = constructFilePaths.get(item);
+
+      if (!checkFilePath) {
+        throw new Error(`Unable to resolve the source file for ${item.logicalId}.`);
+      }
+
+      return compileCheck(
+        item,
+        config,
+        groups,
+        channels,
+        options.rootDir,
+        checkFilePath,
+      );
+    });
 
   if (checks.length === 0) {
     throw new Error(`No Selfchecks definitions were found in ${options.rootDir}.`);
@@ -195,6 +217,8 @@ function compileCheck(
   config: ProjectConfig,
   groups: Map<string, CollectedConstruct>,
   channels: Map<string, CollectedConstruct>,
+  rootDir: string,
+  checkFilePath: string,
 ): CompiledCheck {
   const type = construct.kind === "ApiCheck" ? "api" : "browser";
   const ownProps = asRecord(construct.props);
@@ -288,10 +312,27 @@ function compileCheck(
       throw new Error(`BrowserCheck ${construct.logicalId} requires code.entrypoint.`);
     }
 
-    base.entrypoint = entrypoint;
+    base.entrypoint = normalizeEntrypoint(rootDir, checkFilePath, entrypoint);
   }
 
   return base;
+}
+
+function normalizeEntrypoint(
+  rootDir: string,
+  checkFilePath: string,
+  entrypoint: string,
+): string {
+  if (!entrypoint.startsWith(".")) {
+    return entrypoint;
+  }
+
+  const absoluteEntrypoint = path.resolve(path.dirname(checkFilePath), entrypoint);
+
+  return path
+    .relative(rootDir, absoluteEntrypoint)
+    .split(path.sep)
+    .join(path.posix.sep);
 }
 
 function pickGroupCheckDefaults(
