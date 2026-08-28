@@ -159,6 +159,57 @@ describe("resolveBrowserTraceModeConfig", () => {
     });
   });
 
+  it("evaluates an environment-dependent trace mode", async () => {
+    const rootDir = await createTempRoot();
+
+    await writeFile(
+      path.join(rootDir, "playwright.config.ts"),
+      `
+        import { defineConfig } from '@playwright/test';
+
+        const isCI = !!process.env.CI;
+
+        export default defineConfig({
+          use: {
+            trace: isCI ? 'on-first-retry' : 'on',
+          },
+        });
+      `,
+    );
+
+    await expect(
+      resolveBrowserTraceModeConfig(rootDir, { CI: "1" }),
+    ).resolves.toMatchObject({
+      mode: "on-first-retry",
+      source: "playwright.use.trace",
+    });
+    await expect(resolveBrowserTraceModeConfig(rootDir)).resolves.toMatchObject({
+      mode: "on",
+      source: "playwright.use.trace",
+    });
+  });
+
+  it("does not guess a trace mode when a conditional cannot be evaluated", async () => {
+    const rootDir = await createTempRoot();
+
+    await writeFile(
+      path.join(rootDir, "playwright.config.ts"),
+      `
+        const isCI = detectCI();
+
+        export default {
+          use: {
+            trace: isCI ? 'on-first-retry' : 'on',
+          },
+        };
+      `,
+    );
+
+    await expect(
+      resolveBrowserTraceModeConfig(rootDir, { CI: "1" }),
+    ).resolves.toBeUndefined();
+  });
+
   it("reads an object trace mode and follows top-level constants", async () => {
     const rootDir = await createTempRoot();
 

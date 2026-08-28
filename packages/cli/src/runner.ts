@@ -1030,9 +1030,28 @@ async function runBrowserCheck(
 
   const artifactStartedAt = Date.now();
   const artifactPaths = createBrowserArtifactPaths(options.rootDir, run?.id);
+  const managedPlaywrightBrowsersPath = process.env.PLAYWRIGHT_BROWSERS_PATH?.trim();
+  const playwrightProcessEnv = {
+    CI: "1",
+    ...(managedPlaywrightBrowsersPath
+      ? { PLAYWRIGHT_BROWSERS_PATH: managedPlaywrightBrowsersPath }
+      : {}),
+    PLAYWRIGHT_BLOB_OUTPUT_DIR: artifactPaths.blobReportDir,
+    PLAYWRIGHT_HTML_OUTPUT_DIR: artifactPaths.htmlReportDir,
+    SELFCHECKS_BROWSER_PERFORMANCE_DIR: artifactPaths.performanceDir,
+    NODE_OPTIONS: mergeNodeOptions(
+      process.env.NODE_OPTIONS,
+      `--require=${artifactPaths.performanceCollectorPath}`,
+    ),
+  };
+  const playwrightEnvironment = {
+    ...process.env,
+    ...Object.fromEntries(options.env.map((item) => [item.name, item.value])),
+    ...playwrightProcessEnv,
+  };
   const [runTimeout, traceModeConfig] = await Promise.all([
     resolveBrowserRunTimeoutConfig(options.rootDir),
-    resolveBrowserTraceModeConfig(options.rootDir),
+    resolveBrowserTraceModeConfig(options.rootDir, playwrightEnvironment),
   ]);
   const effectiveTraceMode = traceModeConfig
     ? resolveBrowserTraceModeForAttempt(traceModeConfig.mode, attempt, maxAttempts)
@@ -1065,7 +1084,6 @@ async function runBrowserCheck(
   }
 
   await writeBrowserPerformanceCollector(artifactPaths.performanceCollectorPath);
-  const managedPlaywrightBrowsersPath = process.env.PLAYWRIGHT_BROWSERS_PATH?.trim();
   const playwrightCli = resolvePlaywrightCli(options.rootDir);
   const logs = await runProcess({
     args: [
@@ -1084,19 +1102,7 @@ async function runBrowserCheck(
     ],
     command: process.execPath,
     env: options.env,
-    processEnv: {
-      CI: "1",
-      ...(managedPlaywrightBrowsersPath
-        ? { PLAYWRIGHT_BROWSERS_PATH: managedPlaywrightBrowsersPath }
-        : {}),
-      PLAYWRIGHT_BLOB_OUTPUT_DIR: artifactPaths.blobReportDir,
-      PLAYWRIGHT_HTML_OUTPUT_DIR: artifactPaths.htmlReportDir,
-      SELFCHECKS_BROWSER_PERFORMANCE_DIR: artifactPaths.performanceDir,
-      NODE_OPTIONS: mergeNodeOptions(
-        process.env.NODE_OPTIONS,
-        `--require=${artifactPaths.performanceCollectorPath}`,
-      ),
-    },
+    processEnv: playwrightProcessEnv,
     rootDir: options.rootDir,
     signal: options.signal,
     timeout: processTimeout,

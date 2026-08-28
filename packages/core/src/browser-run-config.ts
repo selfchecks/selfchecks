@@ -36,6 +36,12 @@ type TimeoutCandidate = {
 
 type TraceModeCandidate = BrowserTraceModeConfig;
 
+type StaticEnvironment = Readonly<Record<string, string | undefined>>;
+
+const unknownStaticValue = Symbol("unknown-static-value");
+
+type StaticValue = boolean | string | undefined | typeof unknownStaticValue;
+
 const playwrightConfigFileNames = [
   "playwright.config.ts",
   "playwright.config.mts",
@@ -94,10 +100,11 @@ export async function resolveBrowserRunTimeoutConfig(
 
 export async function resolveBrowserTraceModeConfig(
   rootDir: string,
+  environment: StaticEnvironment = {},
 ): Promise<BrowserTraceModeConfig | undefined> {
-  const playwrightTraceMode = await readPlaywrightTraceMode(rootDir);
+  const playwrightTraceMode = await readPlaywrightTraceMode(rootDir, environment);
 
-  return playwrightTraceMode ?? readChecklyTraceMode(rootDir);
+  return playwrightTraceMode ?? readChecklyTraceMode(rootDir, environment);
 }
 
 export function resolveBrowserTraceModeForAttempt(
@@ -143,11 +150,17 @@ async function readPlaywrightTimeouts(rootDir: string) {
 
 async function readPlaywrightTraceMode(
   rootDir: string,
+  environment: StaticEnvironment,
 ): Promise<TraceModeCandidate | undefined> {
   const parsedConfig = await readFirstParsedConfig(rootDir, playwrightConfigFileNames);
 
   return parsedConfig
-    ? readTraceModeCandidate(parsedConfig, ["use", "trace"], "playwright.use.trace")
+    ? readTraceModeCandidate(
+        parsedConfig,
+        ["use", "trace"],
+        "playwright.use.trace",
+        environment,
+      )
     : undefined;
 }
 
@@ -174,6 +187,7 @@ async function readChecklyTimeouts(rootDir: string) {
 
 async function readChecklyTraceMode(
   rootDir: string,
+  environment: StaticEnvironment,
 ): Promise<TraceModeCandidate | undefined> {
   const parsedConfig = await readFirstParsedConfig(rootDir, checklyConfigFileNames);
 
@@ -182,6 +196,7 @@ async function readChecklyTraceMode(
         parsedConfig,
         ["checks", "playwrightConfig", "use", "trace"],
         "checkly.checks.playwrightConfig.use.trace",
+        environment,
       )
     : undefined;
 }
@@ -256,6 +271,7 @@ function readTraceModeCandidate(
   parsedConfig: ReturnType<typeof parseConfigSource>,
   propertyPath: string[],
   source: string,
+  environment: StaticEnvironment,
 ): TraceModeCandidate | undefined {
   let expression: ts.Expression | undefined = parsedConfig.configObject;
 
@@ -276,7 +292,11 @@ function readTraceModeCandidate(
     return undefined;
   }
 
-  const traceMode = evaluateTraceModeExpression(expression, parsedConfig.variables);
+  const traceMode = evaluateTraceModeExpression(
+    expression,
+    parsedConfig.variables,
+    environment,
+  );
 
   if (!traceMode) {
     return undefined;
@@ -459,14 +479,11 @@ function evaluateNumberExpression(
 function evaluateTraceModeExpression(
   expression: ts.Expression,
   variables: Map<string, ts.Expression>,
+  environment: StaticEnvironment,
 ): { fromObject: boolean; mode: BrowserTraceMode } | undefined {
-  const resolvedExpression = resolveExpression(expression, variables);
-
-  if (!resolvedExpression) {
-    return undefined;
-  }
-
-  const directMode = getBrowserTraceMode(resolvedExpression);
+  const directMode = getBrowserTraceModeFromValue(
+    evaluateStaticValue(expression, variables, environment),
+  );
 
   if (directMode) {
     return {
@@ -475,15 +492,20 @@ function evaluateTraceModeExpression(
     };
   }
 
+  const resolvedExpression = resolveExpression(expression, variables);
+
+  if (!resolvedExpression) {
+    return undefined;
+  }
+
   const objectExpression = resolveObjectExpression(resolvedExpression, variables);
   const modeExpression = objectExpression
     ? getObjectPropertyInitializer(objectExpression, "mode")
     : undefined;
-  const resolvedModeExpression = modeExpression
-    ? resolveExpression(modeExpression, variables)
-    : undefined;
-  const objectMode = resolvedModeExpression
-    ? getBrowserTraceMode(resolvedModeExpression)
+  const objectMode = modeExpression
+    ? getBrowserTraceModeFromValue(
+        evaluateStaticValue(modeExpression, variables, environment),
+      )
     : undefined;
 
   return objectMode
@@ -492,6 +514,124 @@ function evaluateTraceModeExpression(
         mode: objectMode,
       }
     : undefined;
+}
+
+function evaluateStaticValue(
+  expression: ts.Expression,
+  variables: Map<string, ts.Expression>,
+  environment: StaticEnvironment,
+  seen = new Set<string>(),
+): StaticValue {
+  const unwrappedExpression = unwrapExpression(expression);
+
+  if (
+    ts.isStringLiteral(unwrappedExpression) ||
+    ts.isNoSubstitutionTemplateLiteral(unwrappedExpression)
+  ) {
+    return unwrappedExpression.text;
+  }
+
+  if (unwrappedExpression.kind === ts.SyntaxKind.TrueKeyword) {
+    return true;
+  }
+
+  if (unwrappedExpression.kind === ts.SyntaxKind.FalseKeyword) {
+    return false;
+  }
+
+  if (ts.isIdentifier(unwrappedExpression)) {
+    if (unwrappedExpression.text === "undefined") {
+      return undefined;
+    }
+
+    if (seen.has(unwrappedExpression.text)) {
+      return unknownStaticValue;
+    }
+
+    const initializer = variables.get(unwrappedExpression.text);
+
+    if (!initializer) {
+      return unknownStaticValue;
+    }
+
+    seen.add(unwrappedExpression.text);
+    return evaluateStaticValue(initializer, variables, environment, seen);
+  }
+
+  if (
+    ts.isPrefixUnaryExpression(unwrappedExpression) &&
+    unwrappedExpression.operator === ts.SyntaxKind.ExclamationToken
+  ) {
+    const operand = evaluateStaticValue(
+      unwrappedExpression.operand,
+      variables,
+      environment,
+      seen,
+    );
+
+    return operand === unknownStaticValue ? unknownStaticValue : !operand;
+  }
+
+  const environmentName = getProcessEnvironmentName(unwrappedExpression);
+
+  if (environmentName) {
+    return environment[environmentName];
+  }
+
+  if (ts.isConditionalExpression(unwrappedExpression)) {
+    const condition = evaluateStaticValue(
+      unwrappedExpression.condition,
+      variables,
+      environment,
+      seen,
+    );
+
+    if (condition === unknownStaticValue) {
+      return unknownStaticValue;
+    }
+
+    return evaluateStaticValue(
+      condition ? unwrappedExpression.whenTrue : unwrappedExpression.whenFalse,
+      variables,
+      environment,
+      seen,
+    );
+  }
+
+  return unknownStaticValue;
+}
+
+function getProcessEnvironmentName(expression: ts.Expression): string | undefined {
+  if (
+    ts.isPropertyAccessExpression(expression) &&
+    isProcessEnvironmentExpression(expression.expression)
+  ) {
+    return expression.name.text;
+  }
+
+  if (
+    ts.isElementAccessExpression(expression) &&
+    isProcessEnvironmentExpression(expression.expression)
+  ) {
+    const argument = unwrapExpression(expression.argumentExpression);
+
+    return ts.isStringLiteral(argument) || ts.isNoSubstitutionTemplateLiteral(argument)
+      ? argument.text
+      : undefined;
+  }
+
+  return undefined;
+}
+
+function isProcessEnvironmentExpression(expression: ts.Expression): boolean {
+  const unwrappedExpression = unwrapExpression(expression);
+
+  return (
+    ts.isPropertyAccessExpression(unwrappedExpression) &&
+    ts.isIdentifier(unwrappedExpression.expression) &&
+    unwrappedExpression.expression.text === "process" &&
+    unwrappedExpression.name.text === "env"
+  );
 }
 
 function resolveExpression(
@@ -519,13 +659,12 @@ function resolveExpression(
   return resolveExpression(initializer, variables, seen);
 }
 
-function getBrowserTraceMode(expression: ts.Expression): BrowserTraceMode | undefined {
-  const value =
-    ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)
-      ? expression.text
-      : undefined;
-
-  return browserTraceModes.find((mode) => mode === value);
+function getBrowserTraceModeFromValue(
+  value: StaticValue,
+): BrowserTraceMode | undefined {
+  return typeof value === "string"
+    ? browserTraceModes.find((mode) => mode === value)
+    : undefined;
 }
 
 function unwrapExpression(expression: ts.Expression): ts.Expression {

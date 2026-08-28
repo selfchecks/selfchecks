@@ -374,9 +374,11 @@ describe("runCheckById", () => {
     await writeFile(
       path.join(rootDir, "playwright.config.ts"),
       `
+        const isCI = !!process.env.CI;
+
         export default {
           use: {
-            trace: "on-first-retry",
+            trace: isCI ? "on-first-retry" : "on",
           },
         };
       `,
