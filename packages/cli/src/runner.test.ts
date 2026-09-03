@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 
@@ -75,6 +76,7 @@ import {
 } from "./runner.js";
 
 const tempDirs: string[] = [];
+const require = createRequire(import.meta.url);
 
 async function createTempProject() {
   const directory = await mkdtemp(path.join(os.tmpdir(), "selfchecks-runner-"));
@@ -167,8 +169,10 @@ describe("runCheckById", () => {
     const rootDir = await createTempProject();
     const runId = "run_1";
     const artifactsRootDir = path.join(rootDir, "runtime-artifacts");
+    const traceStatusesPath = path.join(artifactsRootDir, runId, "trace-statuses.json");
     vi.stubEnv("CI", "");
     vi.stubEnv("SELFCHECKS_ARTIFACTS_DIR", artifactsRootDir);
+    vi.stubEnv("SELFCHECKS_TRACE_STATUSES_PATH", traceStatusesPath);
     vi.stubEnv("PLAYWRIGHT_BROWSERS_PATH", "/ms-playwright");
 
     await writeFile(
@@ -180,6 +184,11 @@ describe("runCheckById", () => {
     const isolatedTracePath = path.join(
       isolatedOutputDir,
       "autopayment-chromium",
+      "trace.zip",
+    );
+    const failedTracePath = path.join(
+      isolatedOutputDir,
+      "autopayment-expired-card-chromium",
       "trace.zip",
     );
     const screenshotOutputDir = path.join(isolatedOutputDir, "autopayment-chromium");
@@ -245,12 +254,39 @@ describe("runCheckById", () => {
         void (async () => {
           const outputIndex = args.indexOf("--output");
           const outputDir = args[outputIndex + 1];
+          const reporterIndex = args.indexOf("--reporter");
+          const reporterPath = args[reporterIndex + 1]?.split(",").at(-1);
 
           await mkdir(path.dirname(isolatedTracePath), { recursive: true });
           await mkdir(path.dirname(sharedTracePath), { recursive: true });
           await writeFile(path.join(String(outputDir), ".last-run.json"), "{}");
+          const TraceStatusReporter = require(String(reporterPath));
+          const reporter = new TraceStatusReporter();
+
+          reporter.onTestEnd(
+            { expectedStatus: "passed" },
+            {
+              attachments: [{ name: "trace", path: isolatedTracePath }],
+              status: "passed",
+            },
+          );
+          reporter.onTestEnd(
+            { expectedStatus: "passed" },
+            {
+              attachments: [{ name: "trace", path: failedTracePath }],
+              status: "failed",
+            },
+          );
           await writeFile(
             isolatedTracePath,
+            createStoredZip({
+              "trace.network": "",
+              "trace.trace": "",
+            }),
+          );
+          await mkdir(path.dirname(failedTracePath), { recursive: true });
+          await writeFile(
+            failedTracePath,
             createStoredZip({
               "trace.network": "",
               "trace.trace": "",
@@ -311,7 +347,7 @@ describe("runCheckById", () => {
       "--output",
       isolatedOutputDir,
       "--reporter",
-      "list",
+      `list,${path.join(artifactsRootDir, runId, "trace-status-reporter.cjs")}`,
       "--retries",
       "0",
     ]);
@@ -328,6 +364,7 @@ describe("runCheckById", () => {
             runId,
             "playwright-report",
           ),
+          SELFCHECKS_TRACE_STATUSES_PATH: traceStatusesPath,
         }),
       }),
     );
@@ -343,6 +380,12 @@ describe("runCheckById", () => {
         }),
         expect.objectContaining({
           path: isolatedTracePath,
+          testStatus: "passed",
+          type: "TRACE",
+        }),
+        expect.objectContaining({
+          path: failedTracePath,
+          testStatus: "failed",
           type: "TRACE",
         }),
         expect.objectContaining({

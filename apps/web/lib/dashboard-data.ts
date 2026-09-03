@@ -364,6 +364,7 @@ type MappableRun = {
     mimeType: string | null;
     path: string;
     sizeBytes: number | null;
+    testStatus?: string | null;
     type: string;
   }>;
   createdAt: Date;
@@ -698,6 +699,7 @@ export async function getCheckDetailShellData(
                 mimeType: true,
                 path: true,
                 sizeBytes: true,
+                testStatus: true,
                 type: true,
               },
             },
@@ -3261,15 +3263,23 @@ function formatSourceLabel(value: string): string {
 }
 
 function mapRunArtifacts(run: MappableRun): DashboardRunArtifact[] {
-  const artifacts = run.artifacts.map((artifact) => ({
-    downloadUrl: buildArtifactUrl(run.id, artifact.id, true),
-    id: artifact.id,
-    mimeType: artifact.mimeType ?? undefined,
-    name: getArtifactFileName(artifact),
-    size: formatBytes(artifact.sizeBytes ?? undefined),
-    type: artifact.type.toLowerCase() as DashboardRunArtifact["type"],
-    viewUrl: buildArtifactViewUrl(run.id, artifact.id, artifact.type),
-  }));
+  const artifacts: DashboardRunArtifact[] = run.artifacts.map((artifact) => {
+    const testStatus: DashboardRunArtifact["testStatus"] =
+      artifact.testStatus === "failed" || artifact.testStatus === "passed"
+        ? artifact.testStatus
+        : undefined;
+
+    return {
+      downloadUrl: buildArtifactUrl(run.id, artifact.id, true),
+      id: artifact.id,
+      mimeType: artifact.mimeType ?? undefined,
+      name: getArtifactFileName(artifact),
+      size: formatBytes(artifact.sizeBytes ?? undefined),
+      ...(testStatus ? { testStatus } : {}),
+      type: artifact.type.toLowerCase() as DashboardRunArtifact["type"],
+      viewUrl: buildArtifactViewUrl(run.id, artifact.id, artifact.type),
+    };
+  });
 
   if (run.logsPath && !artifacts.some((artifact) => artifact.type === "log")) {
     artifacts.push({

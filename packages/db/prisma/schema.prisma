@@ -217,14 +217,15 @@ model CheckRun {
 }
 
 model Artifact {
-  id        String       @id @default(cuid())
-  runId     String
-  type      ArtifactType
-  path      String
-  mimeType  String?
-  sizeBytes Int?
-  createdAt DateTime     @default(now())
-  run       CheckRun     @relation(fields: [runId], references: [id], onDelete: Cascade)
+  id         String       @id @default(cuid())
+  runId      String
+  type       ArtifactType
+  path       String
+  mimeType   String?
+  sizeBytes  Int?
+  testStatus String?
+  createdAt  DateTime     @default(now())
+  run        CheckRun     @relation(fields: [runId], references: [id], onDelete: Cascade)
 
   @@index([runId])
 }

@@ -51,6 +51,7 @@ export type DashboardRunArtifact = {
   mimeType?: string;
   name: string;
   size: string;
+  testStatus?: "failed" | "passed";
   type: DashboardArtifactType;
   viewUrl: string;
 };

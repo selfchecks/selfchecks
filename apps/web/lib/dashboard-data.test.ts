@@ -398,6 +398,7 @@ describe("dashboard data", () => {
           mimeType: "application/zip",
           path: "/tmp/artifacts/run_1/test-results/paid-content-email-draft-creation-chromium/trace.zip",
           sizeBytes: 43_008,
+          testStatus: "failed",
           type: "TRACE",
         },
       ],
@@ -552,6 +553,7 @@ describe("dashboard data", () => {
       downloadUrl: "/api/runs/run_1/artifacts/artifact_1?download=1",
       name: "paid-content-email-draft-creation-chromium.trace.zip",
       size: "42.0 KB",
+      testStatus: "failed",
       type: "trace",
       viewUrl: "/runs/run_1/artifacts/artifact_1/trace",
     });

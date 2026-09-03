@@ -387,6 +387,41 @@ describe("RunDetailView", () => {
     expect(logSection?.querySelector(".divide-y")).toBeNull();
   });
 
+  it("colors trace icons by their Playwright test status", () => {
+    render(
+      <RunDetailView
+        accountLabel="nikolaev@iprojects.ru"
+        detail={{
+          ...browserDetail,
+          run: {
+            ...browserDetail.run,
+            artifacts: [
+              {
+                ...browserDetail.run.artifacts[0]!,
+                id: "passed-trace",
+                name: "passed.trace.zip",
+                testStatus: "passed",
+              },
+              {
+                ...browserDetail.run.artifacts[0]!,
+                id: "failed-trace",
+                name: "failed.trace.zip",
+                testStatus: "failed",
+              },
+            ],
+          },
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByRole("img", { name: "Trace passed" }).getAttribute("class"),
+    ).toContain("text-emerald-400");
+    expect(
+      screen.getByRole("img", { name: "Trace failed" }).getAttribute("class"),
+    ).toContain("text-red-400");
+  });
+
   it("hides empty API-only blocks for browser runs", () => {
     render(
       <RunDetailView accountLabel="nikolaev@iprojects.ru" detail={browserDetail} />,

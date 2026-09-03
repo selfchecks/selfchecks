@@ -877,10 +877,22 @@ function ArtifactRow({
   children: React.ReactNode;
 }) {
   const Icon = getArtifactIcon(artifact.type);
+  const traceStatus = artifact.type === "trace" ? artifact.testStatus : undefined;
 
   return (
     <div className="flex max-w-full items-center gap-3 py-2 text-sm text-slate-300 first:pt-0 last:pb-0">
-      <Icon className="h-4 w-4 shrink-0 text-slate-500" />
+      <Icon
+        aria-label={traceStatus ? `Trace ${traceStatus}` : undefined}
+        className={cn(
+          "h-4 w-4 shrink-0",
+          traceStatus === "passed"
+            ? "text-emerald-400"
+            : traceStatus === "failed"
+              ? "text-red-400"
+              : "text-slate-500",
+        )}
+        role={traceStatus ? "img" : undefined}
+      />
       <ArtifactMetadata artifact={artifact} />
       {children}
     </div>

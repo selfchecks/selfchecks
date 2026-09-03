@@ -176,6 +176,7 @@ export type CollectedRunArtifact = {
   mimeType?: string;
   path: string;
   sizeBytes?: number;
+  testStatus?: "failed" | "passed";
   type: Prisma.ArtifactCreateManyInput["type"];
 };
 
@@ -187,6 +188,45 @@ const DEFAULT_RETRY_MAX_RETRIES = 2;
 const BROWSER_RUN_TIMEOUT_EXIT_CODE = 124;
 const BROWSER_RUN_TIMEOUT_KILL_GRACE_MS = 5_000;
 const MAX_RETRIES = 10;
+const TRACE_STATUS_REPORTER_SCRIPT = `
+const fs = require("node:fs");
+const path = require("node:path");
+
+class SelfChecksTraceStatusReporter {
+  constructor() {
+    this.statuses = {};
+  }
+
+  onTestEnd(test, result) {
+    const status = result.status === test.expectedStatus ? "passed" : "failed";
+
+    for (const attachment of result.attachments) {
+      if (attachment.name === "trace" && attachment.path) {
+        this.statuses[path.resolve(attachment.path)] = status;
+      }
+    }
+
+    this.persist();
+  }
+
+  persist() {
+    const outputPath = process.env.SELFCHECKS_TRACE_STATUSES_PATH;
+
+    if (!outputPath) {
+      return;
+    }
+
+    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+    fs.writeFileSync(outputPath, JSON.stringify(this.statuses));
+  }
+
+  printsToStdio() {
+    return false;
+  }
+}
+
+module.exports = SelfChecksTraceStatusReporter;
+`;
 const ANSI_ESCAPE_PATTERN = new RegExp(
   `${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`,
   "g",
@@ -1039,6 +1079,7 @@ async function runBrowserCheck(
     PLAYWRIGHT_BLOB_OUTPUT_DIR: artifactPaths.blobReportDir,
     PLAYWRIGHT_HTML_OUTPUT_DIR: artifactPaths.htmlReportDir,
     SELFCHECKS_BROWSER_PERFORMANCE_DIR: artifactPaths.performanceDir,
+    SELFCHECKS_TRACE_STATUSES_PATH: artifactPaths.traceStatusesPath,
     NODE_OPTIONS: mergeNodeOptions(
       process.env.NODE_OPTIONS,
       `--require=${artifactPaths.performanceCollectorPath}`,
@@ -1083,7 +1124,10 @@ async function runBrowserCheck(
     });
   }
 
-  await writeBrowserPerformanceCollector(artifactPaths.performanceCollectorPath);
+  await Promise.all([
+    writeBrowserPerformanceCollector(artifactPaths.performanceCollectorPath),
+    writeTraceStatusReporter(artifactPaths.traceStatusReporterPath),
+  ]);
   const playwrightCli = resolvePlaywrightCli(options.rootDir);
   const logs = await runProcess({
     args: [
@@ -1095,7 +1139,7 @@ async function runBrowserCheck(
       "--output",
       artifactPaths.testResultsDir,
       "--reporter",
-      options.reporter,
+      `${options.reporter},${artifactPaths.traceStatusReporterPath}`,
       "--retries",
       "0",
       ...(traceModeOverride ? ["--trace", traceModeOverride] : []),
@@ -1111,11 +1155,16 @@ async function runBrowserCheck(
     ? await writeRunLog(options.rootDir, run.id, logs.output)
     : undefined;
   const artifacts = run
-    ? await collectRunArtifacts(artifactStartedAt, logsPath, [
-        artifactPaths.testResultsDir,
-        artifactPaths.htmlReportDir,
-        artifactPaths.blobReportDir,
-      ])
+    ? await collectRunArtifacts(
+        artifactStartedAt,
+        logsPath,
+        [
+          artifactPaths.testResultsDir,
+          artifactPaths.htmlReportDir,
+          artifactPaths.blobReportDir,
+        ],
+        artifactPaths.traceStatusesPath,
+      )
     : [];
   const performance =
     (await collectBrowserPerformanceFromDirectory(artifactPaths.performanceDir)) ??
@@ -1797,6 +1846,7 @@ async function recordRunArtifacts(
         path: artifact.path,
         runId,
         sizeBytes: artifact.sizeBytes,
+        testStatus: artifact.testStatus,
         type: artifact.type,
       })),
     });
@@ -1809,6 +1859,7 @@ async function collectRunArtifacts(
   startedAt: number,
   logsPath: string | undefined,
   browserArtifactDirs: string[],
+  traceStatusesPath: string,
 ): Promise<CollectedRunArtifact[]> {
   const artifacts: CollectedRunArtifact[] = [];
   const logOutput = logsPath ? await readFile(logsPath, "utf8").catch(() => "") : "";
@@ -1828,6 +1879,13 @@ async function collectRunArtifacts(
     console.warn("Unable to collect browser artifacts.", error);
     return [];
   });
+  const traceStatuses = await readTraceStatuses(traceStatusesPath);
+
+  for (const artifact of discoveredArtifacts) {
+    if (artifact.type === "TRACE") {
+      artifact.testStatus = traceStatuses.get(path.resolve(artifact.path));
+    }
+  }
   const snapshotUpdateArtifacts = await createSnapshotUpdateArtifacts(
     discoveredArtifacts,
     parseSnapshotUpdateArtifactNames(logOutput),
@@ -1868,7 +1926,31 @@ function createBrowserArtifactPaths(rootDir: string, runId: string | undefined) 
     performanceCollectorPath: path.join(artifactRoot, "performance-collector.cjs"),
     performanceDir: path.join(artifactRoot, "performance"),
     testResultsDir: path.join(artifactRoot, "test-results"),
+    traceStatusesPath: path.join(artifactRoot, "trace-statuses.json"),
+    traceStatusReporterPath: path.join(artifactRoot, "trace-status-reporter.cjs"),
   };
+}
+
+async function readTraceStatuses(
+  filePath: string,
+): Promise<Map<string, "failed" | "passed">> {
+  const value = await readFile(filePath, "utf8")
+    .then((content) => JSON.parse(content) as unknown)
+    .catch(() => undefined);
+
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return new Map();
+  }
+
+  const statuses = new Map<string, "failed" | "passed">();
+
+  for (const [tracePath, status] of Object.entries(value)) {
+    if (status === "failed" || status === "passed") {
+      statuses.set(tracePath, status);
+    }
+  }
+
+  return statuses;
 }
 
 async function writeBrowserPerformanceCollector(filePath: string) {
@@ -1876,6 +1958,13 @@ async function writeBrowserPerformanceCollector(filePath: string) {
     recursive: true,
   });
   await writeFile(filePath, BROWSER_PERFORMANCE_COLLECTOR_SCRIPT);
+}
+
+async function writeTraceStatusReporter(filePath: string) {
+  await mkdir(path.dirname(filePath), {
+    recursive: true,
+  });
+  await writeFile(filePath, TRACE_STATUS_REPORTER_SCRIPT);
 }
 
 function mergeNodeOptions(...options: Array<string | undefined>) {
