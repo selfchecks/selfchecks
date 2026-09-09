@@ -186,7 +186,7 @@ const DEFAULT_RETRY_BACKOFF_SECONDS = 60;
 const DEFAULT_RETRY_MAX_DURATION_SECONDS = 600;
 const DEFAULT_RETRY_MAX_RETRIES = 2;
 const BROWSER_RUN_TIMEOUT_EXIT_CODE = 124;
-const BROWSER_RUN_TIMEOUT_KILL_GRACE_MS = 5_000;
+const BROWSER_RUN_TIMEOUT_KILL_GRACE_MS = 30_000;
 const MAX_RETRIES = 10;
 const TRACE_STATUS_REPORTER_SCRIPT = `
 const fs = require("node:fs");
@@ -1733,6 +1733,26 @@ async function runProcess({
       });
     }
 
+    function stopPlaywright() {
+      if (killTimer || resolved) {
+        return;
+      }
+
+      killTimer = setTimeout(() => {
+        chunks.push(
+          Buffer.from(
+            "\nPlaywright did not stop within 30 s. Forcing shutdown; artifacts may be incomplete.\n",
+          ),
+        );
+        signalChildProcess(child, "SIGKILL");
+      }, BROWSER_RUN_TIMEOUT_KILL_GRACE_MS);
+      killTimer.unref?.();
+
+      // Let the runner stop its workers and finish traces before closing browsers.
+      // Signalling the whole process group closes browsers before trace export.
+      child.kill("SIGINT");
+    }
+
     const handleCancellation = () => {
       if (resolved || cancelled) {
         return;
@@ -1744,11 +1764,7 @@ async function runProcess({
         timeoutTimer = undefined;
       }
       chunks.push(Buffer.from("\nTest session was cancelled.\n"));
-      signalChildProcess(child, "SIGTERM");
-      killTimer = setTimeout(() => {
-        signalChildProcess(child, "SIGKILL");
-      }, BROWSER_RUN_TIMEOUT_KILL_GRACE_MS);
-      killTimer.unref?.();
+      stopPlaywright();
     };
 
     if (timeout && timeout.ms > 0) {
@@ -1761,11 +1777,7 @@ async function runProcess({
             )} (${timeout.source}).\n`,
           ),
         );
-        signalChildProcess(child, "SIGTERM");
-        killTimer = setTimeout(() => {
-          signalChildProcess(child, "SIGKILL");
-        }, BROWSER_RUN_TIMEOUT_KILL_GRACE_MS);
-        killTimer.unref?.();
+        stopPlaywright();
       }, timeout.ms);
       timeoutTimer.unref?.();
     }
@@ -1786,7 +1798,7 @@ async function runProcess({
     });
     child.on("close", (exitCode, processSignal) => {
       resolveOnce({
-        exitCode: exitCode ?? (timedOut ? BROWSER_RUN_TIMEOUT_EXIT_CODE : 1),
+        exitCode: timedOut ? BROWSER_RUN_TIMEOUT_EXIT_CODE : (exitCode ?? 1),
         signal: processSignal,
       });
     });
@@ -1911,7 +1923,11 @@ async function collectBrowserArtifactFiles(
     )
   ).flat();
 
-  return artifacts.slice(0, 100);
+  const traces = artifacts.filter((artifact) => artifact.type === "TRACE");
+  const otherArtifacts = artifacts.filter((artifact) => artifact.type !== "TRACE");
+
+  // A screenshot-heavy test must not hide traces, even with over 100 tests.
+  return [...traces, ...otherArtifacts.slice(0, Math.max(0, 100 - traces.length))];
 }
 
 function createBrowserArtifactPaths(rootDir: string, runId: string | undefined) {
@@ -1997,6 +2013,13 @@ async function walkArtifactDirectory(
   const artifacts: CollectedRunArtifact[] = [];
 
   for (const entry of entries) {
+    if (
+      entry.name.startsWith(".playwright-artifacts-") ||
+      entry.name === ".last-run.json"
+    ) {
+      continue;
+    }
+
     const filePath = path.join(directory, entry.name);
 
     if (entry.isDirectory()) {

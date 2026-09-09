@@ -76,6 +76,7 @@ import {
 } from "./runner.js";
 
 const tempDirs: string[] = [];
+const restoreSpies: Array<() => void> = [];
 const require = createRequire(import.meta.url);
 
 async function createTempProject() {
@@ -152,6 +153,7 @@ function createStoredZip(entries: Record<string, string>) {
 describe("runCheckById", () => {
   afterEach(async () => {
     vi.clearAllMocks();
+    restoreSpies.splice(0).forEach((restore) => restore());
     vi.useRealTimers();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
@@ -409,6 +411,101 @@ describe("runCheckById", () => {
     );
   });
 
+  it.each(["internal resources", "many screenshots", "many traces"])(
+    "keeps traces without exposing Playwright internals: %s",
+    async (scenario) => {
+      const rootDir = await createTempProject();
+      const runId = "run_artifacts";
+      const artifactsRootDir = path.join(rootDir, "runtime-artifacts");
+      vi.stubEnv("SELFCHECKS_ARTIFACTS_DIR", artifactsRootDir);
+      mocks.checkFindFirst.mockResolvedValue({
+        entrypoint: "homepage.spec.ts",
+        id: "check_1",
+        key: "homepage",
+        name: "Homepage",
+        runs: [],
+        type: "BROWSER",
+      });
+      mocks.checkRunFindFirst.mockResolvedValue({ id: runId });
+      mocks.checkRunUpdate.mockImplementation(async ({ data, where }) => ({
+        id: where.id,
+        ...data,
+      }));
+      mocks.spawn.mockImplementation((_command, args: string[]) => {
+        const child = Object.assign(new EventEmitter(), {
+          stderr: new EventEmitter(),
+          stdout: new EventEmitter(),
+        });
+        setImmediate(() => {
+          void (async () => {
+            const outputDir = args[args.indexOf("--output") + 1]!;
+            const directory = path.join(
+              outputDir,
+              scenario === "internal resources"
+                ? ".playwright-artifacts-0/traces/resources"
+                : "a-test",
+            );
+            await mkdir(directory, { recursive: true });
+            await Promise.all(
+              Array.from({ length: 105 }, (_, index) =>
+                writeFile(
+                  path.join(
+                    directory,
+                    scenario === "many traces"
+                      ? `${index}-trace.zip`
+                      : `page@${index}.jpeg`,
+                  ),
+                  scenario === "many traces" ? createStoredZip({}) : "fixture",
+                ),
+              ),
+            );
+            if (scenario === "internal resources") {
+              await writeFile(path.join(directory, "asset.mp4"), "site video");
+              await writeFile(path.join(directory, "response.json"), "{}");
+            }
+            await mkdir(path.join(outputDir, "z-test"));
+            await writeFile(
+              path.join(outputDir, "z-test/trace.zip"),
+              createStoredZip({}),
+            );
+            await writeFile(path.join(outputDir, "z-test/video.webm"), "test video");
+            await writeFile(path.join(outputDir, ".last-run.json"), "{}");
+            child.emit("close", 0);
+          })();
+        });
+        return child;
+      });
+
+      await runCheckById({
+        checkId: "check_1",
+        env: [],
+        projectSlug: "default",
+        record: true,
+        reporter: "list",
+        rootDir,
+        runId,
+      });
+
+      const artifacts = mocks.artifactCreateMany.mock.calls[0]![0].data as Array<{
+        path: string;
+        type: string;
+      }>;
+      expect(artifacts.some((a) => a.path.endsWith("z-test/trace.zip"))).toBe(true);
+      expect(artifacts.filter((a) => a.type === "TRACE")).toHaveLength(
+        scenario === "many traces" ? 106 : 1,
+      );
+      expect(artifacts.some((a) => a.path.includes(".playwright-artifacts-"))).toBe(
+        false,
+      );
+      expect(artifacts.some((a) => a.path.endsWith(".last-run.json"))).toBe(false);
+      if (scenario === "internal resources") {
+        expect(artifacts.map((a) => a.type).sort()).toEqual(["LOG", "TRACE", "VIDEO"]);
+      } else if (scenario === "many screenshots") {
+        expect(artifacts).toHaveLength(101); // 100 browser artifacts plus the run log.
+      }
+    },
+  );
+
   it("maps on-first-retry tracing to the final SelfChecks attempt", async () => {
     const rootDir = await createTempProject();
     const runId = "run_1";
@@ -496,113 +593,134 @@ describe("runCheckById", () => {
     ]);
   });
 
-  it("marks browser checks as timed out and terminates Playwright", async () => {
-    const rootDir = await createTempProject();
-    const runId = "run_1";
-    let child:
-      | (EventEmitter & {
+  it.each([0, 130, null])(
+    "preserves timeout status after exit %s",
+    async (exitCode) => {
+      const rootDir = await createTempProject();
+      const runId = "run_1";
+      let child:
+        | (EventEmitter & {
+            kill: (signal: NodeJS.Signals) => boolean;
+            stderr: EventEmitter;
+            stdout: EventEmitter;
+          })
+        | undefined;
+      const kill = vi.fn((_signal: NodeJS.Signals) => {
+        if (exitCode !== null) {
+          setTimeout(() => child?.emit("close", exitCode, null), 6000);
+        }
+        return true;
+      });
+      const groupKill = vi.spyOn(process, "kill").mockImplementation(() => {
+        child?.emit("close", null, "SIGKILL");
+        return true;
+      });
+      restoreSpies.push(() => groupKill.mockRestore());
+      let resolveSpawned: () => void = () => {};
+      const spawned = new Promise<void>((resolve) => {
+        resolveSpawned = resolve;
+      });
+
+      await writeFile(
+        path.join(rootDir, "playwright.config.ts"),
+        "export default { globalTimeout: 1000 };\n",
+      );
+
+      mocks.checkFindFirst.mockResolvedValue({
+        entrypoint:
+          "src/__checks__/UI/App/core/rest.dashboard.onboarding-widget.spec.ts",
+        id: "check_1",
+        key: "onboarding",
+        name: "Onboarding",
+        request: null,
+        retryStrategy: null,
+        runs: [],
+        type: "BROWSER",
+      });
+      mocks.checkRunFindFirst.mockResolvedValue({
+        checkId: "check_1",
+        id: runId,
+      });
+      mocks.checkRunUpdate.mockImplementation(async (args) => ({
+        checkId: "check_1",
+        id: args.where.id,
+        ...args.data,
+      }));
+      mocks.artifactDeleteMany.mockResolvedValue({ count: 0 });
+      mocks.artifactCreateMany.mockResolvedValue({ count: 1 });
+      mocks.spawn.mockImplementation(() => {
+        child = new EventEmitter() as EventEmitter & {
           kill: (signal: NodeJS.Signals) => boolean;
           stderr: EventEmitter;
           stdout: EventEmitter;
-        })
-      | undefined;
-    const kill = vi.fn((signal: NodeJS.Signals) => {
-      child?.emit("close", null, signal);
-      return true;
-    });
-    let resolveSpawned: () => void = () => {};
-    const spawned = new Promise<void>((resolve) => {
-      resolveSpawned = resolve;
-    });
+        };
+        child.stderr = new EventEmitter();
+        child.stdout = new EventEmitter();
+        child.kill = kill;
+        Object.assign(child, { pid: 12345 });
+        resolveSpawned();
 
-    await writeFile(
-      path.join(rootDir, "playwright.config.ts"),
-      "export default { globalTimeout: 1000 };\n",
-    );
+        return child;
+      });
 
-    mocks.checkFindFirst.mockResolvedValue({
-      entrypoint: "src/__checks__/UI/App/core/rest.dashboard.onboarding-widget.spec.ts",
-      id: "check_1",
-      key: "onboarding",
-      name: "Onboarding",
-      request: null,
-      retryStrategy: null,
-      runs: [],
-      type: "BROWSER",
-    });
-    mocks.checkRunFindFirst.mockResolvedValue({
-      checkId: "check_1",
-      id: runId,
-    });
-    mocks.checkRunUpdate.mockImplementation(async (args) => ({
-      checkId: "check_1",
-      id: args.where.id,
-      ...args.data,
-    }));
-    mocks.artifactDeleteMany.mockResolvedValue({ count: 0 });
-    mocks.artifactCreateMany.mockResolvedValue({ count: 1 });
-    mocks.spawn.mockImplementation(() => {
-      child = new EventEmitter() as EventEmitter & {
-        kill: (signal: NodeJS.Signals) => boolean;
-        stderr: EventEmitter;
-        stdout: EventEmitter;
-      };
-      child.stderr = new EventEmitter();
-      child.stdout = new EventEmitter();
-      child.kill = kill;
-      resolveSpawned();
+      vi.useFakeTimers();
+      const runPromise = runCheckById({
+        checkId: "check_1",
+        env: [{ name: "ENVIRONMENT_URL", value: "https://example.test" }],
+        projectSlug: "default",
+        record: true,
+        reporter: "list",
+        rootDir,
+        runId,
+      });
 
-      return child;
-    });
+      await spawned;
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(kill).toHaveBeenCalledExactlyOnceWith("SIGINT");
+      expect(groupKill).not.toHaveBeenCalled();
+      expect(mocks.artifactCreateMany).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(6000);
+      expect(groupKill).not.toHaveBeenCalled();
+      if (exitCode === null) {
+        await vi.advanceTimersByTimeAsync(24000);
+        expect(groupKill).toHaveBeenCalledExactlyOnceWith(-12345, "SIGKILL");
+      }
 
-    vi.useFakeTimers();
-    const runPromise = runCheckById({
-      checkId: "check_1",
-      env: [{ name: "ENVIRONMENT_URL", value: "https://example.test" }],
-      projectSlug: "default",
-      record: true,
-      reporter: "list",
-      rootDir,
-      runId,
-    });
-
-    await spawned;
-    await vi.advanceTimersByTimeAsync(1000);
-
-    await expect(runPromise).resolves.toMatchObject({
-      checkKey: "onboarding",
-      errorMessage: "Browser check timed out after 1 s (playwright.globalTimeout).",
-      runId,
-      status: "timed_out",
-    });
-    expect(kill).toHaveBeenCalledWith("SIGTERM");
-    expect(mocks.checkRunUpdate).toHaveBeenCalledWith({
-      data: {
-        timeoutAt: new Date(Date.now()),
-      },
-      where: {
-        id: runId,
-      },
-    });
-    expect(mocks.checkRunUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          errorMessage: "Browser check timed out after 1 s (playwright.globalTimeout).",
-          result: expect.objectContaining({
-            exitCode: 124,
-            signal: "SIGTERM",
-            timedOut: true,
-            timeoutMs: 1000,
-            timeoutSource: "playwright.globalTimeout",
-          }),
-          status: "TIMED_OUT",
-        }),
+      await expect(runPromise).resolves.toMatchObject({
+        checkKey: "onboarding",
+        errorMessage: "Browser check timed out after 1 s (playwright.globalTimeout).",
+        runId,
+        status: "timed_out",
+      });
+      expect(kill).toHaveBeenCalledTimes(1);
+      expect(mocks.checkRunUpdate).toHaveBeenCalledWith({
+        data: {
+          timeoutAt: new Date(Date.now() - (exitCode === null ? 30000 : 6000)),
+        },
         where: {
           id: runId,
         },
-      }),
-    );
-  });
+      });
+      expect(mocks.checkRunUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            errorMessage:
+              "Browser check timed out after 1 s (playwright.globalTimeout).",
+            result: expect.objectContaining({
+              exitCode: 124,
+              timedOut: true,
+              timeoutMs: 1000,
+              timeoutSource: "playwright.globalTimeout",
+            }),
+            status: "TIMED_OUT",
+          }),
+          where: {
+            id: runId,
+          },
+        }),
+      );
+    },
+  );
 
   it("terminates Playwright when a test session is cancelled", async () => {
     const rootDir = await createTempProject();
@@ -688,7 +806,7 @@ describe("runCheckById", () => {
       runId,
       status: "cancelled",
     });
-    expect(kill).toHaveBeenCalledWith("SIGTERM");
+    expect(kill).toHaveBeenCalledWith("SIGINT");
     expect(mocks.checkRunUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
