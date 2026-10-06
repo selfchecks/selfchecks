@@ -11,7 +11,9 @@ const nextConfig = {
         headers: [
           { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
           { key: "X-Frame-Options", value: "DENY" },
-          { key: "Referrer-Policy", value: "no-referrer" },
+          // Native form POSTs use Origin: null under no-referrer.
+          // Keep the origin for consent/revocation, omit referrers to other sites.
+          { key: "Referrer-Policy", value: "same-origin" },
           { key: "Cache-Control", value: "no-store" },
         ],
       },

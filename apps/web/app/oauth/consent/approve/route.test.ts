@@ -50,6 +50,7 @@ describe("OAuth consent boundary", () => {
     expect((await POST(request())).status).toBe(401);
     mocks.session.mockResolvedValue({ user: { name: "admin" } });
     expect((await POST(request({ origin: "https://evil.example" }))).status).toBe(403);
+    expect((await POST(request({ origin: "null" }))).status).toBe(403);
     expect(
       (await POST(request({ csrf: consentCsrf("pending", "another-session") }))).status,
     ).toBe(403);
