@@ -1838,6 +1838,9 @@ function SettingsScreen({
     createPerformanceSettingsDraft(settings.performance),
   );
   const [apiKeyName, setApiKeyName] = useState("");
+  const [mcpRead, setMcpRead] = useState(false);
+  const [mcpRun, setMcpRun] = useState(false);
+  const [mcpProjects, setMcpProjects] = useState("");
   const [generatedApiKey, setGeneratedApiKey] = useState<
     { id: string; value: string } | undefined
   >();
@@ -1992,6 +1995,15 @@ function SettingsScreen({
         key?: DashboardSettingsData["apiKeys"][number];
       }>("/api/settings/api-keys", {
         name: apiKeyName,
+        ...(mcpRead
+          ? {
+              mcpScopes: mcpRun ? ["read", "run"] : ["read"],
+              mcpProjectSlugs: mcpProjects
+                .split(",")
+                .map((slug) => slug.trim())
+                .filter(Boolean),
+            }
+          : {}),
       });
 
       if (!payload.apiKey || !payload.key) {
@@ -2010,6 +2022,9 @@ function SettingsScreen({
         value: payload.apiKey,
       });
       setApiKeyName("");
+      setMcpRead(false);
+      setMcpRun(false);
+      setMcpProjects("");
       setNotice({ message: "API key generated.", tone: "success" });
     } catch (error) {
       setNotice({ message: getErrorMessage(error), tone: "error" });
@@ -2301,7 +2316,7 @@ function SettingsScreen({
           </span>
           <div>
             <h3 className="text-base font-semibold text-slate-100">API keys</h3>
-            <div className="text-xs text-slate-500">CLI access</div>
+            <div className="text-xs text-slate-500">CLI and MCP access</div>
           </div>
         </div>
 
@@ -2337,6 +2352,41 @@ function SettingsScreen({
               </button>
             </div>
           </div>
+
+          <label className="flex items-center gap-2 text-sm text-slate-200">
+            <input
+              type="checkbox"
+              checked={mcpRead}
+              onChange={(event) => {
+                setMcpRead(event.target.checked);
+                setMcpRun(false);
+              }}
+            />
+            Allow MCP diagnostics at /mcp
+          </label>
+          {mcpRead ? (
+            <div className="grid max-w-2xl gap-3 text-sm text-slate-200">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={mcpRun}
+                  onChange={(event) => setMcpRun(event.target.checked)}
+                />
+                Allow MCP to trigger checks
+              </label>
+              <label className="grid gap-2">
+                MCP project slugs (comma separated; empty allows all projects)
+                <input
+                  className="rounded-md border border-slate-700 bg-[#0f151d] px-3 py-2"
+                  value={mcpProjects}
+                  onChange={(event) => setMcpProjects(event.target.value)}
+                />
+              </label>
+              <p className="text-xs text-slate-500">
+                Keys with MCP access cannot be used for CLI access.
+              </p>
+            </div>
+          ) : null}
 
           {generatedApiKey ? (
             <div className="grid gap-2 rounded-md border border-emerald-900/80 bg-emerald-950/30 p-3">
@@ -2382,6 +2432,12 @@ function SettingsScreen({
                 </div>
                 <div className="text-xs text-slate-500">
                   <div>Created {key.createdAtLabel}</div>
+                  <div>
+                    MCP: {key.mcpScopes?.join(", ") || "disabled"}
+                    {key.mcpScopes?.length
+                      ? ` · ${key.mcpProjectSlugs?.join(", ") || "all projects"}`
+                      : ""}
+                  </div>
                   <div className="mt-1">
                     {key.lastUsedAtLabel
                       ? `Last used ${key.lastUsedAtLabel}`

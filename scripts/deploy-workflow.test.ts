@@ -32,6 +32,20 @@ describe("deploy workflow", () => {
     expect(smokeJob).toContain('npm pack "${package_name}@${RELEASE_VERSION}"');
   });
 
+  it("deploys without removing persisted files, Docker caches or orphan containers", async () => {
+    const workflow = await readFile(
+      path.join(process.cwd(), ".github/workflows/deploy.yml"),
+      "utf8",
+    );
+    const deployJob = workflow.slice(workflow.indexOf("  deploy:"));
+    expect(deployJob).not.toMatch(
+      /rsync[^\n]*--delete|docker_cmd system prune|--remove-orphans|rm -[rf]/,
+    );
+    expect(deployJob).toContain("| ssh -p");
+    expect(deployJob).toContain("GHCR_TOKEN=%q");
+    expect(deployJob).toContain("--password-stdin");
+  });
+
   it("builds every TypeScript project referenced by the CLI image", async () => {
     const dockerfile = await readFile(
       path.join(process.cwd(), "docker/selfchecks/Dockerfile"),

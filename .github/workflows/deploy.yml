@@ -431,6 +431,7 @@ jobs:
       POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
       NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
       NEXTAUTH_URL: ${{ vars.NEXTAUTH_URL }}
+      SELFCHECKS_MCP_ALLOWED_ORIGINS: ${{ vars.SELFCHECKS_MCP_ALLOWED_ORIGINS }}
       SELFCHECKS_SETUP_TOKEN: ${{ secrets.SELFCHECKS_SETUP_TOKEN }}
       SELFCHECKS_API_TOKEN: ${{ secrets.SELFCHECKS_API_TOKEN }}
       SELFCHECKS_ADMIN_LOGIN: ${{ secrets.SELFCHECKS_ADMIN_LOGIN }}
@@ -501,14 +502,13 @@ jobs:
           set -euo pipefail
 
           tmp_dir="$(mktemp -d)"
-          trap 'rm -rf "${tmp_dir}"' EXIT
 
           mkdir -p "${tmp_dir}/bootstrap"
           cp docker-compose.prod.yml "${tmp_dir}/docker-compose.prod.yml"
           cp bootstrap/Caddyfile.template "${tmp_dir}/bootstrap/Caddyfile.template"
           cp bootstrap/selfchecks.config.template.json "${tmp_dir}/bootstrap/selfchecks.config.template.json"
 
-          rsync -az --delete \
+          rsync -az \
             --exclude 'runtime/' \
             --exclude '.env' \
             --exclude '.ghcr-token' \
@@ -589,6 +589,7 @@ jobs:
 
           NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
           NEXTAUTH_URL=${NEXTAUTH_URL}
+          SELFCHECKS_MCP_ALLOWED_ORIGINS=${SELFCHECKS_MCP_ALLOWED_ORIGINS:-}
 
           SELFCHECKS_SETUP_TOKEN=${SELFCHECKS_SETUP_TOKEN}
           SELFCHECKS_API_TOKEN=${SELFCHECKS_API_TOKEN}
@@ -608,7 +609,7 @@ jobs:
           sed -i 's/^          //' .env.production
           scp -P "${DEPLOY_PORT:-22}" .env.production "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/.env"
 
-      - name: Upload GHCR pull credentials
+      - name: Deploy on server
         shell: bash
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -616,23 +617,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          tmp_dir="$(mktemp -d)"
-          trap 'rm -rf "${tmp_dir}"' EXIT
-
-          printf '%s' "${GHCR_USERNAME}" > "${tmp_dir}/.ghcr-username"
-          printf '%s' "${GHCR_TOKEN}" > "${tmp_dir}/.ghcr-token"
-
-          scp -P "${DEPLOY_PORT:-22}" \
-            "${tmp_dir}/.ghcr-username" \
-            "${tmp_dir}/.ghcr-token" \
-            "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/"
-
-      - name: Deploy on server
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          ssh -p "${DEPLOY_PORT:-22}" "${DEPLOY_USER}@${DEPLOY_HOST}" "DEPLOY_PATH='${DEPLOY_PATH}' bash -s" <<'EOF'
+          {
+          printf 'GHCR_TOKEN=%q\nGHCR_USERNAME=%q\n' "${GHCR_TOKEN}" "${GHCR_USERNAME}"
+          cat <<'EOF'
           set -euo pipefail
           cd "${DEPLOY_PATH}"
 
@@ -640,8 +627,6 @@ jobs:
             if [ "${GHCR_LOGGED_IN:-0}" = "1" ]; then
               docker_cmd logout ghcr.io || true
             fi
-
-            rm -f .ghcr-token .ghcr-username
           }
           trap cleanup_ghcr_credentials EXIT
           GHCR_LOGGED_IN=0
@@ -716,10 +701,8 @@ jobs:
             as_root chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
           fi
 
-          if [ -f .ghcr-token ] && [ -f .ghcr-username ]; then
-            docker_cmd login ghcr.io -u "$(cat .ghcr-username)" --password-stdin < .ghcr-token
-            GHCR_LOGGED_IN=1
-          fi
+          printf '%s' "${GHCR_TOKEN}" | docker_cmd login ghcr.io -u "${GHCR_USERNAME}" --password-stdin
+          GHCR_LOGGED_IN=1
 
           mkdir -p runtime/artifacts runtime/caddy-data runtime/caddy-config runtime/logs
 
@@ -743,14 +726,14 @@ jobs:
             docker_cmd restart selfchecks-prod-caddy
           fi
 
-          docker_cmd system prune -af || true
           docker_cmd compose --env-file .env -f docker-compose.prod.yml pull
           docker_cmd compose --env-file .env -f docker-compose.prod.yml up --force-recreate --abort-on-container-exit --exit-code-from migrate migrate
           docker_cmd logout ghcr.io || true
           GHCR_LOGGED_IN=0
-          docker_cmd compose --env-file .env -f docker-compose.prod.yml up -d --remove-orphans
+          docker_cmd compose --env-file .env -f docker-compose.prod.yml up -d
           if [ "${CADDY_RESTART_REQUIRED}" = "1" ]; then
             docker_cmd compose --env-file .env -f docker-compose.prod.yml restart caddy
           fi
           docker_cmd compose --env-file .env -f docker-compose.prod.yml ps
           EOF
+          } | ssh -p "${DEPLOY_PORT:-22}" "${DEPLOY_USER}@${DEPLOY_HOST}" "DEPLOY_PATH='${DEPLOY_PATH}' bash -s"

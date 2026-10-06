@@ -4,9 +4,26 @@ import { config, isTraceViewerArtifactRequest } from "./middleware";
 
 describe("middleware config", () => {
   it("protects application routes and leaves auth/static routes public", () => {
-    expect(config.matcher).toEqual([
-      "/((?!api/auth|api/setup|api/cli|setup|login|trace-viewer|_next/static|_next/image|favicon.ico).*)",
-    ]);
+    const protectedRoute = new RegExp(`^${config.matcher[0]}$`);
+    for (const pathname of [
+      "/",
+      "/settings",
+      "/api/dashboard",
+      "/mcp-admin",
+      "/mcpx",
+    ]) {
+      expect(protectedRoute.test(pathname), pathname).toBe(true);
+    }
+    for (const pathname of [
+      "/mcp",
+      "/mcp/",
+      "/login",
+      "/api/auth/session",
+      "/api/cli/triggers",
+      "/_next/static/app.js",
+    ]) {
+      expect(protectedRoute.test(pathname), pathname).toBe(false);
+    }
   });
 
   it("recognizes signed trace artifact requests for the embedded viewer", () => {

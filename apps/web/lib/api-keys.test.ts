@@ -65,6 +65,27 @@ describe("API keys", () => {
     );
   });
 
+  it("stores explicit MCP permissions and project scope, rejecting invalid permissions", async () => {
+    await createApiKey(
+      { name: "MCP", mcpScopes: ["read", "run"], mcpProjectSlugs: [" shop ", "shop"] },
+      "UTC",
+    );
+    expect(mocks.apiKeyCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          mcpScopes: ["read", "run"],
+          mcpProjectSlugs: ["shop"],
+        }),
+      }),
+    );
+    await expect(
+      createApiKey({ name: "MCP", mcpScopes: ["run"] }, "UTC"),
+    ).rejects.toThrow("requires read");
+    await expect(
+      createApiKey({ name: "MCP", mcpScopes: ["admin"] }, "UTC"),
+    ).rejects.toThrow("only read and run");
+  });
+
   it("lists only active key metadata", async () => {
     mocks.apiKeyFindMany.mockResolvedValue([
       {
@@ -104,6 +125,17 @@ describe("API keys", () => {
         where: { tokenHash: hashApiKey("sck_secret") },
       }),
     );
+    expect(mocks.apiKeyUpdate).not.toHaveBeenCalled();
+  });
+
+  it("rejects MCP keys on the CLI authentication path", async () => {
+    mocks.apiKeyFindUnique.mockResolvedValue({
+      id: "mcp",
+      revokedAt: null,
+      mcpScopes: ["read"],
+      lastUsedAt: null,
+    });
+    await expect(verifyApiKey("sck_mcp")).resolves.toBe(false);
     expect(mocks.apiKeyUpdate).not.toHaveBeenCalled();
   });
 

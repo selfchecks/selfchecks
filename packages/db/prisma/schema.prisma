@@ -77,15 +77,17 @@ model Project {
 }
 
 model ApiKey {
-  id         String    @id @default(cuid())
-  name       String
-  tokenHash  String    @unique
-  prefix     String
-  lastFour   String
-  lastUsedAt DateTime?
-  revokedAt  DateTime?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  id              String    @id @default(cuid())
+  name            String
+  tokenHash       String    @unique
+  mcpScopes       String[]  @default([])
+  mcpProjectSlugs String[]  @default([])
+  prefix          String
+  lastFour        String
+  lastUsedAt      DateTime?
+  revokedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   @@index([revokedAt, createdAt])
 }

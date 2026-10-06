@@ -6,6 +6,8 @@ traces, videos, request/response data, and CI metadata in one dashboard.
 
 Public documentation: [selfchecks.github.io](https://selfchecks.github.io/getting-started.html)
 
+MCP setup and tools: [Selfchecks MCP](docs/mcp.md)
+
 Questions and feedback: [Telegram](https://t.me/aleksnick)
 
 ## Product preview

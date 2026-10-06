@@ -129,6 +129,10 @@ describe("run check route", () => {
     expect(mocks.checkRunCreate).toHaveBeenCalledWith({
       data: {
         checkId: "check_1",
+        checkSnapshotAccounts: [],
+        checkSnapshotKey: "issue.get",
+        checkSnapshotProjectSlug: "account",
+        checkSnapshotType: "API",
         runSource: "MANUAL",
         status: "QUEUED",
       },

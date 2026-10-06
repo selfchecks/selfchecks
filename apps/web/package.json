@@ -14,18 +14,21 @@
   "dependencies": {
     "@appnotes/react": "^0.3.2",
     "@appnotes/sdk": "^0.9.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@radix-ui/react-slot": "^1.2.3",
     "@selfchecks/cli": "workspace:*",
     "@selfchecks/core": "workspace:*",
     "bullmq": "^5.56.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "fflate": "^0.8.2",
     "lucide-react": "^0.468.0",
     "next": "^15.3.4",
     "next-auth": "^4.24.11",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "tailwind-merge": "^3.3.1"
+    "tailwind-merge": "^3.3.1",
+    "zod": "^3.25.0"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.1",

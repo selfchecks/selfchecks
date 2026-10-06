@@ -9,6 +9,8 @@ export type ApiKeyData = {
   lastUsedAt?: string;
   lastUsedAtLabel?: string;
   name: string;
+  mcpScopes?: string[];
+  mcpProjectSlugs?: string[];
   preview: string;
 };
 
@@ -22,13 +24,19 @@ const API_KEY_RANDOM_BYTES = 32;
 const LAST_USED_WRITE_INTERVAL_MS = 5 * 60_000;
 
 export async function createApiKey(
-  input: { name?: unknown },
+  input: { name?: unknown; mcpScopes?: unknown; mcpProjectSlugs?: unknown },
   timeZone: string,
 ): Promise<CreatedApiKeyData> {
   const name = readApiKeyName(input.name);
   const apiKey = `${API_KEY_PREFIX}${crypto.randomBytes(API_KEY_RANDOM_BYTES).toString("base64url")}`;
   const key = await prisma.apiKey.create({
     data: {
+      ...(input.mcpScopes === undefined
+        ? {}
+        : { mcpScopes: readMcpScopes(input.mcpScopes) }),
+      ...(input.mcpProjectSlugs === undefined
+        ? {}
+        : { mcpProjectSlugs: readProjectSlugs(input.mcpProjectSlugs) }),
       lastFour: apiKey.slice(-4),
       name,
       prefix: apiKey.slice(0, 12),
@@ -77,13 +85,14 @@ export async function verifyApiKey(apiKey: string, now = new Date()): Promise<bo
       id: true,
       lastUsedAt: true,
       revokedAt: true,
+      mcpScopes: true,
     },
     where: {
       tokenHash: hashApiKey(apiKey),
     },
   });
 
-  if (!key || key.revokedAt) {
+  if (!key || key.revokedAt || key.mcpScopes?.length) {
     return false;
   }
 
@@ -129,6 +138,8 @@ function mapApiKey(
     lastFour: string;
     lastUsedAt: Date | null;
     name: string;
+    mcpScopes?: string[];
+    mcpProjectSlugs?: string[];
     prefix: string;
   },
   timeZone: string,
@@ -142,6 +153,8 @@ function mapApiKey(
       ? formatTimestamp(key.lastUsedAt, timeZone)
       : undefined,
     name: key.name,
+    mcpScopes: key.mcpScopes ?? [],
+    mcpProjectSlugs: key.mcpProjectSlugs ?? [],
     preview: `${key.prefix}...${key.lastFour}`,
   };
 }
@@ -156,4 +169,28 @@ function formatTimestamp(value: Date, timeZone: string): string {
     timeZone,
     year: "numeric",
   }).format(value);
+}
+
+function readMcpScopes(value: unknown): string[] {
+  if (
+    !Array.isArray(value) ||
+    value.some((scope) => !["read", "run"].includes(scope))
+  ) {
+    throw new Error("MCP scopes must contain only read and run.");
+  }
+  if (value.includes("run") && !value.includes("read")) {
+    throw new Error("MCP run permission requires read permission.");
+  }
+  return [...new Set(value)] as string[];
+}
+
+function readProjectSlugs(value: unknown): string[] {
+  if (
+    !Array.isArray(value) ||
+    value.length > 100 ||
+    value.some((slug) => typeof slug !== "string" || !slug.trim() || slug.length > 200)
+  ) {
+    throw new Error("MCP projects must be an array of nonempty project slugs.");
+  }
+  return [...new Set(value.map((slug: string) => slug.trim()))];
 }
