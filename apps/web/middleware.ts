@@ -33,6 +33,6 @@ export default withAuth({
 
 export const config = {
   matcher: [
-    "/((?!mcp(?:/|$)|api/auth|api/setup|api/cli|setup|login|trace-viewer|_next/static|_next/image|favicon.ico).*)",
+    "/((?!mcp(?:/|$)|\\.well-known/oauth-(?:protected-resource(?:/mcp)?|authorization-server)(?:/|$)|oauth/(?:authorize|token|register|revoke)(?:/|$)|api/auth|api/setup|api/cli|setup|login|trace-viewer|_next/static|_next/image|favicon.ico).*)",
   ],
 };

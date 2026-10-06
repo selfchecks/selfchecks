@@ -2316,6 +2316,9 @@ function SettingsScreen({
           </span>
           <div>
             <h3 className="text-base font-semibold text-slate-100">API keys</h3>
+            <a href="/oauth/connections" className="text-sm text-slate-400 underline">
+              Manage MCP OAuth connections
+            </a>
             <div className="text-xs text-slate-500">CLI and MCP access</div>
           </div>
         </div>

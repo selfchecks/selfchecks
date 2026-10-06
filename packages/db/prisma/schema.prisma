@@ -92,6 +92,71 @@ model ApiKey {
   @@index([revokedAt, createdAt])
 }
 
+model OAuthClient {
+  id             String               @id @default(cuid())
+  name           String
+  redirectUris   String[]
+  authMethod     String               @default("none")
+  secretHash     String?
+  revokedAt      DateTime?
+  createdAt      DateTime             @default(now())
+  authorizations OAuthAuthorization[]
+  grants         OAuthGrant[]
+
+  @@index([createdAt])
+}
+
+model OAuthAuthorization {
+  id              String      @id @default(cuid())
+  clientId        String
+  redirectUri     String
+  codeChallenge   String
+  requestedScopes String[]
+  resource        String
+  state           String?
+  expiresAt       DateTime
+  approvedAt      DateTime?
+  deniedAt        DateTime?
+  codeHash        String?     @unique
+  codeConsumedAt  DateTime?
+  scopes          String[]    @default([])
+  projectSlugs    String[]    @default([])
+  createdAt       DateTime    @default(now())
+  client          OAuthClient @relation(fields: [clientId], references: [id])
+
+  @@index([expiresAt])
+  @@index([createdAt])
+}
+
+model OAuthGrant {
+  id           String       @id @default(cuid())
+  clientId     String
+  scopes       String[]
+  projectSlugs String[]
+  resource     String
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  createdAt    DateTime     @default(now())
+  client       OAuthClient  @relation(fields: [clientId], references: [id])
+  tokens       OAuthToken[]
+
+  @@index([revokedAt, createdAt])
+}
+
+model OAuthToken {
+  tokenHash  String     @id
+  grantId    String
+  kind       String
+  scopes     String[]
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime   @default(now())
+  grant      OAuthGrant @relation(fields: [grantId], references: [id])
+
+  @@index([grantId])
+  @@index([expiresAt])
+}
+
 model Deployment {
   id         String   @id @default(cuid())
   projectId  String

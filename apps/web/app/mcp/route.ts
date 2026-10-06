@@ -1,6 +1,7 @@
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { authenticateMcp } from "@/lib/mcp-auth";
 import { createMcpServer } from "@/lib/mcp-server";
+import { mcpUnauthorized } from "@/lib/mcp-oauth-http";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,17 +25,7 @@ export async function POST(request: Request) {
   if (origin && !allowed.includes(origin))
     return Response.json({ error: "Origin is not allowed." }, { status: 403 });
   const access = await authenticateMcp(request);
-  if (!access)
-    return Response.json(
-      { error: "An API key with MCP read permission is required." },
-      {
-        status: 401,
-        headers: {
-          "WWW-Authenticate": 'Bearer realm="selfchecks-mcp"',
-          "Cache-Control": "no-store",
-        },
-      },
-    );
+  if (!access) return mcpUnauthorized();
   // Read with a bound even when Content-Length is missing or incorrect.
   const reader = request.body?.getReader();
   let size = 0;
@@ -81,9 +72,10 @@ export async function POST(request: Request) {
 }
 
 // This server uses stateless JSON responses and has no persistent SSE stream or session to delete.
-export function GET() {
+export async function GET(request: Request) {
+  if (!(await authenticateMcp(request))) return mcpUnauthorized();
   return new Response(null, { status: 405, headers: { Allow: "POST" } });
 }
-export function DELETE() {
-  return GET();
+export function DELETE(request: Request) {
+  return GET(request);
 }

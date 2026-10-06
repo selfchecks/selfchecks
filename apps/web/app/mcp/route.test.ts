@@ -115,6 +115,6 @@ describe("Selfchecks MCP HTTP endpoint", () => {
         )
       ).status,
     ).toBe(413);
-    expect(GET().status).toBe(405);
+    expect((await GET(new Request("https://checks.test/mcp"))).status).toBe(405);
   });
 });

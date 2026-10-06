@@ -5,10 +5,39 @@ It uses Streamable HTTP with stateless JSON responses. It shares the existing we
 service, database, artifact storage and worker queue. A separate subdomain or
 container is not required.
 
-## Enable access
+## Connect with OAuth
 
 First deploy the database migration with `yarn db:migrate:deploy`, then restart the
-web service. Existing keys retain CLI access and have no MCP permissions.
+web service. Set `NEXTAUTH_URL` to the canonical HTTPS dashboard origin and set
+`NEXTAUTH_SECRET` to a stable, strong secret shared by all web replicas.
+
+In ChatGPT or Codex, add a plugin with server URL `https://your-selfchecks.example/mcp`
+and choose **OAuth or no authentication**. Discovery and dynamic client registration
+are public. No client ID or secret needs to be entered manually. Sign in using your
+existing Selfchecks admin account, select projects, and approve access. To request
+manual check execution, configure the client scopes as `read run`; the consent page
+also requires you to enable execution explicitly. Default scope is `read`.
+
+OAuth uses authorization code with PKCE S256. Access tokens expire after 15 minutes;
+refresh tokens rotate on every exchange. Connections expire after 30 days. A reused
+refresh token revokes the connection. Codes, tokens and confidential client secrets
+are stored only as hashes. Tokens are restricted to `/mcp` and the approved projects.
+Selecting all projects includes future projects. Revocation stops subsequent requests;
+it does not cancel checks already queued.
+
+Manage connections from the settings link or `/oauth/connections`. This requires
+the same admin login. OAuth metadata is available at
+`/.well-known/oauth-protected-resource/mcp` (also without `/mcp`) and
+`/.well-known/oauth-authorization-server`. Token and registration endpoints accept
+public clients and confidential clients using `client_secret_post` or
+`client_secret_basic`. Anonymous registration is bounded to 100 clients per hour
+and authorization requests to 1000 per hour across the service. Client metadata
+documents and custom redirect schemes are not supported; HTTPS and loopback HTTP
+redirects are supported.
+
+## Connect with an API key
+
+Existing keys retain CLI access and have no MCP permissions.
 
 In dashboard settings, generate an API key with **Allow MCP diagnostics at /mcp**.
 Leave **Allow MCP to trigger checks** unchecked for read access. To restrict access,
@@ -26,7 +55,7 @@ Authorization: Bearer <your MCP API key>
 ```
 
 Use a client that supports Streamable HTTP and a configured Bearer header. This
-implementation does not provide OAuth authorization or discovery endpoints.
+API keys remain available for clients configured with an explicit Bearer header.
 The installed MCP SDK v1 supports protocol versions through `2025-11-25`.
 It does not implement the changed `2026-07-28` transport semantics.
 

@@ -6,6 +6,7 @@ export function redactText(text: string): string {
     .replace(/((?:authorization|set-cookie|cookie)\s*:\s*)[^\r\n]+/gi, "$1[REDACTED]")
     .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/-]+=*/gi, "$1 [REDACTED]")
     .replace(/\bsck_[A-Za-z0-9_-]+/g, "[REDACTED]")
+    .replace(/\bsco_(?:access|refresh|secret|code)_[A-Za-z0-9_-]+/g, "[REDACTED]")
     .replace(
       /((?:authorization|set-cookie|cookie|password|passwd|secret|token|api[-_]?key|credential)[\w-]*["']?\s*[:=]\s*)(?:"[^"\n]*"|'[^'\n]*'|[^\s&,;\n]+)/gi,
       "$1[REDACTED]",

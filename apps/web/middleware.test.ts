@@ -11,12 +11,25 @@ describe("middleware config", () => {
       "/api/dashboard",
       "/mcp-admin",
       "/mcpx",
+      "/oauth/consent",
+      "/oauth/consent/approve",
+      "/oauth/connections",
+      "/oauth/connections/revoke",
+      "/oauth/token-admin",
+      "/.well-known/private",
     ]) {
       expect(protectedRoute.test(pathname), pathname).toBe(true);
     }
     for (const pathname of [
       "/mcp",
       "/mcp/",
+      "/.well-known/oauth-protected-resource",
+      "/.well-known/oauth-protected-resource/mcp",
+      "/.well-known/oauth-authorization-server",
+      "/oauth/authorize",
+      "/oauth/register",
+      "/oauth/token",
+      "/oauth/revoke",
       "/login",
       "/api/auth/session",
       "/api/cli/triggers",
