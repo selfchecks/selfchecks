@@ -1,17 +1,60 @@
 import { render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AppNotesIntegration } from "./appnotes-integration";
 
 const mocks = vi.hoisted(() => ({
   useAppNotes: vi.fn(),
+  pathname: "/",
 }));
 
 vi.mock("@appnotes/react", () => ({
   useAppNotes: mocks.useAppNotes,
 }));
 
+vi.mock("next/navigation", () => ({ usePathname: () => mocks.pathname }));
+
 describe("AppNotesIntegration", () => {
+  beforeEach(() => {
+    mocks.pathname = "/";
+  });
+
+  it.each([
+    "/oauth/consent",
+    "/oauth/connections",
+    "/login",
+    "/setup",
+    "/settings",
+    "/settings/ai",
+    "/queue",
+    "/usage",
+    "/unknown-page",
+  ])("does not mount AppNotes on the service page %s", (pathname) => {
+    vi.stubEnv("NEXT_PUBLIC_APPNOTES_PROJECT_KEY", "appnotes_pk_test");
+    mocks.pathname = pathname;
+    render(<AppNotesIntegration />);
+    expect(document.querySelector("[data-appnotes-toggle]")).toBeNull();
+    expect(document.querySelector("[data-appnotes-drawer-root]")).toBeNull();
+    expect(mocks.useAppNotes).not.toHaveBeenCalled();
+  });
+
+  it("removes the drawer and launcher when navigating from a check to OAuth, then restores them on return", async () => {
+    vi.stubEnv("NEXT_PUBLIC_APPNOTES_PROJECT_KEY", "appnotes_pk_test");
+    mocks.pathname = "/checks/checkout";
+    const { rerender } = render(<AppNotesIntegration />);
+    await waitFor(() =>
+      expect(document.querySelector("[data-appnotes-toggle]")).not.toBeNull(),
+    );
+    mocks.pathname = "/oauth/consent";
+    rerender(<AppNotesIntegration />);
+    expect(document.querySelector("[data-appnotes-toggle]")).toBeNull();
+    expect(document.querySelector("[data-appnotes-drawer-root]")).toBeNull();
+    mocks.pathname = "/test-sessions/session";
+    rerender(<AppNotesIntegration />);
+    await waitFor(() =>
+      expect(document.querySelector("[data-appnotes-toggle]")).not.toBeNull(),
+    );
+  });
   afterEach(() => {
     vi.clearAllMocks();
     vi.unstubAllEnvs();

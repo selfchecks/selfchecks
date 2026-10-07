@@ -1,13 +1,28 @@
 "use client";
 
 import { useAppNotes } from "@appnotes/react";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 
 const APPNOTES_API_URL = "https://app.appnotes.tech/api";
 const APPNOTES_ACTIONS_SELECTOR = "[data-appnotes-actions]";
 
+const APPNOTES_PAGES = ["/checks", "/test-sessions", "/runs", "/logs", "/journal"];
+
 export function AppNotesIntegration() {
+  const pathname = usePathname();
+  // Opt in monitoring pages so new service routes do not inherit the widget.
+  const enabled =
+    pathname === "/" ||
+    APPNOTES_PAGES.some(
+      (page) => pathname === page || pathname?.startsWith(`${page}/`),
+    );
+
+  return enabled ? <AppNotesWidget /> : null;
+}
+
+function AppNotesWidget() {
   const projectKey = process.env.NEXT_PUBLIC_APPNOTES_PROJECT_KEY;
   const [roomId, setRoomId] = useState("");
   const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
