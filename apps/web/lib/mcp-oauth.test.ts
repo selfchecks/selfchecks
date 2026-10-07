@@ -129,6 +129,8 @@ async function authorize(
   options: {
     method?: string;
     run?: boolean;
+    deploy?: boolean;
+    allowDeploy?: boolean;
     allowRun?: boolean;
     denied?: boolean;
   } = {},
@@ -146,7 +148,11 @@ async function authorize(
       code_challenge: challenge,
       code_challenge_method: "S256",
       resource: "https://checks.test/mcp",
-      scope: options.run ? "read run" : "read",
+      scope: [
+        "read",
+        ...(options.run ? ["run"] : []),
+        ...(options.deploy ? ["deploy"] : []),
+      ].join(" "),
       state: "state & expected",
     }),
   );
@@ -155,6 +161,7 @@ async function authorize(
     ["shop"],
     options.allowRun ?? false,
     options.denied ?? false,
+    options.allowDeploy ?? false,
   );
   const params = new URLSearchParams({
     grant_type: "authorization_code",
@@ -183,6 +190,28 @@ describe("MCP OAuth lifecycle", () => {
       rows.length = 0;
     });
     db.tables.project!.push({ slug: "shop" });
+  });
+  it("grants deploy only when explicitly requested and approved, and prevents refresh escalation", async () => {
+    for (const options of [
+      { deploy: true },
+      { allowDeploy: true },
+      { deploy: true, allowDeploy: true },
+    ]) {
+      const { client, params } = await authorize(options);
+      const tokens = await exchangeOAuthToken(params, null);
+      const granted = Boolean(options.deploy && options.allowDeploy);
+      expect(tokens.scope).toBe(granted ? "read deploy" : "read");
+      expect(
+        (await authenticateOAuthAccess(tokens.access_token))?.scopes.includes("deploy"),
+      ).toBe(granted);
+      if (!granted)
+        await expect(
+          exchangeOAuthToken(
+            refresh(client.client_id, tokens.refresh_token, "read deploy"),
+            null,
+          ),
+        ).rejects.toThrow();
+    }
   });
   it("discovers canonical endpoints and performs consent, PKCE exchange, refresh and revocation", async () => {
     expect(protectedResourceMetadata()).toMatchObject({

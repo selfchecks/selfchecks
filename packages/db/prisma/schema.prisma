@@ -58,22 +58,23 @@ enum TestSessionKind {
 }
 
 model Project {
-  id                  String               @id @default(cuid())
-  slug                String               @unique
-  name                String
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
-  checks              Check[]
-  deployments         Deployment[]
-  groups              CheckGroup[]
-  aiSettings          AiSettings?
-  performanceSettings PerformanceSettings?
-  runtimeEnvironments RuntimeEnvironment[]
-  secrets             Secret[]
-  webhookEndpoints    WebhookEndpoint[]
-  notifications       Notification[]
-  testSessions        TestSession[]
-  runs                CheckRun[]
+  id                     String                  @id @default(cuid())
+  slug                   String                  @unique
+  name                   String
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  checks                 Check[]
+  deployments            Deployment[]
+  applicationDeployments ApplicationDeployment[]
+  groups                 CheckGroup[]
+  aiSettings             AiSettings?
+  performanceSettings    PerformanceSettings?
+  runtimeEnvironments    RuntimeEnvironment[]
+  secrets                Secret[]
+  webhookEndpoints       WebhookEndpoint[]
+  notifications          Notification[]
+  testSessions           TestSession[]
+  runs                   CheckRun[]
 }
 
 model ApiKey {
@@ -155,6 +156,23 @@ model OAuthToken {
 
   @@index([grantId])
   @@index([expiresAt])
+}
+
+model ApplicationDeployment {
+  id          String   @id @default(cuid())
+  projectId   String
+  environment String
+  externalId  String
+  version     String
+  commitSha   String?
+  repository  String?
+  pipelineUrl String?
+  deployedAt  DateTime @default(now())
+  recordedAt  DateTime @default(now())
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Restrict)
+
+  @@unique([projectId, environment, externalId])
+  @@index([projectId, environment, deployedAt])
 }
 
 model Deployment {

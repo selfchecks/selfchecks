@@ -1840,6 +1840,7 @@ function SettingsScreen({
   const [apiKeyName, setApiKeyName] = useState("");
   const [mcpRead, setMcpRead] = useState(false);
   const [mcpRun, setMcpRun] = useState(false);
+  const [mcpDeploy, setMcpDeploy] = useState(false);
   const [mcpProjects, setMcpProjects] = useState("");
   const [generatedApiKey, setGeneratedApiKey] = useState<
     { id: string; value: string } | undefined
@@ -1997,7 +1998,11 @@ function SettingsScreen({
         name: apiKeyName,
         ...(mcpRead
           ? {
-              mcpScopes: mcpRun ? ["read", "run"] : ["read"],
+              mcpScopes: [
+                "read",
+                ...(mcpRun ? ["run"] : []),
+                ...(mcpDeploy ? ["deploy"] : []),
+              ],
               mcpProjectSlugs: mcpProjects
                 .split(",")
                 .map((slug) => slug.trim())
@@ -2024,6 +2029,7 @@ function SettingsScreen({
       setApiKeyName("");
       setMcpRead(false);
       setMcpRun(false);
+      setMcpDeploy(false);
       setMcpProjects("");
       setNotice({ message: "API key generated.", tone: "success" });
     } catch (error) {
@@ -2363,6 +2369,7 @@ function SettingsScreen({
               onChange={(event) => {
                 setMcpRead(event.target.checked);
                 setMcpRun(false);
+                setMcpDeploy(false);
               }}
             />
             Allow MCP diagnostics at /mcp
@@ -2376,6 +2383,14 @@ function SettingsScreen({
                   onChange={(event) => setMcpRun(event.target.checked)}
                 />
                 Allow MCP to trigger checks
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={mcpDeploy}
+                  onChange={(event) => setMcpDeploy(event.target.checked)}
+                />
+                Allow recording application deployments
               </label>
               <label className="grid gap-2">
                 MCP project slugs (comma separated; empty allows all projects)

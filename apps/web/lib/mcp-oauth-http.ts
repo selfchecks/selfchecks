@@ -68,7 +68,7 @@ export function protectedResourceMetadata() {
   return {
     resource: oauthResource(),
     authorization_servers: [oauthIssuer()],
-    scopes_supported: ["read", "run"],
+    scopes_supported: ["read", "run", "deploy"],
     bearer_methods_supported: ["header"],
     resource_name: "Selfchecks MCP",
   };
@@ -83,7 +83,7 @@ export function authorizationServerMetadata() {
     revocation_endpoint: `${issuer}/oauth/revoke`,
     response_types_supported: ["code"],
     grant_types_supported: ["authorization_code", "refresh_token"],
-    scopes_supported: ["read", "run"],
+    scopes_supported: ["read", "run", "deploy"],
     code_challenge_methods_supported: ["S256"],
     token_endpoint_auth_methods_supported: [
       "none",

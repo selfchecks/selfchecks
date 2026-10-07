@@ -174,12 +174,12 @@ function formatTimestamp(value: Date, timeZone: string): string {
 function readMcpScopes(value: unknown): string[] {
   if (
     !Array.isArray(value) ||
-    value.some((scope) => !["read", "run"].includes(scope))
+    value.some((scope) => !["read", "run", "deploy"].includes(scope))
   ) {
-    throw new Error("MCP scopes must contain only read and run.");
+    throw new Error("MCP scopes must contain only read, run and deploy.");
   }
-  if (value.includes("run") && !value.includes("read")) {
-    throw new Error("MCP run permission requires read permission.");
+  if ((value.includes("run") || value.includes("deploy")) && !value.includes("read")) {
+    throw new Error("MCP write permission requires read permission.");
   }
   return [...new Set(value)] as string[];
 }

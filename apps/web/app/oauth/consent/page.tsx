@@ -71,6 +71,12 @@ export default async function ConsentPage({
             Allow manually triggering checks
           </label>
         )}
+        {pending.requestedScopes.includes("deploy") && (
+          <label className="flex gap-2">
+            <input type="checkbox" name="deploy" value="yes" />
+            Allow recording application deployments (does not deploy code)
+          </label>
+        )}
         <p className="text-sm text-muted-foreground">
           Connection expires in 30 days. You can revoke it from MCP connections below.
         </p>

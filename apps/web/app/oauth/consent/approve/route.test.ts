@@ -57,7 +57,7 @@ describe("OAuth consent boundary", () => {
     expect(mocks.approve).not.toHaveBeenCalled();
     const approved = await POST(request());
     expect(approved.status).toBe(303);
-    expect(mocks.approve).toHaveBeenCalledWith("pending", ["shop"], true, false);
+    expect(mocks.approve).toHaveBeenCalledWith("pending", ["shop"], true, false, false);
     expect(approved.headers.get("location")).toBe(
       "https://client.example/callback?code=opaque",
     );
@@ -66,6 +66,6 @@ describe("OAuth consent boundary", () => {
     expect((await POST(request({ decision: "anything" }))).status).toBe(400);
     expect(mocks.approve).not.toHaveBeenCalled();
     expect((await POST(request({ decision: "deny" }))).status).toBe(303);
-    expect(mocks.approve).toHaveBeenCalledWith("pending", ["shop"], true, true);
+    expect(mocks.approve).toHaveBeenCalledWith("pending", ["shop"], true, true, false);
   });
 });

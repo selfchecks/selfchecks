@@ -24,6 +24,7 @@ export function projectWhere(
 const runSelect = {
   id: true,
   checkId: true,
+  testSessionId: true,
   status: true,
   runSource: true,
   attempt: true,

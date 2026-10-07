@@ -5,7 +5,7 @@ import { prisma } from "./prisma";
 
 const ACCESS_SECONDS = 900;
 const GRANT_SECONDS = 30 * 24 * 3600;
-const SCOPES = ["read", "run"];
+const SCOPES = ["read", "run", "deploy"];
 export class OAuthError extends Error {
   constructor(
     public code: string,
@@ -80,7 +80,7 @@ function parseScopes(value: string | undefined, fallback = ["read"]) {
   if (!scopes.includes("read") || scopes.some((scope) => !SCOPES.includes(scope)))
     return fail(
       "invalid_scope",
-      "Read permission is required; supported scopes are read and run.",
+      "Read permission is required; supported scopes are read, run and deploy.",
     );
   return scopes;
 }
@@ -139,7 +139,7 @@ export async function registerOAuthClient(input: unknown) {
     token_endpoint_auth_method: method,
     grant_types: ["authorization_code", "refresh_token"],
     response_types: ["code"],
-    scope: "read run",
+    scope: "read run deploy",
     client_id_issued_at: Math.floor(client.createdAt.getTime() / 1000),
     ...(secret ? { client_secret: secret, client_secret_expires_at: 0 } : {}),
   };
@@ -215,11 +215,13 @@ export async function approveOAuthAuthorization(
   projects: string[],
   allowRun: boolean,
   denied = false,
+  allowDeploy = false,
 ) {
   const pending = await pendingAuthorization(id);
   const projectSlugs = [...new Set(projects)];
   const scopes =
     allowRun && pending.requestedScopes.includes("run") ? ["read", "run"] : ["read"];
+  if (allowDeploy && pending.requestedScopes.includes("deploy")) scopes.push("deploy");
   if (!denied) {
     if (
       !projectSlugs.length ||

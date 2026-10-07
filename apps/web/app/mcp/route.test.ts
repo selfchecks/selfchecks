@@ -42,7 +42,24 @@ describe("Selfchecks MCP HTTP endpoint", () => {
     const client = await connect();
     try {
       const listed = await client.listTools();
-      expect(listed.tools.map((tool) => tool.name)).toContain("compare_runs");
+      expect(listed.tools.map((tool) => tool.name)).toEqual(
+        expect.arrayContaining([
+          "compare_runs",
+          "get_saved_ai_analysis",
+          "get_failure_context",
+          "find_similar_failures",
+          "get_check_timeline",
+          "compare_periods",
+          "get_execution_status",
+          "get_release_readiness",
+          "get_deployments",
+        ]),
+      );
+      expect(listed.tools).toHaveLength(19);
+      expect(listed.tools.map((tool) => tool.name)).not.toContain("record_deployment");
+      expect(listed.tools.map((tool) => tool.name)).not.toContain(
+        "trigger_check_group",
+      );
       expect(listed.tools.map((tool) => tool.name)).not.toContain("trigger_check");
       const response = await client.callTool({
         name: "list_checks",
@@ -85,6 +102,18 @@ describe("Selfchecks MCP HTTP endpoint", () => {
         data: { runId: "run", status: "queued" },
       });
       expect(mocks.enqueue).toHaveBeenCalledOnce();
+    } finally {
+      await client.close();
+    }
+  });
+  it("exposes all 22 tools only with both write permissions", async () => {
+    mocks.authenticate.mockResolvedValue({
+      scopes: ["read", "run", "deploy"],
+      projectSlugs: ["shop"],
+    });
+    const client = await connect();
+    try {
+      expect((await client.listTools()).tools).toHaveLength(22);
     } finally {
       await client.close();
     }

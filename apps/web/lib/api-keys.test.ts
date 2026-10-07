@@ -81,9 +81,25 @@ describe("API keys", () => {
     await expect(
       createApiKey({ name: "MCP", mcpScopes: ["run"] }, "UTC"),
     ).rejects.toThrow("requires read");
+    await createApiKey(
+      {
+        name: "Deployment reporter",
+        mcpScopes: ["read", "deploy"],
+        mcpProjectSlugs: ["shop"],
+      },
+      "UTC",
+    );
+    expect(mocks.apiKeyCreate).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ mcpScopes: ["read", "deploy"] }),
+      }),
+    );
+    await expect(
+      createApiKey({ name: "MCP", mcpScopes: ["deploy"] }, "UTC"),
+    ).rejects.toThrow("requires read");
     await expect(
       createApiKey({ name: "MCP", mcpScopes: ["admin"] }, "UTC"),
-    ).rejects.toThrow("only read and run");
+    ).rejects.toThrow("only read, run and deploy");
   });
 
   it("lists only active key metadata", async () => {

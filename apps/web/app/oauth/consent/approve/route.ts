@@ -31,6 +31,7 @@ export async function POST(request: Request) {
       form.getAll("projects"),
       parameter(form, "run") === "yes",
       decision === "deny",
+      parameter(form, "deploy") === "yes",
     );
     return new Response(null, {
       status: 303,
