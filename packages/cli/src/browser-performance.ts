@@ -1,6 +1,7 @@
-import { readFile, readdir } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { inflateRawSync } from "node:zlib";
+import { isMemoryDebugEnabled, logMemoryDebug } from "./memory-debug.js";
 
 export type BrowserPerformanceMetrics = {
   errors?: {
@@ -515,23 +516,39 @@ export async function collectBrowserPerformanceFromArtifacts(
 export async function collectBrowserPerformanceFromTrace(
   tracePath: string,
 ): Promise<BrowserPerformanceMetrics | undefined> {
-  const archive = await readFile(tracePath);
-  const entries = readZipEntries(archive);
-  const traceEntries = [...entries.keys()].filter((name) => name.endsWith(".trace"));
-  const networkEntries = [...entries.keys()].filter((name) =>
-    name.endsWith(".network"),
-  );
-  const accumulator = createAccumulator();
+  const traceBytes = isMemoryDebugEnabled()
+    ? await stat(tracePath)
+        .then((file) => file.size)
+        .catch(() => undefined)
+    : undefined;
+  logMemoryDebug("trace:before", { traceBytes });
+  let outcome = "threw";
+  try {
+    const archive = await readFile(tracePath);
+    const entries = readZipEntries(archive);
+    const traceEntries = [...entries.keys()].filter((name) => name.endsWith(".trace"));
+    const networkEntries = [...entries.keys()].filter((name) =>
+      name.endsWith(".network"),
+    );
+    const accumulator = createAccumulator();
 
-  for (const entryName of traceEntries) {
-    parseTraceEvents(readZipTextEntry(archive, entries.get(entryName)), accumulator);
+    for (const entryName of traceEntries) {
+      parseTraceEvents(readZipTextEntry(archive, entries.get(entryName)), accumulator);
+    }
+
+    for (const entryName of networkEntries) {
+      parseNetworkEvents(
+        readZipTextEntry(archive, entries.get(entryName)),
+        accumulator,
+      );
+    }
+
+    const performance = buildPerformance(accumulator);
+    outcome = "returned";
+    return performance;
+  } finally {
+    logMemoryDebug("trace:finished", { traceBytes, outcome });
   }
-
-  for (const entryName of networkEntries) {
-    parseNetworkEvents(readZipTextEntry(archive, entries.get(entryName)), accumulator);
-  }
-
-  return buildPerformance(accumulator);
 }
 
 function createAccumulator(): BrowserPerformanceAccumulator {

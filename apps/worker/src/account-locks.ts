@@ -37,6 +37,13 @@ export class AccountJobDispatcher {
   private readonly parkedJobs = new Map<string, ParkedJob>();
   private promotionQueue = Promise.resolve();
 
+  getMemoryDebugSizes() {
+    return {
+      "parkedJobs.size": this.parkedJobs.size,
+      "accountLeases.size": this.accountLeases.size,
+    };
+  }
+
   constructor(options: AccountJobDispatcherOptions = {}) {
     this.deferMs = options.deferMs ?? DEFAULT_ACCOUNT_DEFER_MS;
     this.logger = options.logger ?? console;

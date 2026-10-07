@@ -108,6 +108,7 @@ services:
       redis:
         condition: service_healthy
     environment:
+      SELFCHECKS_MEMORY_DEBUG: ${SELFCHECKS_MEMORY_DEBUG:-1}
       DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in the production env file}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?Set NEXTAUTH_SECRET in the production env file}
       REDIS_HOST: ${REDIS_HOST:-redis}

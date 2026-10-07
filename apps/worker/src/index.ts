@@ -1,4 +1,6 @@
-import { Queue, Worker } from "bullmq";
+import { DelayedError, Queue, Worker } from "bullmq";
+
+import { logMemoryDebug, withMemoryDebugContext } from "@selfchecks/cli/runner";
 
 import { defaultPerformanceSettings } from "@selfchecks/core";
 
@@ -27,8 +29,39 @@ await checkQueue.setGlobalConcurrency(performanceSettings.workerConcurrency);
 const worker = new Worker<CheckJob>(
   config.queueName,
   (job, token) =>
-    accountJobDispatcher.dispatch(job, token, () =>
-      handleSelfchecksJob(job, checkQueue),
+    withMemoryDebugContext(
+      {
+        jobId: job.id,
+        runId:
+          "runId" in job.data
+            ? job.data.runId
+            : "existingRunId" in job.data
+              ? job.data.existingRunId
+              : undefined,
+      },
+      async () => {
+        logMemoryDebug("job:start", accountJobDispatcher.getMemoryDebugSizes());
+        let outcome = "returned";
+        let finishedRunId: string | undefined;
+        try {
+          const result = await accountJobDispatcher.dispatch(job, token, () =>
+            handleSelfchecksJob(job, checkQueue),
+          );
+          if (result && typeof result === "object" && "runId" in result) {
+            finishedRunId = result.runId;
+          }
+          return result;
+        } catch (error) {
+          outcome = error instanceof DelayedError ? "delayed" : "threw";
+          throw error;
+        } finally {
+          logMemoryDebug("job:finished", {
+            outcome,
+            ...(finishedRunId ? { runId: finishedRunId } : {}),
+            ...accountJobDispatcher.getMemoryDebugSizes(),
+          });
+        }
+      },
     ),
   {
     concurrency: performanceSettings.workerConcurrency,
