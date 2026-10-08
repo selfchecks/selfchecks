@@ -116,6 +116,122 @@ describe("handleCheckJob", () => {
     vi.restoreAllMocks();
   });
 
+  it("runs an individual trigger check with monitoring retries and finalizes its batch", async () => {
+    mocks.checkRunFindUnique.mockResolvedValue({ status: "QUEUED" });
+    mocks.checkRunFindMany.mockResolvedValue([
+      {
+        id: "run_1",
+        checkSnapshotKey: "check",
+        attempt: 1,
+        status: "PASSED",
+        createdAt: new Date(),
+      },
+    ]);
+    mocks.runCheckById.mockResolvedValue({ status: "passed" });
+    await handleCheckJob({
+      data: {
+        checkId: "check_1",
+        checkKey: "check",
+        projectSlug: "account",
+        rootDir: "/deployment",
+        runId: "run_1",
+        runSource: "CLI",
+        triggerSessionId: "trigger_1",
+        retries: 2,
+        type: "browser",
+      },
+    });
+    expect(mocks.runCheckById).toHaveBeenCalledWith(
+      expect.objectContaining({
+        existingTriggerSessionId: "trigger_1",
+        retries: 2,
+        runSource: "CLI",
+        runId: "run_1",
+      }),
+    );
+    expect(mocks.testSessionUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: "trigger_1", kind: "TRIGGER" }),
+        data: { status: "PASSED" },
+      }),
+    );
+  });
+
+  it("closes active retry rows when a trigger check throws", async () => {
+    mocks.checkRunFindUnique.mockResolvedValue({ status: "QUEUED" });
+    mocks.runCheckById.mockRejectedValueOnce(new Error("Retry preparation failed"));
+    await expect(
+      handleCheckJob({
+        data: {
+          checkId: "check_1",
+          checkKey: "check",
+          projectSlug: "account",
+          rootDir: "/deployment",
+          runId: "run_1",
+          runSource: "CLI",
+          triggerSessionId: "trigger_1",
+          type: "browser",
+        },
+      }),
+    ).rejects.toThrow("Retry preparation failed");
+    expect(mocks.checkRunUpdateMany).toHaveBeenCalledWith({
+      where: {
+        testSessionId: "trigger_1",
+        retryGroupId: "run_1",
+        status: { in: ["QUEUED", "RUNNING"] },
+      },
+      data: {
+        errorMessage: "Retry preparation failed",
+        finishedAt: expect.any(Date),
+        status: "FAILED",
+      },
+    });
+  });
+
+  it("closes an interrupted retry when a stalled job is delivered again", async () => {
+    mocks.checkRunFindUnique.mockResolvedValue({ status: "FAILED" });
+    mocks.checkRunFindFirst.mockResolvedValueOnce({ id: "retry_2" });
+    await expect(
+      handleCheckJob({
+        data: {
+          checkId: "check_1",
+          checkKey: "check",
+          projectSlug: "account",
+          rootDir: "/deployment",
+          runId: "run_1",
+          triggerSessionId: "trigger_1",
+          type: "browser",
+        },
+      }),
+    ).rejects.toThrow("interrupted");
+    expect(mocks.checkRunUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          testSessionId: "trigger_1",
+          retryGroupId: "run_1",
+          status: { in: ["QUEUED", "RUNNING"] },
+        },
+      }),
+    );
+    expect(mocks.runCheckById).not.toHaveBeenCalled();
+  });
+
+  it("does not execute a trigger check cancelled before pickup", async () => {
+    mocks.checkRunFindUnique.mockResolvedValue({ status: "CANCELLED" });
+    await handleCheckJob({
+      data: {
+        checkId: "check_1",
+        checkKey: "check",
+        projectSlug: "account",
+        rootDir: "/deployment",
+        runId: "run_1",
+        triggerSessionId: "trigger_1",
+        type: "browser",
+      },
+    });
+    expect(mocks.runCheckById).not.toHaveBeenCalled();
+  });
+
   it("runs a queued check through the shared runner", async () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
     mocks.runCheckById.mockResolvedValue({

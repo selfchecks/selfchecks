@@ -5,16 +5,12 @@ import { NextResponse } from "next/server";
 
 import { getRunEnvironment } from "@selfchecks/cli/environment";
 import { normalizeCheckQueueName } from "@selfchecks/core";
+import { Prisma } from "@selfchecks/db";
 
 import { isCliRequestAuthorized } from "@/lib/cli-auth";
 import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
-
-type TriggerJob = TriggerMetadata & {
-  kind: "trigger";
-  rootDir: string;
-};
 
 type TriggerMetadata = {
   commitSha?: string;
@@ -53,20 +49,99 @@ export async function POST(request: Request) {
 
     const triggerId = randomUUID();
     const env = mergeEnv(await getRunEnvironment(metadata.projectSlug), metadata.env);
+    const project = await prisma.project.findUnique({
+      where: { slug: metadata.projectSlug },
+      select: {
+        id: true,
+        checks: {
+          where: { enabled: true },
+          orderBy: { name: "asc" },
+          include: { group: { select: { name: true } } },
+        },
+      },
+    });
+
+    if (!project) {
+      return NextResponse.json({ error: "Project was not found." }, { status: 404 });
+    }
+
+    const checks = project.checks.map((check) => ({ check, runId: randomUUID() }));
     const queue = createCheckQueue();
 
     try {
-      await queue.add(
-        "trigger-checks",
-        {
-          ...metadata,
-          env,
-          kind: "trigger",
-          rootDir,
+      // Persist the entire batch before workers can finish its first check.
+      await prisma.testSession.create({
+        data: {
+          id: triggerId,
+          kind: "TRIGGER",
+          projectId: project.id,
+          name: metadata.testSessionName,
+          commitSha: metadata.commitSha,
+          jobUrl: metadata.jobUrl,
+          pipelineUrl: metadata.pipelineUrl,
+          ref: metadata.ref,
+          repository: metadata.repository,
+          source: rootDir,
+          status: checks.length ? "QUEUED" : "PASSED",
+          runs: {
+            create: checks.map(({ check, runId }) => ({
+              id: runId,
+              checkId: check.id,
+              projectId: project.id,
+              retryGroupId: runId,
+              runSource: "CLI",
+              status: "QUEUED",
+              checkSnapshotKey: check.key,
+              checkSnapshotName: check.name,
+              checkSnapshotType: check.type,
+              checkSnapshotAccounts: check.accounts,
+              checkSnapshotTags: check.tags,
+              checkSnapshotEntrypoint: check.entrypoint,
+              checkSnapshotRequest: check.request ?? Prisma.DbNull,
+              checkSnapshotDegradedResponseTime: check.degradedResponseTime,
+              checkSnapshotGroupName: check.group?.name,
+              checkSnapshotProjectSlug: metadata.projectSlug,
+            })),
+          },
         },
-        { jobId: triggerId },
-      );
+      });
+      if (checks.length) {
+        await queue.addBulk(
+          checks.map(({ check, runId }) => ({
+            name: "run-check",
+            data: {
+              accounts: check.accounts,
+              checkId: check.id,
+              checkKey: check.key,
+              env,
+              projectSlug: metadata.projectSlug,
+              reporter: metadata.reporter,
+              retries: metadata.retries,
+              rootDir,
+              runId,
+              runSource: "CLI",
+              triggerSessionId: triggerId,
+              type: check.type.toLowerCase(),
+            },
+            opts: { jobId: runId },
+          })),
+        );
+      }
     } catch {
+      await prisma.$transaction([
+        prisma.checkRun.updateMany({
+          where: { testSessionId: triggerId, status: "QUEUED" },
+          data: {
+            status: "CANCELLED",
+            finishedAt: new Date(),
+            errorMessage: "Unable to queue trigger.",
+          },
+        }),
+        prisma.testSession.updateMany({
+          where: { id: triggerId },
+          data: { status: "CANCELLED" },
+        }),
+      ]);
       return NextResponse.json({ error: "Unable to queue trigger." }, { status: 503 });
     } finally {
       await queue.close();
@@ -153,20 +228,17 @@ function mergeEnv(
 }
 
 function createCheckQueue() {
-  return new Queue<TriggerJob>(
-    normalizeCheckQueueName(process.env.SELFCHECKS_QUEUE_NAME),
-    {
-      connection: {
-        host: process.env.REDIS_HOST || "localhost",
-        port: parsePositiveInteger(process.env.REDIS_PORT, 6379),
-      },
-      defaultJobOptions: {
-        attempts: 1,
-        removeOnComplete: 1000,
-        removeOnFail: 1000,
-      },
+  return new Queue(normalizeCheckQueueName(process.env.SELFCHECKS_QUEUE_NAME), {
+    connection: {
+      host: process.env.REDIS_HOST || "localhost",
+      port: parsePositiveInteger(process.env.REDIS_PORT, 6379),
     },
-  );
+    defaultJobOptions: {
+      attempts: 1,
+      removeOnComplete: 1000,
+      removeOnFail: 1000,
+    },
+  });
 }
 
 function parsePositiveInteger(value: string | undefined, fallback: number) {

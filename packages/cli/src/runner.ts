@@ -63,6 +63,7 @@ export type RunChecksOptions = {
   env: EnvVar[];
   existingRunIds?: Record<string, string>;
   existingTestSessionId?: string;
+  existingTriggerSessionId?: string;
   projectSlug: string;
   record: boolean;
   reporter: string;
@@ -108,6 +109,7 @@ export type RunCheckByIdOptions = {
   checkId: string;
   env: EnvVar[];
   existingTestSessionId?: string;
+  existingTriggerSessionId?: string;
   projectSlug: string;
   record: true;
   reporter: string;
@@ -309,6 +311,7 @@ export async function runCheckById(
     checkKeys: [check.key],
     env: options.env,
     existingTestSessionId: options.existingTestSessionId,
+    existingTriggerSessionId: options.existingTriggerSessionId,
     projectSlug: options.projectSlug,
     record: options.record,
     reporter: options.reporter,
@@ -318,9 +321,10 @@ export async function runCheckById(
     runSource: options.runSource,
     tagSets: [],
   };
-  const session = options.existingTestSessionId
-    ? await resolveRunSession(runOptions, options.runId)
-    : undefined;
+  const session =
+    options.existingTestSessionId || options.existingTriggerSessionId
+      ? await resolveRunSession(runOptions, options.runId)
+      : undefined;
 
   return runCheck(check, runOptions, session, options.runId);
 }
@@ -456,15 +460,18 @@ async function resolveRunSession(
   options: RunChecksOptions,
   existingRunId?: string,
 ): Promise<TestSession> {
-  if (options.existingTestSessionId) {
+  const existingSessionId =
+    options.existingTestSessionId ?? options.existingTriggerSessionId;
+  if (existingSessionId) {
     const session = await prisma.testSession.findUnique({
       where: {
-        id: options.existingTestSessionId,
+        id: existingSessionId,
       },
     });
 
-    if (!session || session.kind !== "TEST") {
-      throw new Error(`Test session ${options.existingTestSessionId} was not found.`);
+    const expectedKind = options.existingTestSessionId ? "TEST" : "TRIGGER";
+    if (!session || session.kind !== expectedKind) {
+      throw new Error(`Session ${existingSessionId} was not found.`);
     }
 
     if (session.status === "CANCELLED") {
@@ -495,7 +502,7 @@ async function resolveRunSession(
       (session.projectId && session.projectId !== project.id && !crossProjectRun)
     ) {
       throw new Error(
-        `Test session ${options.existingTestSessionId} does not belong to project ${options.projectSlug}.`,
+        `Test session ${existingSessionId} does not belong to project ${options.projectSlug}.`,
       );
     }
 
@@ -635,7 +642,10 @@ async function runCheck(
     }
 
     const queuedRetryRun =
-      run && shouldRetry && session && options.existingTestSessionId
+      run &&
+      shouldRetry &&
+      session &&
+      (options.existingTestSessionId || options.existingTriggerSessionId)
         ? await createQueuedRetryRun(check, options, session, {
             attempt: attempt + 1,
             maxAttempts,

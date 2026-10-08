@@ -700,13 +700,15 @@ async function reconcileQueueBackedRuns({
         createdAt: true,
         id: true,
         retryGroupId: true,
+        runSource: true,
         startedAt: true,
         status: true,
       },
       where: {
-        runSource: {
-          in: ["SCHEDULE", "MANUAL"],
-        },
+        OR: [
+          { runSource: { in: ["SCHEDULE", "MANUAL"] } },
+          { runSource: "CLI", testSession: { is: { kind: "TRIGGER" } } },
+        ],
         status: {
           in: ["QUEUED", "RUNNING"],
         },
@@ -724,7 +726,21 @@ async function reconcileQueueBackedRuns({
 
     const jobStates = new Map(
       await Promise.all(
-        [...runsByJobId.keys()].map(async (jobId) => {
+        [...runsByJobId].map(async ([jobId, groupedRuns]) => {
+          // New trigger jobs use the first run's id as both job and retry group id.
+          // Legacy batch triggers and local CLI runs have no such queue-backed run.
+          if (
+            groupedRuns[0]?.runSource === "CLI" &&
+            !groupedRuns.some((run) => run.id === jobId)
+          ) {
+            const firstRun = await prisma.checkRun.findUnique({
+              select: { id: true },
+              where: { id: jobId },
+            });
+            if (!firstRun) {
+              return [jobId, null] as const;
+            }
+          }
           const job = await queue.getJob(jobId);
 
           return [jobId, await job?.getState()] as const;
@@ -733,6 +749,9 @@ async function reconcileQueueBackedRuns({
     );
     const orphanedRuns = [...runsByJobId].flatMap(([jobId, groupedRuns]) => {
       const state = jobStates.get(jobId);
+      if (state === null) {
+        return [];
+      }
       const currentRunId =
         state && liveQueueJobStates.has(state)
           ? [...groupedRuns].sort(compareRunsByActivityDesc)[0]?.id
@@ -892,6 +911,28 @@ async function reconcileTestSessions({
             )
           : finalizeTestSession(session.id),
       ),
+    );
+    // Trigger sessions retain their queue/run timeout settings; only finalize
+    // batches whose runs have already become terminal.
+    const triggers = await prisma.testSession.findMany({
+      select: { id: true },
+      where: {
+        kind: "TRIGGER",
+        status: { in: activeSessionStatuses },
+        runs: {
+          some: {},
+          none: {
+            OR: [
+              { status: { in: activeSessionStatuses } },
+              { finishedAt: null },
+              { finishedAt: { gte: finishedBefore } },
+            ],
+          },
+        },
+      },
+    });
+    await Promise.all(
+      triggers.map((session) => finalizeTestSession(session.id, "TRIGGER")),
     );
   } catch (error) {
     logger.warn("Unable to reconcile active test sessions.", error);

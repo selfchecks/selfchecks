@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   checkRunCreate: vi.fn(),
   checkRunDeleteMany: vi.fn(),
   checkRunFindMany: vi.fn(),
+  checkRunFindUnique: vi.fn(),
   checkRunUpdate: vi.fn(),
   checkRunUpdateMany: vi.fn(),
   finalizeTestSession: vi.fn(),
@@ -35,6 +36,7 @@ vi.mock("@selfchecks/db", () => ({
       create: mocks.checkRunCreate,
       deleteMany: mocks.checkRunDeleteMany,
       findMany: mocks.checkRunFindMany,
+      findUnique: mocks.checkRunFindUnique,
       update: mocks.checkRunUpdate,
       updateMany: mocks.checkRunUpdateMany,
     },
@@ -109,6 +111,7 @@ describe("scheduleDueChecks", () => {
   beforeEach(() => {
     mocks.artifactFindMany.mockResolvedValue([]);
     mocks.checkRunFindMany.mockResolvedValue([]);
+    mocks.checkRunFindUnique.mockResolvedValue(null);
     mocks.checkRunUpdateMany.mockResolvedValue({
       count: 0,
     });
@@ -646,13 +649,15 @@ describe("scheduleDueChecks", () => {
         createdAt: true,
         id: true,
         retryGroupId: true,
+        runSource: true,
         startedAt: true,
         status: true,
       },
       where: {
-        runSource: {
-          in: ["SCHEDULE", "MANUAL"],
-        },
+        OR: [
+          { runSource: { in: ["SCHEDULE", "MANUAL"] } },
+          { runSource: "CLI", testSession: { is: { kind: "TRIGGER" } } },
+        ],
         status: {
           in: ["QUEUED", "RUNNING"],
         },
@@ -692,9 +697,141 @@ describe("scheduleDueChecks", () => {
     expect(logger.warn).not.toHaveBeenCalled();
   });
 
+  it.each(["failed", "completed", undefined])(
+    "closes interrupted trigger retries when the job state is %s",
+    async (state) => {
+      mocks.checkFindMany.mockResolvedValue([]);
+      mocks.checkRunFindMany.mockResolvedValueOnce([
+        {
+          createdAt: new Date("2026-06-29T09:55:00.000Z"),
+          id: "trigger_retry",
+          retryGroupId: "trigger_first_run",
+          runSource: "CLI",
+          startedAt: new Date("2026-06-29T09:56:00.000Z"),
+          status: "RUNNING",
+        },
+      ]);
+      mocks.checkRunFindUnique.mockResolvedValue({ id: "trigger_first_run" });
+      mocks.queueGetJob.mockResolvedValue(
+        state ? { getState: vi.fn().mockResolvedValue(state) } : undefined,
+      );
+      mocks.testSessionFindMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ id: "trigger_session" }]);
+
+      await scheduleDueChecks({
+        config: {
+          pollIntervalMs: 60_000,
+          queuedRunTimeoutMinutes: 500,
+          reporter: "list",
+          runningRunTimeoutMinutes: 120,
+        },
+        now,
+        queue: createQueue(),
+      });
+
+      expect(mocks.queueGetJob).toHaveBeenCalledWith("trigger_first_run");
+      expect(mocks.checkRunUpdateMany).toHaveBeenCalledWith({
+        data: {
+          errorMessage: "Run was cancelled because its queue job is no longer active.",
+          finishedAt: now,
+          status: "CANCELLED",
+        },
+        where: { id: { in: ["trigger_retry"] }, status: "RUNNING" },
+      });
+      expect(mocks.finalizeTestSession).toHaveBeenCalledWith(
+        "trigger_session",
+        "TRIGGER",
+      );
+      expect(mocks.markTestSessionRuns).not.toHaveBeenCalled();
+      expect(mocks.checkRunUpdateMany.mock.invocationCallOrder.at(-1)).toBeLessThan(
+        mocks.finalizeTestSession.mock.invocationCallOrder[0]!,
+      );
+      expect(mocks.testSessionFindMany).toHaveBeenLastCalledWith({
+        select: { id: true },
+        where: {
+          kind: "TRIGGER",
+          status: { in: ["QUEUED", "RUNNING"] },
+          runs: {
+            some: {},
+            none: {
+              OR: [
+                { status: { in: ["QUEUED", "RUNNING"] } },
+                { finishedAt: null },
+                { finishedAt: { gte: new Date("2026-06-29T09:59:00.000Z") } },
+              ],
+            },
+          },
+        },
+      });
+    },
+  );
+
+  it.each(["active", "waiting", "delayed"])(
+    "preserves trigger runs while their job is %s",
+    async (state) => {
+      mocks.checkFindMany.mockResolvedValue([]);
+      mocks.checkRunFindMany.mockResolvedValueOnce([
+        {
+          createdAt: new Date("2026-06-29T09:55:00.000Z"),
+          id: "trigger_run",
+          retryGroupId: "trigger_run",
+          runSource: "CLI",
+          startedAt: null,
+          status: "QUEUED",
+        },
+      ]);
+      mocks.queueGetJob.mockResolvedValue({
+        getState: vi.fn().mockResolvedValue(state),
+      });
+      await scheduleDueChecks({
+        config: {
+          pollIntervalMs: 60_000,
+          queuedRunTimeoutMinutes: 500,
+          reporter: "list",
+          runningRunTimeoutMinutes: 120,
+        },
+        now,
+        queue: createQueue(),
+      });
+      expect(mocks.checkRunUpdateMany.mock.calls.some(([args]) => args.where.id)).toBe(
+        false,
+      );
+      expect(mocks.finalizeTestSession).not.toHaveBeenCalled();
+    },
+  );
+
+  it("leaves legacy batch trigger runs outside individual job reconciliation", async () => {
+    mocks.checkFindMany.mockResolvedValue([]);
+    mocks.checkRunFindMany.mockResolvedValueOnce([
+      {
+        createdAt: new Date("2026-06-29T09:55:00.000Z"),
+        id: "legacy_run",
+        retryGroupId: "legacy_retry_group",
+        runSource: "CLI",
+        startedAt: now,
+        status: "RUNNING",
+      },
+    ]);
+    await scheduleDueChecks({
+      config: {
+        pollIntervalMs: 60_000,
+        queuedRunTimeoutMinutes: 500,
+        reporter: "list",
+        runningRunTimeoutMinutes: 120,
+      },
+      now,
+      queue: createQueue(),
+    });
+    expect(mocks.queueGetJob).not.toHaveBeenCalled();
+    expect(mocks.checkRunUpdateMany.mock.calls.some(([args]) => args.where.id)).toBe(
+      false,
+    );
+  });
+
   it("times out expired test sessions and finalizes completed sessions", async () => {
     mocks.checkFindMany.mockResolvedValue([]);
-    mocks.testSessionFindMany.mockResolvedValue([
+    mocks.testSessionFindMany.mockResolvedValueOnce([
       {
         id: "session_expired",
         runs: [

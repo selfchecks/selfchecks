@@ -48,7 +48,11 @@ describe("AccountJobDispatcher", () => {
         await finish.promise;
         active -= 1;
       });
-    const runs = [run(createJob("free", ["free"])), run(createJob("paid", ["paid"]))];
+    const freeJob = createJob("free", ["free"]);
+    const paidJob = createJob("paid", ["paid"]);
+    Object.assign(freeJob.data, { triggerSessionId: "same_trigger" });
+    Object.assign(paidJob.data, { triggerSessionId: "same_trigger" });
+    const runs = [run(freeJob), run(paidJob)];
 
     await vi.waitFor(() => expect(maximumActive).toBe(2));
     finish.resolve();

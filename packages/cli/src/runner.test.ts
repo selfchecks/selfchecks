@@ -942,100 +942,108 @@ describe("runCheckById", () => {
     expect(mocks.deliverRunNotifications).toHaveBeenCalledWith("run_2");
   });
 
-  it("keeps a manual rerun attached to its existing test session", async () => {
-    const runId = "run_2";
+  it.each(["TEST", "TRIGGER"] as const)(
+    "keeps a check attached to its existing %s session",
+    async (kind) => {
+      const runId = "run_2";
 
-    mocks.checkFindFirst.mockResolvedValue({
-      degradedResponseTime: 2_500,
-      entrypoint: null,
-      group: null,
-      id: "check_1",
-      key: "api-health",
-      name: "API health",
-      request: {
-        assertions: [],
-        headers: {},
-        method: "GET",
-        url: "https://example.test/health",
-      },
-      retryStrategy: null,
-      runs: [],
-      tags: ["api"],
-      type: "API",
-    });
-    mocks.testSessionFindUnique.mockResolvedValue({
-      id: "session_1",
-      kind: "TEST",
-      projectId: "project_1",
-    });
-    mocks.testSessionUpdate.mockResolvedValue({
-      id: "session_1",
-      kind: "TEST",
-      projectId: "project_1",
-      status: "RUNNING",
-    });
-    mocks.checkRunFindFirst.mockResolvedValue({
-      checkId: "check_1",
-      id: runId,
-      testSessionId: "session_1",
-    });
-    mocks.checkRunUpdate.mockImplementation(async (args) => ({
-      checkId: "check_1",
-      id: args.where.id,
-      ...args.data,
-    }));
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        new Response('{"ok":true}', {
-          status: 200,
-          statusText: "OK",
-        }),
-      ),
-    );
-
-    await expect(
-      runCheckById({
-        checkId: "check_1",
-        env: [],
-        existingTestSessionId: "session_1",
-        projectSlug: "default",
-        record: true,
-        reporter: "list",
-        rootDir: "/repo",
-        runId,
-        runSource: "MANUAL",
-      }),
-    ).resolves.toMatchObject({
-      checkKey: "api-health",
-      runId,
-      status: "passed",
-    });
-
-    expect(mocks.testSessionUpdate).toHaveBeenCalledWith({
-      data: {
-        aiAnalysis: expect.anything(),
-        status: "RUNNING",
-      },
-      where: {
-        id: "session_1",
-      },
-    });
-    expect(mocks.checkRunUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          checkSnapshotDegradedResponseTime: 2_500,
-          checkSnapshotKey: "api-health",
-          runSource: "MANUAL",
-          status: "RUNNING",
-          testSessionId: "session_1",
-        }),
-        where: {
-          id: runId,
+      mocks.checkFindFirst.mockResolvedValue({
+        degradedResponseTime: 2_500,
+        entrypoint: null,
+        group: null,
+        id: "check_1",
+        key: "api-health",
+        name: "API health",
+        request: {
+          assertions: [],
+          headers: {},
+          method: "GET",
+          url: "https://example.test/health",
         },
-      }),
-    );
-  });
+        retryStrategy: null,
+        runs: [],
+        tags: ["api"],
+        type: "API",
+      });
+      mocks.testSessionFindUnique.mockResolvedValue({
+        id: "session_1",
+        kind,
+        projectId: "project_1",
+      });
+      mocks.testSessionUpdate.mockResolvedValue({
+        id: "session_1",
+        kind,
+        projectId: "project_1",
+        status: "RUNNING",
+      });
+      mocks.checkRunFindFirst.mockResolvedValue({
+        checkId: "check_1",
+        id: runId,
+        testSessionId: "session_1",
+      });
+      mocks.checkRunUpdate.mockImplementation(async (args) => ({
+        checkId: "check_1",
+        id: args.where.id,
+        ...args.data,
+      }));
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(
+          new Response('{"ok":true}', {
+            status: 200,
+            statusText: "OK",
+          }),
+        ),
+      );
+
+      await expect(
+        runCheckById({
+          checkId: "check_1",
+          env: [],
+          ...(kind === "TEST"
+            ? { existingTestSessionId: "session_1" }
+            : { existingTriggerSessionId: "session_1" }),
+          projectSlug: "default",
+          record: true,
+          reporter: "list",
+          rootDir: "/repo",
+          runId,
+          runSource: kind === "TEST" ? "MANUAL" : "CLI",
+        }),
+      ).resolves.toMatchObject({
+        checkKey: "api-health",
+        runId,
+        status: "passed",
+      });
+
+      expect(mocks.testSessionUpdate).toHaveBeenCalledWith({
+        data: {
+          aiAnalysis: expect.anything(),
+          status: "RUNNING",
+        },
+        where: {
+          id: "session_1",
+        },
+      });
+      expect(mocks.checkRunUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            checkSnapshotDegradedResponseTime: 2_500,
+            checkSnapshotKey: "api-health",
+            runSource: kind === "TEST" ? "MANUAL" : "CLI",
+            status: "RUNNING",
+            testSessionId: "session_1",
+          }),
+          where: {
+            id: runId,
+          },
+        }),
+      );
+      expect(mocks.deliverRunNotifications).toHaveBeenCalledTimes(
+        kind === "TRIGGER" ? 1 : 0,
+      );
+    },
+  );
 
   it("runs a pre-created check from another project inside a full regression session", async () => {
     const runId = "run_cross_project";
@@ -1721,86 +1729,122 @@ describe("runChecks", () => {
     });
   });
 
-  it("queues a remote retry before completing the previous attempt", async () => {
-    mocks.testSessionFindUnique.mockResolvedValue({
-      id: "session_queued",
-      kind: "TEST",
-      status: "QUEUED",
-    });
-    mocks.testSessionUpdate.mockImplementation(async (args) => ({
-      id: args.where.id,
-      kind: "TEST",
-      ...args.data,
-    }));
-    mocks.checkRunFindFirst
-      .mockResolvedValueOnce({
-        id: "run_queued",
-        status: "QUEUED",
-      })
-      .mockResolvedValueOnce({
-        id: "run_retry",
+  it.each(["TEST", "TRIGGER"] as const)(
+    "queues a %s retry before completing the previous attempt",
+    async (kind) => {
+      mocks.testSessionFindUnique.mockResolvedValue({
+        id: "session_queued",
+        kind,
         status: "QUEUED",
       });
-    mocks.checkRunCreate.mockImplementation(async (args) => ({
-      id: "run_retry",
-      ...args.data,
-    }));
-    mocks.checkRunUpdate.mockImplementation(async (args) => ({
-      id: args.where.id,
-      ...args.data,
-    }));
-    vi.stubGlobal(
-      "fetch",
-      vi
-        .fn()
-        .mockResolvedValueOnce(new Response("failed", { status: 500 }))
-        .mockResolvedValueOnce(new Response("{}", { status: 200 })),
-    );
+      mocks.testSessionUpdate.mockImplementation(async (args) => ({
+        id: args.where.id,
+        kind,
+        ...args.data,
+      }));
+      mocks.checkRunFindFirst
+        .mockResolvedValueOnce({
+          id: "run_queued",
+          status: "QUEUED",
+        })
+        .mockResolvedValueOnce({
+          id: "run_retry",
+          status: "QUEUED",
+        });
+      mocks.checkRunCreate.mockImplementation(async (args) => ({
+        id: "run_retry",
+        ...args.data,
+      }));
+      mocks.checkRunUpdate.mockImplementation(async (args) => ({
+        id: args.where.id,
+        ...args.data,
+      }));
+      vi.stubGlobal(
+        "fetch",
+        vi
+          .fn()
+          .mockResolvedValueOnce(new Response("failed", { status: 500 }))
+          .mockResolvedValueOnce(new Response("{}", { status: 200 })),
+      );
 
-    await expect(
-      runTestSessionCheck({
-        check: {
-          enabled: true,
-          key: "api-health",
-          name: "API health",
-          request: {
-            assertions: [],
-            headers: {},
-            method: "GET",
-            url: "https://example.test/health",
-          },
-          tags: [],
-          type: "api",
+      const check = {
+        id: "check_1",
+        key: "api-health",
+        name: "API health",
+        type: "API",
+        accounts: [],
+        tags: [],
+        runs: [],
+        retryStrategy: null,
+        request: {
+          assertions: [],
+          headers: {},
+          method: "GET",
+          url: "https://example.test/health",
         },
-        env: [],
-        existingRunId: "run_queued",
-        existingTestSessionId: "session_queued",
-        projectSlug: "default",
-        reporter: "list",
-        retries: 1,
-        rootDir: "/runtime/test-sessions/session_queued",
-        testSessionDeadline: {
-          at: Date.now() + 60_000,
-          timeoutMs: 60_000,
-        },
-      }),
-    ).resolves.toMatchObject({
-      runId: "run_retry",
-      status: "passed",
-    });
+      };
+      mocks.checkFindFirst.mockResolvedValue(check);
+      await expect(
+        kind === "TRIGGER"
+          ? runCheckById({
+              checkId: "check_1",
+              env: [],
+              existingTriggerSessionId: "session_queued",
+              projectSlug: "default",
+              record: true,
+              reporter: "list",
+              retries: 1,
+              rootDir: "/runtime/deployments/deployment_1",
+              runId: "run_queued",
+              runSource: "CLI",
+            })
+          : runTestSessionCheck({
+              check: {
+                enabled: true,
+                key: "api-health",
+                name: "API health",
+                request: {
+                  assertions: [],
+                  headers: {},
+                  method: "GET",
+                  url: "https://example.test/health",
+                },
+                tags: [],
+                type: "api",
+              },
+              env: [],
+              existingRunId: "run_queued",
+              existingTestSessionId: "session_queued",
+              projectSlug: "default",
+              reporter: "list",
+              retries: 1,
+              rootDir: "/runtime/test-sessions/session_queued",
+              testSessionDeadline: {
+                at: Date.now() + 60_000,
+                timeoutMs: 60_000,
+              },
+            }),
+      ).resolves.toMatchObject({
+        runId: "run_retry",
+        status: "passed",
+      });
 
-    expect(mocks.checkRunCreate).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        attempt: 2,
-        retryGroupId: "run_queued",
-        status: "QUEUED",
-        testSessionId: "session_queued",
-      }),
-    });
-    expect(mocks.checkRunCreate.mock.invocationCallOrder[0]).toBeLessThan(
-      mocks.checkRunUpdate.mock.invocationCallOrder[1] ?? Number.POSITIVE_INFINITY,
-    );
-  });
+      expect(mocks.checkRunCreate).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          attempt: 2,
+          retryGroupId: "run_queued",
+          status: "QUEUED",
+          testSessionId: "session_queued",
+        }),
+      });
+      expect(mocks.checkRunCreate.mock.invocationCallOrder[0]).toBeLessThan(
+        mocks.checkRunUpdate.mock.invocationCallOrder[1] ?? Number.POSITIVE_INFINITY,
+      );
+      expect(mocks.deliverRunNotifications).toHaveBeenCalledTimes(
+        kind === "TRIGGER" ? 1 : 0,
+      );
+    },
+  );
 
   it("aborts an API check when the test session deadline is reached", async () => {
     vi.useFakeTimers();

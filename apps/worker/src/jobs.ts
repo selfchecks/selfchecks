@@ -33,10 +33,12 @@ export type RunCheckJob = {
   env?: EnvVar[];
   projectSlug: string;
   reporter?: string;
+  retries?: number;
   rootDir: string;
   runId?: string;
   runSource?: CheckRunSource;
   testSessionId?: string;
+  triggerSessionId?: string;
   type: CheckType;
 };
 
@@ -126,12 +128,42 @@ export async function handleCheckJob(
   );
 
   try {
+    if (job.data.triggerSessionId && job.data.runId) {
+      const run = await prisma.checkRun.findUnique({
+        where: { id: job.data.runId },
+        select: { status: true, durationMs: true, checkSnapshotName: true },
+      });
+      if (!run || (run.status !== "QUEUED" && run.status !== "RUNNING")) {
+        const interruptedRetry = await prisma.checkRun.findFirst({
+          where: {
+            testSessionId: job.data.triggerSessionId,
+            retryGroupId: job.data.runId,
+            status: { in: [...activeRunStatuses] },
+          },
+          select: { id: true },
+        });
+        if (interruptedRetry) {
+          throw new Error("Trigger check was interrupted before its retry completed.");
+        }
+        return {
+          checkKey: job.data.checkKey,
+          checkName: run?.checkSnapshotName ?? job.data.checkKey,
+          durationMs: run?.durationMs ?? 0,
+          runId: job.data.runId,
+          status: run?.status.toLowerCase() ?? "cancelled",
+        };
+      }
+    }
     return await runCheckById({
       checkId: job.data.checkId,
       env: job.data.env ?? [],
       ...(job.data.testSessionId
         ? { existingTestSessionId: job.data.testSessionId }
         : {}),
+      ...(job.data.triggerSessionId
+        ? { existingTriggerSessionId: job.data.triggerSessionId }
+        : {}),
+      ...(job.data.retries !== undefined ? { retries: job.data.retries } : {}),
       projectSlug: job.data.projectSlug,
       record: true,
       reporter: job.data.reporter ?? "list",
@@ -140,7 +172,21 @@ export async function handleCheckJob(
       runSource: job.data.runSource,
     });
   } catch (error) {
-    if (job.data.runId) {
+    if (job.data.triggerSessionId && job.data.runId) {
+      // A failure during a retry must not leave its queued/running row active.
+      await prisma.checkRun.updateMany({
+        where: {
+          testSessionId: job.data.triggerSessionId,
+          retryGroupId: job.data.runId,
+          status: { in: [...activeRunStatuses] },
+        },
+        data: {
+          errorMessage: error instanceof Error ? error.message : String(error),
+          finishedAt: new Date(),
+          status: "FAILED",
+        },
+      });
+    } else if (job.data.runId) {
       await prisma.checkRun.update({
         data: {
           errorMessage: error instanceof Error ? error.message : String(error),
@@ -157,6 +203,9 @@ export async function handleCheckJob(
   } finally {
     if (job.data.testSessionId) {
       await finalizeTestSession(job.data.testSessionId);
+    }
+    if (job.data.triggerSessionId) {
+      await finalizeTestSession(job.data.triggerSessionId, "TRIGGER");
     }
   }
 }
@@ -461,7 +510,10 @@ export async function markTestSessionRuns(
   ]);
 }
 
-export async function finalizeTestSession(sessionId: string): Promise<void> {
+export async function finalizeTestSession(
+  sessionId: string,
+  kind: "TEST" | "TRIGGER" = "TEST",
+): Promise<void> {
   const activeRun = await prisma.checkRun.findFirst({
     select: {
       id: true,
@@ -532,7 +584,7 @@ export async function finalizeTestSession(sessionId: string): Promise<void> {
     },
     where: {
       id: sessionId,
-      kind: "TEST",
+      kind,
       runs: {
         none: {
           status: {
