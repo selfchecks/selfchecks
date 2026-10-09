@@ -26,9 +26,6 @@ import {
   collectBrowserPerformanceFromDirectory,
 } from "./browser-performance.js";
 import { deliverRunNotifications } from "./notifications.js";
-import { logMemoryDebug, withMemoryDebugContext } from "./memory-debug.js";
-
-export { logMemoryDebug, withMemoryDebugContext } from "./memory-debug.js";
 
 export type EnvVar = {
   name: string;
@@ -599,9 +596,7 @@ async function runCheck(
           retryGroupId,
         })
       : undefined;
-    const result = await withMemoryDebugContext({ runId: run?.id }, () =>
-      executeCheck(check, options, run, attempt, maxAttempts),
-    );
+    const result = await executeCheck(check, options, run, attempt, maxAttempts);
     const finishedAt = new Date();
     const durationMs = finishedAt.getTime() - startedAt.getTime();
     const retryDelayMs = getRetryDelayMs(retryPlan, attempt);
@@ -1144,7 +1139,6 @@ async function runBrowserCheck(
     writeTraceStatusReporter(artifactPaths.traceStatusReporterPath),
   ]);
   const playwrightCli = resolvePlaywrightCli(options.rootDir);
-  logMemoryDebug("playwright:before");
   const logs = await runProcess({
     args: [
       playwrightCli,
@@ -1185,7 +1179,6 @@ async function runBrowserCheck(
   const performance =
     (await collectBrowserPerformanceFromDirectory(artifactPaths.performanceDir)) ??
     (await collectBrowserPerformanceFromArtifacts(artifacts));
-  logMemoryDebug("artifacts:finished", { artifactCount: artifacts.length });
   const timeoutErrorMessage = logs.timedOut
     ? `Browser check timed out after ${formatDurationMs(logs.timeoutMs)} (${logs.timeoutSource}).`
     : undefined;
@@ -1715,8 +1708,6 @@ async function runProcess({
       shell: false,
     });
     const chunks: Buffer[] = [];
-    let stdoutBytes = 0;
-    let stderrBytes = 0;
     let killTimer: NodeJS.Timeout | undefined;
     let cancelled = false;
     let resolved = false;
@@ -1749,13 +1740,6 @@ async function runProcess({
         timedOut,
         timeoutMs: timeout?.ms,
         timeoutSource: timeout?.source,
-      });
-      logMemoryDebug("playwright:finished", {
-        stdoutBytes,
-        stderrBytes,
-        exitCode: result.exitCode,
-        cancelled,
-        timedOut,
       });
     }
 
@@ -1814,14 +1798,8 @@ async function runProcess({
       handleCancellation();
     }
 
-    child.stdout.on("data", (chunk: Buffer) => {
-      stdoutBytes += chunk.length;
-      chunks.push(chunk);
-    });
-    child.stderr.on("data", (chunk: Buffer) => {
-      stderrBytes += chunk.length;
-      chunks.push(chunk);
-    });
+    child.stdout.on("data", (chunk: Buffer) => chunks.push(chunk));
+    child.stderr.on("data", (chunk: Buffer) => chunks.push(chunk));
     child.on("error", (error) => {
       chunks.push(Buffer.from(`\n${error.message}\n`));
       resolveOnce({
