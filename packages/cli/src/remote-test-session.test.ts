@@ -216,6 +216,21 @@ describe("remote test sessions", () => {
     ).toEqual({ include: ["src"] });
   });
 
+  it.each(["module", "commonjs"])(
+    "preserves package type %s in the runtime bundle",
+    async (type) => {
+      const rootDir = await createProject();
+      await writeFile(path.join(rootDir, "package.json"), JSON.stringify({ type }));
+
+      const files = await collectBundleFiles(rootDir);
+      const packageFile = files.find((file) => file.path === "package.json")!;
+
+      expect(JSON.parse(Buffer.from(packageFile.content).toString())).toMatchObject({
+        type,
+      });
+    },
+  );
+
   it("uploads the bundle and polls the remote session with bearer authentication", async () => {
     const rootDir = await createProject();
     const fetchMock = vi

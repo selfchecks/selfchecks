@@ -323,6 +323,7 @@ function transformRuntimeFile(relativePath: string, content: Buffer): Uint8Array
           dependencies: packageJson.dependencies ?? {},
           name: packageJson.name ?? "@selfchecks/test-session",
           private: true,
+          type: packageJson.type,
           version: packageJson.version ?? "0.0.0",
         },
         null,
