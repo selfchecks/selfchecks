@@ -11,9 +11,7 @@ describe("deploy workflow", () => {
     );
 
     expect(workflow).toContain("YARN_NPM_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}");
-    expect(workflow).toContain(
-      '(cd "${package_dir}" && yarn npm publish --access public --provenance)',
-    );
+    expect(workflow).toContain("run: node scripts/publish-npm-packages.mjs");
     expect(workflow).not.toContain(
       'npm publish "./${package_dir}" --access public --provenance',
     );

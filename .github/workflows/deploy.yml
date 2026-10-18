@@ -310,20 +310,7 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           YARN_NPM_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          set -euo pipefail
-
-          for package_dir in packages/checkly-compat packages/npm-cli packages/create-selfchecks; do
-            package_name="$(node -p "require('./${package_dir}/package.json').name")"
-            package_version="$(node -p "require('./${package_dir}/package.json').version")"
-
-            if npm view "${package_name}@${package_version}" version >/dev/null 2>&1; then
-              echo "${package_name}@${package_version} is already published"
-              continue
-            fi
-
-            (cd "${package_dir}" && yarn npm publish --access public --provenance)
-          done
+        run: node scripts/publish-npm-packages.mjs
 
   smoke-create-selfchecks:
     needs:
