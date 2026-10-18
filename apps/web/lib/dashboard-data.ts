@@ -280,6 +280,7 @@ export type CheckDetailData = {
 };
 
 export type RunDetailData = {
+  testSessionHref?: string;
   check: {
     id: string;
     name: string;
@@ -812,7 +813,7 @@ export async function getCheckDetailData(
 }
 
 export async function getRunDetailData(
-  checkId: string,
+  checkId: string | undefined,
   runId: string,
 ): Promise<RunDetailData | undefined> {
   const timeZone = getRuntimeTimeZone();
@@ -838,20 +839,24 @@ export async function getRunDetailData(
       },
       where: {
         id: runId,
-        OR: [
-          {
-            check: {
-              enabled: true,
-              id: checkId,
-            },
-          },
-          {
-            checkSnapshotKey: checkId,
-          },
-          {
-            id: checkId,
-          },
-        ],
+        ...(checkId
+          ? {
+              OR: [
+                {
+                  check: {
+                    enabled: true,
+                    id: checkId,
+                  },
+                },
+                {
+                  checkSnapshotKey: checkId,
+                },
+                {
+                  id: checkId,
+                },
+              ],
+            }
+          : {}),
       },
     });
 
@@ -871,6 +876,9 @@ export async function getRunDetailData(
     const maxAttempts = Math.max(getRunMaxAttempts(run), attempts.length);
 
     return {
+      ...(!run.check && run.testSessionId
+        ? { testSessionHref: `/test-sessions/${encodeURIComponent(run.testSessionId)}` }
+        : {}),
       check: {
         id: check.id,
         name: check.name,
@@ -1439,7 +1447,7 @@ export async function getTestSessionCheckData(
       projectSlug: check.projectSlug,
       runs: runs.map((run) => ({
         ...mapRun(run, timeZone),
-        runHref: buildRunHref(getRunCheckSnapshot(run).id, run.id),
+        runHref: buildRunHref(run.checkId, run.id),
       })),
       session: mapTestSession(typedSession, timeZone, dashboardStatuses),
     };
@@ -1872,7 +1880,7 @@ function mapTestSessionChecks(
         duration: formatDuration(latestRun.durationMs ?? undefined),
         groupName: check.groupName,
         isRegress,
-        latestRunHref: buildRunHref(check.id, latestRun.id),
+        latestRunHref: buildRunHref(latestRun.checkId, latestRun.id),
         latestRunOccurredAt: formatBarTimestamp(latestRun, timeZone),
         projectSlug: check.projectSlug,
         runCount: checkRuns.length,
@@ -1923,8 +1931,10 @@ function getRunCheckSnapshot(
   };
 }
 
-function buildRunHref(checkId: string, runId: string): string {
-  return `/checks/${encodeURIComponent(checkId)}/runs/${encodeURIComponent(runId)}`;
+function buildRunHref(checkId: string | null | undefined, runId: string): string {
+  return checkId
+    ? `/checks/${encodeURIComponent(checkId)}/runs/${encodeURIComponent(runId)}`
+    : `/runs/${encodeURIComponent(runId)}`;
 }
 
 function getLatestRunsByCheck(
@@ -2545,7 +2555,7 @@ function buildQueueCheckHref(run: ActiveQueueRunWithCheck, checkId: string): str
     return `/checks/${encodeURIComponent(run.check.id)}`;
   }
 
-  return buildRunHref(checkId, run.id);
+  return buildRunHref(run.checkId, run.id);
 }
 
 function mapQueueSource(run: ActiveQueueRunWithCheck): DashboardQueueSource {
@@ -2822,7 +2832,7 @@ function mapAttemptNavigationRun(
   return {
     createdAtLabel: formatRunTimestamp(run.createdAt, timeZone),
     duration: formatDuration(run.durationMs ?? undefined),
-    href: `/checks/${encodeURIComponent(check.id)}/runs/${encodeURIComponent(run.id)}`,
+    href: buildRunHref(run.checkId, run.id),
     id: run.id,
     isCurrent: run.id === currentRunId,
     label: `Attempt #${getRunAttempt(run)}`,

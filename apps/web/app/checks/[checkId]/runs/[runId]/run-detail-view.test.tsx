@@ -262,6 +262,38 @@ describe("RunDetailView", () => {
     expect(screen.getAllByText(/200 OK/).length).toBeGreaterThan(1);
   });
 
+  it("keeps failed session runs visible without browser artifacts or a deployed check", () => {
+    const error = "ReferenceError: exports is not defined in ES module scope";
+    render(
+      <RunDetailView
+        accountLabel="admin@example.com"
+        detail={{
+          ...detail,
+          check: { ...detail.check, type: "browser" },
+          testSessionHref: "/test-sessions/session_1",
+          run: {
+            ...detail.run,
+            artifacts: [],
+            aiAnalysis: undefined,
+            errorMessage: error,
+            jobLog: "Error: No tests found.",
+            request: undefined,
+            response: undefined,
+            runState: "failed",
+            status: "failing",
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText(error)).toBeTruthy();
+    expect(screen.getByText("Error: No tests found.")).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: "Open test session" }).getAttribute("href"),
+    ).toBe("/test-sessions/session_1");
+    expect(screen.queryByRole("link", { name: "Open check" })).toBeNull();
+  });
+
   it("groups artifacts and previews text files", async () => {
     const user = userEvent.setup();
 

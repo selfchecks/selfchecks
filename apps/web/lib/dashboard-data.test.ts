@@ -2328,6 +2328,58 @@ describe("dashboard data", () => {
     });
   });
 
+  it("opens failed session runs by id when collection fails before artifacts exist", async () => {
+    const run = {
+      artifacts: [],
+      attempt: 1,
+      check: null,
+      checkId: null,
+      checkSnapshotKey: "App-/-Registration-/-Welcome-name",
+      checkSnapshotName: "App / Registration / Welcome name",
+      checkSnapshotProjectSlug: "account",
+      checkSnapshotTags: [],
+      checkSnapshotType: "BROWSER",
+      createdAt: new Date("2026-10-18T14:55:31.370Z"),
+      durationMs: 2181,
+      errorMessage: "ReferenceError: exports is not defined in ES module scope",
+      finishedAt: new Date("2026-10-18T14:55:40.063Z"),
+      id: "failed_run",
+      logsPath: null,
+      result: { exitCode: 1, command: "npx playwright test welcome.spec.ts" },
+      retryGroupId: "failed_run",
+      startedAt: new Date("2026-10-18T14:55:37.882Z"),
+      status: "FAILED",
+      testSessionId: "session_1",
+    };
+    mocks.checkRunFindFirst.mockResolvedValue(run);
+    mocks.checkRunFindMany.mockResolvedValue([run]);
+    mocks.testSessionFindFirst.mockResolvedValue({
+      createdAt: run.createdAt,
+      id: "session_1",
+      kind: "TEST",
+      project: { slug: "account" },
+      runs: [run],
+      status: "FAILED",
+    });
+
+    const session = await getTestSessionData("session_1");
+    expect(session?.session.checks[0]?.latestRunHref).toBe("/runs/failed_run");
+    const detail = await getRunDetailData(undefined, "failed_run");
+    expect(mocks.checkRunFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "failed_run" } }),
+    );
+    expect(detail).toMatchObject({
+      check: { name: run.checkSnapshotName },
+      testSessionHref: "/test-sessions/session_1",
+      run: {
+        artifacts: [],
+        errorMessage: run.errorMessage,
+        runState: "failed",
+        attempts: [{ href: "/runs/failed_run", isCurrent: true }],
+      },
+    });
+  });
+
   it("opens cancelled session tests that only have a run id", async () => {
     const cancelledRun = {
       artifacts: [],
@@ -2378,7 +2430,7 @@ describe("dashboard data", () => {
       runs: [
         {
           id: "run_cancelled",
-          runHref: "/checks/run_cancelled/runs/run_cancelled",
+          runHref: "/runs/run_cancelled",
           runState: "cancelled",
         },
       ],

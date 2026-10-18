@@ -64,7 +64,7 @@ const runStateLabels: Record<DashboardRunState, string> = {
 
 export function RunDetailView({ accountLabel, detail }: RunDetailViewProps) {
   const { check, run } = detail;
-  const checkHref = `/checks/${encodeURIComponent(check.id)}`;
+  const checkHref = detail.testSessionHref ?? `/checks/${encodeURIComponent(check.id)}`;
   const statusCode = getResultField(run.resultFields, "Status");
   const statusText = getResultField(run.resultFields, "Status Text");
   const command = getResultField(run.resultFields, "Command");
@@ -87,7 +87,9 @@ export function RunDetailView({ accountLabel, detail }: RunDetailViewProps) {
           <div className="flex h-16 items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
             <div className="flex min-w-0 items-center gap-3 text-sm text-slate-400">
               <Link
-                aria-label="Back to check"
+                aria-label={
+                  detail.testSessionHref ? "Back to test session" : "Back to check"
+                }
                 className="flex h-9 w-9 items-center justify-center rounded-md text-slate-400 hover:bg-slate-800 hover:text-slate-100"
                 href={checkHref}
               >
@@ -117,7 +119,7 @@ export function RunDetailView({ accountLabel, detail }: RunDetailViewProps) {
                 className="hidden h-10 items-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-500 sm:inline-flex"
                 href={checkHref}
               >
-                Open check
+                {detail.testSessionHref ? "Open test session" : "Open check"}
               </Link>
             </div>
           </div>

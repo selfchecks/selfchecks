@@ -4,6 +4,15 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   transpilePackages: ["@selfchecks/core"],
+  async redirects() {
+    return [
+      {
+        source: "/checks/:checkId/runs/:runId",
+        destination: "/runs/:runId",
+        permanent: false,
+      },
+    ];
+  },
   async headers() {
     return [
       {
