@@ -476,6 +476,34 @@ describe("RunDetailView", () => {
     expect(screen.getByText("trace.zip")).toBeTruthy();
   });
 
+  it("shows the recorded browser target above the command", () => {
+    const targetUrl = "https://preview.example.test/app?branch=feature";
+    render(
+      <RunDetailView
+        accountLabel="admin@example.com"
+        detail={{
+          ...browserDetail,
+          run: { ...browserDetail.run, targetUrl },
+        }}
+      />,
+    );
+
+    const target = screen.getByRole("link", { name: targetUrl });
+    expect(target.getAttribute("href")).toBe(targetUrl);
+    expect(
+      target.compareDocumentPosition(
+        screen.getByText("npx playwright test tests/header-search.spec.ts"),
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("identifies historical runs whose URL was not recorded", () => {
+    render(<RunDetailView accountLabel="admin@example.com" detail={browserDetail} />);
+
+    expect(screen.getByText("Target URL")).toBeTruthy();
+    expect(screen.getByText("Not recorded")).toBeTruthy();
+  });
+
   it("renders retry attempt navigation links", () => {
     render(
       <RunDetailView

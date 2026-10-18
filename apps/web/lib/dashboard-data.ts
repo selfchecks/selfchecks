@@ -316,6 +316,7 @@ export type RunDetailData = {
     failedAttempts: number;
     finishedAt: string;
     jobLog?: string;
+    targetUrl?: string;
     maxAttempts: number;
     request?: {
       assertions: Array<{
@@ -836,6 +837,9 @@ export async function getRunDetailData(
             },
           },
         },
+        testSession: {
+          select: { targetUrl: true },
+        },
       },
       where: {
         id: runId,
@@ -907,6 +911,15 @@ export async function getRunDetailData(
           .length,
         finishedAt: run.finishedAt ? formatRunTimestamp(run.finishedAt, timeZone) : "-",
         jobLog,
+        targetUrl: [
+          asRecord(run.result).targetUrl,
+          asRecord(run.result).url,
+          run.testSession?.targetUrl,
+          request?.url,
+        ].find(
+          (value): value is string =>
+            typeof value === "string" && /^https?:\/\/\S+$/i.test(value),
+        ),
         maxAttempts,
         request,
         response: formatRunResponse(run.result),

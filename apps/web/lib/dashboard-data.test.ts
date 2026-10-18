@@ -498,6 +498,7 @@ describe("dashboard data", () => {
     expect(detail?.groupName).toBe("API / Bff");
     expect(detail?.projectSlug).toBe("default");
     expect(detail?.run.duration).toBe("2.39 s");
+    expect(detail?.run.targetUrl).toBe("https://bff.sndsy.ru/gtm.js?id=GTM-MP43XM");
     expect(detail?.run.response).toMatchObject({
       body: '{"ok":true}',
       headers: [
@@ -2350,6 +2351,7 @@ describe("dashboard data", () => {
       startedAt: new Date("2026-10-18T14:55:37.882Z"),
       status: "FAILED",
       testSessionId: "session_1",
+      testSession: { targetUrl: "https://preview.example.test" },
     };
     mocks.checkRunFindFirst.mockResolvedValue(run);
     mocks.checkRunFindMany.mockResolvedValue([run]);
@@ -2365,6 +2367,7 @@ describe("dashboard data", () => {
     const session = await getTestSessionData("session_1");
     expect(session?.session.checks[0]?.latestRunHref).toBe("/runs/failed_run");
     const detail = await getRunDetailData(undefined, "failed_run");
+    expect(detail?.run.targetUrl).toBe("https://preview.example.test");
     expect(mocks.checkRunFindFirst).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: "failed_run" } }),
     );

@@ -1100,6 +1100,11 @@ async function runBrowserCheck(
     ...Object.fromEntries(options.env.map((item) => [item.name, item.value])),
     ...playwrightProcessEnv,
   };
+  const targetUrl = resolveTestSessionTargetUrl(
+    Object.entries(playwrightEnvironment).flatMap(([name, value]) =>
+      typeof value === "string" ? [{ name, value }] : [],
+    ),
+  );
   const [runTimeout, traceModeConfig] = await Promise.all([
     resolveBrowserRunTimeoutConfig(options.rootDir),
     resolveBrowserTraceModeConfig(options.rootDir, playwrightEnvironment),
@@ -1195,6 +1200,7 @@ async function runBrowserCheck(
       artifactOutputDir: artifactPaths.testResultsDir,
       command: `npx playwright test ${check.entrypoint}`,
       exitCode: logs.exitCode,
+      ...(targetUrl ? { targetUrl } : {}),
       ...(typeof runTimeout.configuredTestTimeoutMs === "number"
         ? { configuredTestTimeoutMs: runTimeout.configuredTestTimeoutMs }
         : {}),

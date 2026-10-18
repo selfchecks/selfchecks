@@ -335,6 +335,13 @@ describe("runCheckById", () => {
     });
 
     const spawnCall = mocks.spawn.mock.calls[0];
+    expect(mocks.checkRunUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          result: expect.objectContaining({ targetUrl: "https://example.test" }),
+        }),
+      }),
+    );
     const playwrightCliPath = await realpath(
       path.join(rootDir, "node_modules", "@playwright", "test", "cli.js"),
     );

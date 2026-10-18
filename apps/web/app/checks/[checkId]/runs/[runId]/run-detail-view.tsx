@@ -212,6 +212,21 @@ export function RunDetailView({ accountLabel, detail }: RunDetailViewProps) {
               </div>
 
               <section>
+                <div className="mb-3 flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
+                  <span className="shrink-0 text-slate-400">Target URL</span>
+                  {run.targetUrl ? (
+                    <a
+                      className="min-w-0 break-all text-blue-400 underline-offset-4 hover:text-blue-300 hover:underline"
+                      href={run.targetUrl}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      {run.targetUrl}
+                    </a>
+                  ) : (
+                    <span className="text-slate-500">Not recorded</span>
+                  )}
+                </div>
                 <div className="flex flex-wrap items-center gap-3 rounded-md border border-slate-700 bg-slate-800 px-4 py-3">
                   {run.request ? (
                     <span className="rounded bg-blue-600 px-2 py-1 text-xs font-bold uppercase text-white">
