@@ -1,4 +1,4 @@
-export const SELFCHECKS_PACKAGE_VERSION = "0.1.65";
+export const SELFCHECKS_PACKAGE_VERSION = "0.1.66";
 
 export const starterFiles = {
   ".gitignore": `node_modules/
