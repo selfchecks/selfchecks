@@ -39,12 +39,12 @@ redirects are supported.
 
 ## Connect with an API key
 
-Existing keys retain CLI access and have no MCP permissions.
+Connect new MCP clients through OAuth and select permissions on the consent page.
+Keys generated in dashboard settings provide CLI and API access without MCP permissions.
+The dashboard does not offer MCP key settings.
 
-In dashboard settings, generate an API key with **Allow MCP diagnostics at /mcp**.
-Leave **Allow MCP to trigger checks** unchecked for read access. To restrict access,
-enter the allowed project slugs. Recording application deployments has its own
-optional permission. An empty list allows all projects.
+Previously issued MCP API keys remain supported with their existing permissions
+and project restrictions.
 
 MCP keys cannot authenticate to CLI endpoints. Use a separate key for CI. The
 transitional `SELFCHECKS_API_TOKEN` does not authenticate to MCP. Revoking a key
