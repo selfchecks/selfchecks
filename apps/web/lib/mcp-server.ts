@@ -16,6 +16,7 @@ import {
 } from "./mcp-data";
 import { sanitize } from "./mcp-sanitize";
 import { prisma } from "./prisma";
+import { getTestSession, listTestSessions, listTestSessionRuns } from "./mcp-sessions";
 import { enqueueCheckRun } from "./run-check";
 
 import {
@@ -110,6 +111,28 @@ export function createMcpServer(access: McpAccess) {
       callback,
     );
   }
+  tool(
+    "list_test_sessions",
+    "List all accessible test sessions with reported deployment targetUrl. Optional [from,to) window includes sessions created or executing in the window, including earlier sessions. Page through all results; do not substitute CI URLs for targetUrl.",
+    {
+      ...page,
+      from: z.string().datetime().optional(),
+      to: z.string().datetime().optional(),
+    },
+    async (args) => result(await listTestSessions(access, args)),
+  );
+  tool(
+    "get_test_session",
+    "Read session metadata and latest-attempt counts for currently enabled checks. Stored session status is separate. Inspect summary.complete; use paginated session runs for larger sessions and get_saved_ai_analysis for existing analysis.",
+    { sessionId: id },
+    async ({ sessionId }) => result(await getTestSession(access, sessionId)),
+  );
+  tool(
+    "get_test_session_runs",
+    "Read all attempts of an accessible session, paginated and newest first. Includes current enabled state; null means unknown. Deduplicate by project/check for totals; read get_run for individual evidence.",
+    { sessionId: id, limit: page.limit, offset: page.offset },
+    async (args) => result(await listTestSessionRuns(access, args)),
+  );
   tool(
     "list_checks",
     "List checks and their latest run state, filtered by project.",

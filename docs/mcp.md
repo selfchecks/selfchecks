@@ -216,3 +216,33 @@ without changing the stored history. `deployedAt` is the reported deployment tim
 if omitted, it defaults to receipt time. `recordedAt` records receipt time. Events
 are reported evidence, not independent verification of the deployed version.
 An empty history means no events were reported.
+
+## Test sessions and deployment reports
+
+Three read-only tools support reports across all accessible sessions:
+
+- `list_test_sessions`: optional `project`, `from`, `to`, `limit` and `offset`.
+  The time window is `[from,to)` and includes sessions created in the window,
+  run creation/start/finish events, and runs executing across the window.
+  Earlier sessions are marked `earlier_session_with_activity`. Read every page
+  until `nextOffset` is null. Both the session project and all its run projects
+  must be accessible to the connection.
+- `get_test_session`: `sessionId`; returns metadata, the reported `targetUrl`,
+  stored session status and counts by the latest attempt per project/check.
+  Counts include only currently enabled checks. Missing check configuration
+  makes enabled state unknown. Inspect `summary.complete`: sessions above
+  10,000 attempts require aggregating the paginated runs instead.
+- `get_test_session_runs`: `sessionId`, `limit`, `offset`; returns compact
+  attempts with current enabled state, timestamps, project/check identity and
+  run links. Deduplicate retries before counting checks. Use `get_run` or
+  `get_saved_ai_analysis` for evidence, rather than downloading every log.
+
+Group sessions by their explicit `targetUrl`, preserving path and non-sensitive
+query parameters. Do not substitute pipeline/job/repository URLs or infer the
+application deployment from the test commit. Missing targets belong in a
+separate group. Session status and historical failures are independent of the
+current monitoring state. Responses use the same credential redaction as other
+MCP tools. These operations do not trigger checks or generate AI analysis.
+
+After deploying, refresh the client's tool discovery to expose the new tools.
+No additional OAuth scope or database migration is required.

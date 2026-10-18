@@ -44,6 +44,9 @@ describe("Selfchecks MCP HTTP endpoint", () => {
       const listed = await client.listTools();
       expect(listed.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
+          "list_test_sessions",
+          "get_test_session",
+          "get_test_session_runs",
           "compare_runs",
           "get_saved_ai_analysis",
           "get_failure_context",
@@ -55,7 +58,7 @@ describe("Selfchecks MCP HTTP endpoint", () => {
           "get_deployments",
         ]),
       );
-      expect(listed.tools).toHaveLength(19);
+      expect(listed.tools).toHaveLength(22);
       expect(listed.tools.map((tool) => tool.name)).not.toContain("record_deployment");
       expect(listed.tools.map((tool) => tool.name)).not.toContain(
         "trigger_check_group",
@@ -106,14 +109,14 @@ describe("Selfchecks MCP HTTP endpoint", () => {
       await client.close();
     }
   });
-  it("exposes all 22 tools only with both write permissions", async () => {
+  it("exposes all 25 tools only with both write permissions", async () => {
     mocks.authenticate.mockResolvedValue({
       scopes: ["read", "run", "deploy"],
       projectSlugs: ["shop"],
     });
     const client = await connect();
     try {
-      expect((await client.listTools()).tools).toHaveLength(22);
+      expect((await client.listTools()).tools).toHaveLength(25);
     } finally {
       await client.close();
     }
