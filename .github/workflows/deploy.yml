@@ -320,6 +320,11 @@ jobs:
     timeout-minutes: 20
 
     steps:
+      - name: Checkout smoke test scripts
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare-release.outputs.release_sha }}
+
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
@@ -361,7 +366,7 @@ jobs:
                 npx --yes "create-selfchecks@${RELEASE_VERSION}" --help \
                 >/dev/null 2>&1; then
                 echo "NPM_CONFIG_CACHE=${npm_release_cache}" >> "${GITHUB_ENV}"
-                echo "All release packages and the create-selfchecks executable are available from npm"
+                echo "Release tarballs and generator are available; starter dependencies still need installation"
                 break
               fi
 
@@ -381,7 +386,10 @@ jobs:
         working-directory: ${{ runner.temp }}
         env:
           RELEASE_VERSION: ${{ needs.prepare-release.outputs.release_version }}
-        run: npx --yes "create-selfchecks@${RELEASE_VERSION}" "${RUNNER_TEMP}/selfchecks-starter"
+        run: npx --yes "create-selfchecks@${RELEASE_VERSION}" "${RUNNER_TEMP}/selfchecks-starter" --skip-install
+
+      - name: Install starter dependencies from the registry
+        run: node scripts/install-smoke-starter.mjs "${RUNNER_TEMP}/selfchecks-starter"
 
       - name: Typecheck starter project
         working-directory: ${{ runner.temp }}/selfchecks-starter

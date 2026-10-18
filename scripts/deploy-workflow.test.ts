@@ -28,6 +28,11 @@ describe("deploy workflow", () => {
     );
 
     expect(smokeJob).toContain('npm pack "${package_name}@${RELEASE_VERSION}"');
+    expect(smokeJob).toContain('"${RUNNER_TEMP}/selfchecks-starter" --skip-install');
+    expect(smokeJob).toContain("node scripts/install-smoke-starter.mjs");
+    expect(smokeJob.indexOf("node scripts/install-smoke-starter.mjs")).toBeLessThan(
+      smokeJob.indexOf("run: npm run typecheck"),
+    );
   });
 
   it("deploys without removing persisted files, Docker caches or orphan containers", async () => {
