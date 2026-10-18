@@ -215,15 +215,37 @@ export async function metrics(
 }
 
 export async function readArtifactFile(filePath: string, maxBytes: number, offset = 0) {
+  return readStoredFile(filePath, maxBytes, offset);
+}
+
+function isWithin(root: string, file: string) {
+  const relative = path.relative(root, file);
+  return (
+    relative !== "" &&
+    relative !== ".." &&
+    !relative.startsWith(`..${path.sep}`) &&
+    !path.isAbsolute(relative)
+  );
+}
+
+async function readStoredFile(
+  filePath: string,
+  maxBytes: number,
+  offset = 0,
+  logRoots: string[] = [],
+) {
   const root = await realpath(
     process.env.SELFCHECKS_ARTIFACTS_DIR?.trim() ||
       path.resolve(".selfchecks/artifacts"),
-  );
+  ).catch(() => null);
   const resolved = await realpath(filePath).catch(() => {
     throw new McpToolError("Artifact has expired or is unavailable.");
   });
-  const relative = path.relative(root, resolved);
-  if (relative.startsWith("..") || path.isAbsolute(relative))
+  if (
+    ![...(root ? [root] : []), ...logRoots].some((directory) =>
+      isWithin(directory, resolved),
+    )
+  )
     throw new McpToolError("Artifact is outside the configured artifacts directory.");
   const file = await open(resolved, "r");
   try {
@@ -248,11 +270,54 @@ export async function logs(
   await findRun(access, args.runId);
   const run = await prisma.checkRun.findUnique({
     where: { id: args.runId },
-    select: { logsPath: true },
+    select: {
+      logsPath: true,
+      testSession: { select: { workspacePath: true } },
+      check: { select: { deployment: { select: { source: true } } } },
+    },
   });
   if (!run?.logsPath) return { available: false, reason: "No stored log." };
+  // CLI logs live inside a run's workspace, not the shared artifacts directory.
+  // Grant only the declared log directory for this authorized run, never the workspace.
+  const logRoots: string[] = [];
+  const logPath = path.resolve(run.logsPath);
+  const logDir = path.dirname(logPath);
+  if (
+    path.basename(logPath) === `${args.runId}.log` &&
+    path.basename(logDir) === "runs" &&
+    path.basename(path.dirname(logDir)) === ".selfchecks"
+  ) {
+    const workspaces = [
+      [
+        run.testSession?.workspacePath,
+        process.env.SELFCHECKS_TEST_SESSIONS_DIR?.trim() ||
+          "/app/runtime/test-sessions",
+      ],
+      [
+        run.check?.deployment?.source,
+        process.env.SELFCHECKS_DEPLOYMENTS_DIR?.trim() || "/app/runtime/deployments",
+      ],
+    ];
+    for (const [workspace, storage] of workspaces) {
+      if (!workspace || !storage || !isWithin(path.resolve(workspace), logPath))
+        continue;
+      const [realStorage, realWorkspace, realLogDir] = await Promise.all(
+        [storage, workspace, logDir].map((directory) =>
+          realpath(directory).catch(() => null),
+        ),
+      );
+      if (
+        realStorage &&
+        realWorkspace &&
+        realLogDir &&
+        isWithin(realStorage, realWorkspace) &&
+        isWithin(realWorkspace, realLogDir)
+      )
+        logRoots.push(realLogDir);
+    }
+  }
   // Redact the entire bounded file before pagination so chunk boundaries cannot expose secrets.
-  const file = await readArtifactFile(run.logsPath, 2_000_001);
+  const file = await readStoredFile(run.logsPath, 2_000_001, 0, logRoots);
   if (file.totalBytes > 2_000_000)
     throw new McpToolError("Log exceeds the 2 MB diagnostic limit.");
   const text = redactText(file.buffer.toString("utf8"));

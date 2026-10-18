@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { zipSync, strToU8 } from "fflate";
 const mocks = vi.hoisted(() => ({
   checkFindFirst: vi.fn(),
@@ -50,6 +50,7 @@ function file(bytes: Uint8Array) {
   return close;
 }
 describe("MCP data access", () => {
+  afterEach(() => vi.unstubAllEnvs());
   beforeEach(() => {
     vi.resetAllMocks();
     mocks.realpath.mockImplementation(async (value) => value);
@@ -92,6 +93,69 @@ describe("MCP data access", () => {
       .mockResolvedValueOnce("/private/secret");
     await expect(readArtifactFile("/artifacts/link", 100)).rejects.toThrow("outside");
     expect(mocks.open).not.toHaveBeenCalled();
+  });
+  it("reads run logs from an authorized session workspace outside the artifacts directory", async () => {
+    vi.stubEnv("SELFCHECKS_ARTIFACTS_DIR", "/artifacts");
+    vi.stubEnv("SELFCHECKS_TEST_SESSIONS_DIR", "/sessions");
+    mocks.runFindUnique.mockResolvedValue({
+      logsPath: "/sessions/session/.selfchecks/runs/run.log",
+      testSession: { workspacePath: "/sessions/session" },
+    });
+    file(strToU8("hello\nAuthorization: Bearer hidden"));
+    expect(await logs(access, { runId: "run", offset: 0, limit: 100 })).toMatchObject({
+      text: "hello\nAuthorization: [REDACTED]",
+    });
+  });
+  it("rejects workspace paths and symlinks that escape storage roots", async () => {
+    vi.stubEnv("SELFCHECKS_ARTIFACTS_DIR", "/artifacts");
+    vi.stubEnv("SELFCHECKS_TEST_SESSIONS_DIR", "/sessions");
+    mocks.runFindUnique.mockResolvedValue({
+      logsPath: "/private/.selfchecks/runs/run.log",
+      testSession: { workspacePath: "/private" },
+    });
+    await expect(logs(access, { runId: "run", offset: 0, limit: 100 })).rejects.toThrow(
+      "outside",
+    );
+    mocks.runFindUnique.mockResolvedValue({
+      logsPath: "/sessions/session/.selfchecks/runs/run.log",
+      testSession: { workspacePath: "/sessions/session" },
+    });
+    mocks.realpath.mockImplementation(async (value) =>
+      value.endsWith("run.log") ? "/private/secret" : value,
+    );
+    await expect(logs(access, { runId: "run", offset: 0, limit: 100 })).rejects.toThrow(
+      "outside",
+    );
+    mocks.realpath.mockImplementation(async (value) =>
+      value === "/sessions/session"
+        ? "/sessions/other-session"
+        : value.endsWith("runs")
+          ? "/private/logs"
+          : value,
+    );
+    await expect(logs(access, { runId: "run", offset: 0, limit: 100 })).rejects.toThrow(
+      "outside",
+    );
+    expect(mocks.open).not.toHaveBeenCalled();
+  });
+  it("reads deployment run logs but does not allow other workspace files", async () => {
+    vi.stubEnv("SELFCHECKS_ARTIFACTS_DIR", "/artifacts");
+    vi.stubEnv("SELFCHECKS_DEPLOYMENTS_DIR", "/deployments");
+    mocks.runFindUnique.mockResolvedValue({
+      logsPath: "/deployments/deploy/.selfchecks/runs/run.log",
+      check: { deployment: { source: "/deployments/deploy" } },
+    });
+    file(strToU8("deployment log"));
+    expect(await logs(access, { runId: "run", offset: 0, limit: 100 })).toMatchObject({
+      text: "deployment log",
+    });
+    mocks.runFindUnique.mockResolvedValue({
+      logsPath: "/deployments/deploy/.env",
+      check: { deployment: { source: "/deployments/deploy" } },
+    });
+    await expect(logs(access, { runId: "run", offset: 0, limit: 100 })).rejects.toThrow(
+      "outside",
+    );
   });
   it("redacts a whole log before slicing and paginates beyond 16000 characters", async () => {
     mocks.runFindUnique.mockResolvedValue({ logsPath: "/artifacts/log" });
