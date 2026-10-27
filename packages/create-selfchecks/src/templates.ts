@@ -92,7 +92,7 @@ export function createPackageJson(projectName: string): string {
         typecheck: "tsc --noEmit",
       },
       dependencies: {
-        "@playwright/test": "1.58.2",
+        "@playwright/test": "1.64.1",
       },
       devDependencies: {
         "@selfchecks/selfchecks": SELFCHECKS_PACKAGE_VERSION,

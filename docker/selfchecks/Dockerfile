@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM mcr.microsoft.com/playwright:v1.58.2-noble AS app
+FROM mcr.microsoft.com/playwright:v1.64.1-noble AS app
 
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
