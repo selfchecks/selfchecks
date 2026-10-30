@@ -500,6 +500,8 @@ jobs:
 
           mkdir -p "${tmp_dir}/bootstrap"
           cp docker-compose.prod.yml "${tmp_dir}/docker-compose.prod.yml"
+          mkdir -p "${tmp_dir}/scripts"
+          cp scripts/verify-mptcp-disabled.sh "${tmp_dir}/scripts/verify-mptcp-disabled.sh"
           cp bootstrap/Caddyfile.template "${tmp_dir}/bootstrap/Caddyfile.template"
           cp bootstrap/selfchecks.config.template.json "${tmp_dir}/bootstrap/selfchecks.config.template.json"
 
@@ -730,5 +732,6 @@ jobs:
             docker_cmd compose --env-file .env -f docker-compose.prod.yml restart caddy
           fi
           docker_cmd compose --env-file .env -f docker-compose.prod.yml ps
+          bash ./scripts/verify-mptcp-disabled.sh --env-file .env -f docker-compose.prod.yml
           EOF
           } | ssh -p "${DEPLOY_PORT:-22}" "${DEPLOY_USER}@${DEPLOY_HOST}" "DEPLOY_PATH='${DEPLOY_PATH}' bash -s"

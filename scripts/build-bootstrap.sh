@@ -27,6 +27,9 @@ install -m 0644 \
 install -m 0755 \
   "${REPOSITORY_ROOT}/scripts/install-selfchecks.sh" \
   "${BUNDLE_DIR}/scripts/install-selfchecks.sh"
+install -m 0755 \
+  "${REPOSITORY_ROOT}/scripts/verify-mptcp-disabled.sh" \
+  "${BUNDLE_DIR}/scripts/verify-mptcp-disabled.sh"
 
 install -m 0755 \
   "${REPOSITORY_ROOT}/scripts/install-selfchecks.sh" \

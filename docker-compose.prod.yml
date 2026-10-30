@@ -5,6 +5,8 @@ x-selfchecks-worker-image: &selfchecks-worker-image ghcr.io/selfchecks/selfcheck
 
 services:
   postgres:
+    sysctls:
+      net.mptcp.enabled: "0"
     container_name: selfchecks-prod-postgres
     image: postgres:16-alpine
     restart: unless-stopped
@@ -29,6 +31,8 @@ services:
       - selfchecks-prod-postgres-data:/var/lib/postgresql/data
 
   redis:
+    sysctls:
+      net.mptcp.enabled: "0"
     container_name: selfchecks-prod-redis
     image: redis:7-alpine
     restart: unless-stopped
@@ -46,6 +50,8 @@ services:
       - selfchecks-prod-redis-data:/data
 
   migrate:
+    sysctls:
+      net.mptcp.enabled: "0"
     image: *selfchecks-web-image
     command: ["yarn", "db:migrate:deploy"]
     container_name: selfchecks-prod-migrate
@@ -59,6 +65,8 @@ services:
     restart: "no"
 
   web:
+    sysctls:
+      net.mptcp.enabled: "0"
     image: *selfchecks-web-image
     container_name: selfchecks-prod-web
     depends_on:
@@ -99,6 +107,8 @@ services:
       - ./runtime:/app/runtime
 
   worker:
+    sysctls:
+      net.mptcp.enabled: "0"
     image: *selfchecks-worker-image
     container_name: selfchecks-prod-worker
     init: true
@@ -131,6 +141,8 @@ services:
       - ./runtime:/app/runtime
 
   caddy:
+    sysctls:
+      net.mptcp.enabled: "0"
     container_name: selfchecks-prod-caddy
     depends_on:
       web:

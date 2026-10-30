@@ -4,6 +4,22 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("deploy workflow", () => {
+  it("ships the MPTCP check and runs it after starting the production stack", async () => {
+    const workflow = await readFile(
+      path.join(process.cwd(), ".github/workflows/deploy.yml"),
+      "utf8",
+    );
+    const deployJob = workflow.slice(workflow.indexOf("  deploy:"));
+    expect(deployJob).toContain("cp scripts/verify-mptcp-disabled.sh");
+    expect(
+      deployJob.indexOf("bash ./scripts/verify-mptcp-disabled.sh"),
+    ).toBeGreaterThan(
+      deployJob.indexOf(
+        "docker_cmd compose --env-file .env -f docker-compose.prod.yml up -d",
+      ),
+    );
+  });
+
   it("publishes packages with Yarn so workspace dependencies are resolved", async () => {
     const workflow = await readFile(
       path.join(process.cwd(), ".github/workflows/deploy.yml"),

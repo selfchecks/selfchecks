@@ -24,7 +24,8 @@ for expected_path in \
   selfchecks-bootstrap/docker-compose.prod.yml \
   selfchecks-bootstrap/bootstrap/Caddyfile.template \
   selfchecks-bootstrap/bootstrap/selfchecks.config.template.json \
-  selfchecks-bootstrap/scripts/install-selfchecks.sh; do
+  selfchecks-bootstrap/scripts/install-selfchecks.sh \
+  selfchecks-bootstrap/scripts/verify-mptcp-disabled.sh; do
   grep -Fxq "${expected_path}" <<<"${ARCHIVE_CONTENTS}"
 done
 
@@ -44,6 +45,7 @@ for installed_path in \
   bootstrap/Caddyfile.template \
   bootstrap/selfchecks.config.template.json \
   scripts/install-selfchecks.sh \
+  scripts/verify-mptcp-disabled.sh \
   runtime/Caddyfile \
   runtime/selfchecks.config.json \
   .env; do
