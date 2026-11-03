@@ -65,19 +65,25 @@ describe("worker entrypoint", () => {
         runningRunTimeoutMinutes: 10,
       },
     });
-    mocks.Queue.mockImplementation(() => ({
-      close: mocks.queueClose,
-      setGlobalConcurrency: mocks.queueSetGlobalConcurrency,
-    }));
-    mocks.Worker.mockImplementation(() => ({
-      close: mocks.workerClose,
-      concurrency: 2,
-      on: mocks.workerOn,
-    }));
-    mocks.CheckScheduler.mockImplementation(() => ({
-      close: mocks.schedulerClose,
-      start: mocks.schedulerStart,
-    }));
+    mocks.Queue.mockImplementation(function () {
+      return {
+        close: mocks.queueClose,
+        setGlobalConcurrency: mocks.queueSetGlobalConcurrency,
+      };
+    });
+    mocks.Worker.mockImplementation(function () {
+      return {
+        close: mocks.workerClose,
+        concurrency: 2,
+        on: mocks.workerOn,
+      };
+    });
+    mocks.CheckScheduler.mockImplementation(function () {
+      return {
+        close: mocks.schedulerClose,
+        start: mocks.schedulerStart,
+      };
+    });
     mocks.queueClose.mockResolvedValue(undefined);
     mocks.queueSetGlobalConcurrency.mockResolvedValue(2);
     mocks.readPerformanceRuntimeSettings.mockResolvedValue({

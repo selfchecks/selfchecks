@@ -173,12 +173,12 @@ export const apiRequestSchema = z.object({
   body: z.string().optional(),
   bodyType: z.enum(["FORM", "GRAPHQL", "JSON", "NONE", "RAW"]).optional(),
   followRedirects: z.boolean().optional(),
-  headers: z.record(z.string()).default({}),
+  headers: z.record(z.string(), z.string()).default({}),
   method: z
     .string()
     .min(1)
     .transform((value) => value.toUpperCase()),
-  queryParameters: z.record(z.string()).default({}),
+  queryParameters: z.record(z.string(), z.string()).default({}),
   url: z.string().min(1),
 });
 export type ApiRequest = z.infer<typeof apiRequestSchema>;

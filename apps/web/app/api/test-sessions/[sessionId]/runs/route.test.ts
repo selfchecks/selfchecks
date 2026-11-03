@@ -26,10 +26,12 @@ vi.mock("@/lib/test-session-workspace", async (importOriginal) => {
 });
 
 vi.mock("bullmq", () => ({
-  Queue: mocks.queueConstructor.mockImplementation(() => ({
-    addBulk: mocks.queueAddBulk,
-    close: mocks.queueClose,
-  })),
+  Queue: mocks.queueConstructor.mockImplementation(function () {
+    return {
+      addBulk: mocks.queueAddBulk,
+      close: mocks.queueClose,
+    };
+  }),
 }));
 
 vi.mock("@/lib/prisma", () => ({

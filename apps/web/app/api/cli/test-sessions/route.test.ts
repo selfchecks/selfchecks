@@ -21,10 +21,12 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("bullmq", () => ({
-  Queue: mocks.queueConstructor.mockImplementation(() => ({
-    add: mocks.queueAdd,
-    close: mocks.queueClose,
-  })),
+  Queue: mocks.queueConstructor.mockImplementation(function () {
+    return {
+      add: mocks.queueAdd,
+      close: mocks.queueClose,
+    };
+  }),
 }));
 
 vi.mock("@selfchecks/cli/environment", () => ({
