@@ -71,7 +71,7 @@ describe("deploy workflow", () => {
       "utf8",
     );
     const cliBuildStage = dockerfile.slice(
-      dockerfile.indexOf("FROM node:20.19-bookworm-slim AS cli-build"),
+      dockerfile.indexOf("FROM node:24.22.2-bookworm-slim AS cli-build"),
     );
     const compatibilityBuildIndex = cliBuildStage.indexOf(
       "yarn workspace @selfchecks/selfchecks build",

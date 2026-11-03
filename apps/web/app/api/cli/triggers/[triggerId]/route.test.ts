@@ -9,7 +9,9 @@ vi.mock("@/lib/prisma", () => ({
   prisma: { testSession: { findUnique: mocks.findUnique } },
 }));
 vi.mock("bullmq", () => ({
-  Queue: vi.fn(() => ({ getJob: mocks.getJob, close: mocks.close })),
+  Queue: vi.fn(function () {
+    return { getJob: mocks.getJob, close: mocks.close };
+  }),
 }));
 import { GET } from "./route";
 

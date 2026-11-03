@@ -30,7 +30,7 @@ CMD ["yarn", "workspace", "@selfchecks/web", "start"]
 FROM app AS worker
 CMD ["yarn", "workspace", "@selfchecks/worker", "start"]
 
-FROM node:20.19-bookworm-slim AS cli-build
+FROM node:24.22.2-bookworm-slim AS cli-build
 
 WORKDIR /app
 
@@ -45,7 +45,7 @@ RUN yarn workspace @selfchecks/core build \
   && yarn workspace @selfchecks/cli build \
   && yarn workspaces focus @selfchecks/cli --production
 
-FROM node:20.19-bookworm-slim AS cli
+FROM node:24.22.2-bookworm-slim AS cli
 
 ENV NODE_ENV=production
 
