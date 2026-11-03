@@ -476,11 +476,11 @@ jobs:
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
 
-          if [ -n "${DEPLOY_KNOWN_HOSTS:-}" ]; then
-            printf '%s\n' "${DEPLOY_KNOWN_HOSTS}" >> ~/.ssh/known_hosts
-          else
-            ssh-keyscan -p "${DEPLOY_PORT:-22}" -H "${DEPLOY_HOST}" >> ~/.ssh/known_hosts
+          if [ -z "${DEPLOY_KNOWN_HOSTS:-}" ]; then
+            echo "DEPLOY_KNOWN_HOSTS must contain an already verified server key" >&2
+            exit 1
           fi
+          printf '%s\n' "${DEPLOY_KNOWN_HOSTS}" >> ~/.ssh/known_hosts
 
           chmod 600 ~/.ssh/known_hosts
 

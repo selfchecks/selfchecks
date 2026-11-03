@@ -6,7 +6,7 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 WORKDIR /app
 
-RUN corepack enable
+RUN npm install --global --force corepack@0.35.0 && corepack enable
 
 COPY . .
 
