@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process";
+import { access } from "node:fs/promises";
+import path from "node:path";
 
 import { type Job, type Queue } from "bullmq";
 
@@ -622,18 +624,120 @@ async function installRuntimeDependencies(
     ["install", "--omit=dev", "--no-audit", "--no-fund"],
     rootDir,
     deadline,
-    signal,
+    { signal },
   );
 
   if (checks.some((check) => check.type === "browser")) {
-    await runCommand(
-      "npx",
-      ["playwright", "install", "chromium"],
-      rootDir,
-      deadline,
-      signal,
-    );
+    await ensureChromium(rootDir, deadline, signal);
   }
+}
+
+const chromiumInstallArgs = ["playwright", "install", "chromium"];
+let activeChromiumInstall: Promise<void> | undefined;
+
+async function ensureChromium(
+  rootDir: string,
+  deadline: TestSessionDeadline,
+  signal?: AbortSignal,
+) {
+  const plan = await runCommand(
+    "npx",
+    [...chromiumInstallArgs, "--dry-run"],
+    rootDir,
+    deadline,
+    {
+      captureStdout: true,
+      signal,
+    },
+  );
+  const directories = Array.from(
+    plan.matchAll(/^\s*Install location:[ \t]+(.+)$/gm),
+    (match) => match[1]!.trim(),
+  );
+
+  if (await chromiumIsInstalled(directories)) {
+    return;
+  }
+
+  while (activeChromiumInstall) {
+    await waitForChromiumInstall(activeChromiumInstall, deadline, signal);
+  }
+
+  activeChromiumInstall = installChromiumIfMissing();
+
+  try {
+    await activeChromiumInstall;
+  } finally {
+    activeChromiumInstall = undefined;
+  }
+
+  async function installChromiumIfMissing() {
+    if (!(await chromiumIsInstalled(directories))) {
+      await runCommand("npx", chromiumInstallArgs, rootDir, deadline, {
+        // Other jobs can be using a cached revision without running its installer.
+        env: { ...process.env, PLAYWRIGHT_SKIP_BROWSER_GC: "1" },
+        signal,
+      });
+    }
+  }
+}
+
+async function chromiumIsInstalled(directories: string[]): Promise<boolean> {
+  if (
+    directories.length === 0 ||
+    !directories.every((directory) => path.isAbsolute(directory))
+  ) {
+    return false;
+  }
+
+  try {
+    await Promise.all(
+      directories.map((directory) =>
+        access(path.join(directory, "INSTALLATION_COMPLETE")),
+      ),
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function waitForChromiumInstall(
+  installation: Promise<void>,
+  deadline: TestSessionDeadline,
+  signal?: AbortSignal,
+): Promise<void> {
+  const remainingMs = getRemainingSessionTimeMs(deadline);
+
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(
+      () => finish(new TestSessionTimeoutError(deadline.timeoutMs)),
+      remainingMs,
+    );
+    timeout.unref();
+
+    function finish(error?: Error) {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", cancel);
+      if (error) reject(error);
+      else resolve();
+    }
+
+    function cancel() {
+      finish(new TestSessionCancelledError());
+    }
+
+    signal?.addEventListener("abort", cancel, { once: true });
+    if (signal?.aborted) {
+      cancel();
+    }
+
+    // A failed installer releases the lock so the next job can try again.
+    void installation.then(
+      () => finish(),
+      () => finish(),
+    );
+  });
 }
 
 type TestSessionDeadline = {
@@ -641,21 +745,34 @@ type TestSessionDeadline = {
   timeoutMs: number;
 };
 
+interface RuntimeCommandOptions {
+  captureStdout?: boolean;
+  env?: NodeJS.ProcessEnv;
+  signal?: AbortSignal;
+}
+
 async function runCommand(
   command: string,
   args: string[],
   rootDir: string,
   deadline: TestSessionDeadline,
-  signal?: AbortSignal,
+  { captureStdout, env = process.env, signal }: RuntimeCommandOptions,
 ) {
   const remainingMs = getRemainingSessionTimeMs(deadline);
+  if (signal?.aborted) {
+    throw new TestSessionCancelledError();
+  }
 
-  await new Promise<void>((resolve, reject) => {
+  return new Promise<string>((resolve, reject) => {
     const child = spawn(command, args, {
       cwd: rootDir,
       detached: process.platform !== "win32",
-      env: process.env,
-      stdio: "inherit",
+      env,
+      stdio: captureStdout ? ["ignore", "pipe", "inherit"] : "inherit",
+    });
+    let stdout = "";
+    child.stdout?.setEncoding("utf8").on("data", (chunk: string) => {
+      stdout += chunk;
     });
     let killTimer: NodeJS.Timeout | undefined;
     let settled = false;
@@ -688,7 +805,7 @@ async function runCommand(
       if (error) {
         reject(error);
       } else {
-        resolve();
+        resolve(stdout);
       }
     }
 
