@@ -1,6 +1,19 @@
 import { EventEmitter } from "node:events";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { PassThrough } from "node:stream";
+import { setTimeout as delay } from "node:timers/promises";
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
 
 const mocks = vi.hoisted(() => ({
   checkRunFindFirst: vi.fn(),
@@ -454,6 +467,112 @@ describe("handleCheckJob", () => {
     );
   });
 
+  it.each([
+    { secondRevision: "1248", expectedInstallCount: 1 },
+    { secondRevision: "1208", expectedInstallCount: 2 },
+  ])(
+    "serializes parallel Chromium deployments with second revision $secondRevision",
+    async ({ secondRevision, expectedInstallCount }) => {
+      const cache = await mkdtemp(path.join(tmpdir(), "selfchecks-browser-cache-"));
+      onTestFinished(() => rm(cache, { recursive: true, force: true }));
+      const summary = {
+        checks: [
+          {
+            enabled: true,
+            entrypoint: "homepage.spec.ts",
+            key: "homepage",
+            name: "Homepage",
+            tags: [],
+            type: "browser",
+          },
+        ],
+      };
+      mocks.importCheckDefinitions.mockResolvedValue(summary);
+      mocks.persistDeploySummary.mockResolvedValue(summary);
+
+      let startInstall!: () => void;
+      let finishInstall!: () => void;
+      const started = new Promise<void>((resolve) => {
+        startInstall = resolve;
+      });
+      const installGate = new Promise<void>((resolve) => {
+        finishInstall = resolve;
+      });
+      const installedRevisions: string[] = [];
+      let activeInstalls = 0;
+      let maxActiveInstalls = 0;
+      mocks.spawn.mockImplementation(
+        (command: string, args: string[], { cwd }: { cwd: string }) => {
+          const child = Object.assign(new EventEmitter(), {
+            stdout: new PassThrough(),
+          });
+          const revision = path.basename(cwd) === "storybook" ? secondRevision : "1248";
+          const browsers = [
+            `chromium-${revision}`,
+            `chromium_headless_shell-${revision}`,
+            "ffmpeg-1013",
+          ];
+          if (command === "npm") {
+            setImmediate(() => child.emit("close", 0));
+          } else if (args.includes("--dry-run")) {
+            setImmediate(() => {
+              child.stdout.end(
+                browsers
+                  .map(
+                    (browser) => `  Install location: ${path.join(cache, browser)}\n`,
+                  )
+                  .join(""),
+              );
+              child.emit("close", 0);
+            });
+          } else {
+            installedRevisions.push(revision);
+            activeInstalls += 1;
+            maxActiveInstalls = Math.max(maxActiveInstalls, activeInstalls);
+            startInstall();
+            void installGate
+              .then(async () => {
+                await Promise.all(
+                  browsers.map(async (browser) => {
+                    const directory = path.join(cache, browser);
+                    await mkdir(directory, { recursive: true });
+                    await writeFile(path.join(directory, "INSTALLATION_COMPLETE"), "");
+                  }),
+                );
+                activeInstalls -= 1;
+                child.emit("close", 0);
+              })
+              .catch((error: unknown) => child.emit("error", error));
+          }
+          return child;
+        },
+      );
+
+      const deploy = (projectSlug: string) =>
+        handleDeploymentJob({
+          data: {
+            allowRemovals: false,
+            kind: "deployment",
+            projectSlug,
+            rootDir: path.join(cache, projectSlug),
+          },
+        });
+      const jobs = Promise.allSettled([deploy("account"), deploy("storybook")]);
+      await started;
+      await delay(100);
+      finishInstall();
+
+      expect(await jobs).toEqual([
+        { status: "fulfilled", value: summary },
+        { status: "fulfilled", value: summary },
+      ]);
+      await expect(deploy("x-editor")).resolves.toEqual(summary);
+      expect(maxActiveInstalls).toBe(1);
+      expect(installedRevisions).toHaveLength(expectedInstallCount);
+      expect(new Set(installedRevisions)).toEqual(new Set(["1248", secondRevision]));
+    },
+  );
+
   it("persists DeploymentManifest v1 without reparsing project source", async () => {
     const deploymentManifest = {
       alertChannels: [],
@@ -625,6 +744,14 @@ describe("handleCheckJob", () => {
     );
     expect(mocks.spawn).toHaveBeenNthCalledWith(
       2,
+      "npx",
+      ["playwright", "install", "chromium", "--dry-run"],
+      expect.objectContaining({
+        cwd: "/runtime/test-sessions/session_1",
+      }),
+    );
+    expect(mocks.spawn).toHaveBeenNthCalledWith(
+      3,
       "npx",
       ["playwright", "install", "chromium"],
       expect.objectContaining({
