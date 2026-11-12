@@ -1,6 +1,6 @@
 {
   "name": "create-selfchecks",
-  "version": "0.1.70",
+  "version": "0.1.71",
   "description": "Create a minimal Selfchecks project",
   "license": "Elastic-2.0",
   "type": "module",
