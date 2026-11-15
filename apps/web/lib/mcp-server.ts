@@ -164,7 +164,16 @@ export function createMcpServer(access: McpAccess) {
       to: z.string().datetime().optional(),
       includeResult: z.boolean().optional(),
     },
-    async (args) => result(await listRuns(access, args)),
+    async (args) => {
+      const response = result(await listRuns(access, args));
+      if (args.includeResult !== undefined) return response;
+
+      const data = response.structuredContent?.data as { truncated?: boolean };
+      if (!data.truncated) return response;
+
+      const compact = await listRuns(access, { ...args, includeResult: false });
+      return result({ ...compact, resultOmitted: true });
+    },
   );
   tool(
     "get_run",
