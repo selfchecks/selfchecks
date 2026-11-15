@@ -172,6 +172,7 @@ describe("runCheckById", () => {
     const runId = "run_1";
     const artifactsRootDir = path.join(rootDir, "runtime-artifacts");
     const traceStatusesPath = path.join(artifactsRootDir, runId, "trace-statuses.json");
+    const logsPath = path.join(artifactsRootDir, runId, `${runId}.log`);
     vi.stubEnv("CI", "");
     vi.stubEnv("SELFCHECKS_ARTIFACTS_DIR", artifactsRootDir);
     vi.stubEnv("SELFCHECKS_TRACE_STATUSES_PATH", traceStatusesPath);
@@ -338,6 +339,7 @@ describe("runCheckById", () => {
     expect(mocks.checkRunUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
+          logsPath,
           result: expect.objectContaining({ targetUrl: "https://example.test" }),
         }),
       }),
@@ -384,7 +386,7 @@ describe("runCheckById", () => {
     expect(artifactCreateArgs.data).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          path: path.join(rootDir, ".selfchecks", "runs", `${runId}.log`),
+          path: logsPath,
           type: "LOG",
         }),
         expect.objectContaining({
@@ -405,6 +407,9 @@ describe("runCheckById", () => {
     );
     expect(artifactCreateArgs.data.map((artifact) => artifact.path)).not.toContain(
       sharedTracePath,
+    );
+    await expect(readFile(logsPath, "utf8")).resolves.toContain(
+      "Error: Screenshot comparison failed",
     );
     await expect(readFile(updateScreenshotPath, "utf8")).resolves.toBe(
       "actual screenshot payload",
