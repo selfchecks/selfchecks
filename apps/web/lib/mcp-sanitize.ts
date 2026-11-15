@@ -14,24 +14,26 @@ export function redactText(text: string): string {
     .replace(/(https?:\/\/)[^\s/@]+:[^\s/@]+@/g, "$1[REDACTED]@");
 }
 
-export function sanitize(value: unknown, depth = 0): unknown {
+export function sanitize(value: unknown, depth = 0, truncate = true): unknown {
   if (depth > 12) return "[OMITTED]";
   if (typeof value === "string") {
     // JSON bodies need key-based redaction, including nested objects.
     try {
       const parsed: unknown = JSON.parse(value);
       if (parsed && typeof parsed === "object")
-        return JSON.stringify(sanitize(parsed, depth + 1));
+        return JSON.stringify(sanitize(parsed, depth + 1, truncate));
     } catch {
       /* Plain text. */
     }
     const redacted = redactText(value);
-    return redacted.length > 16_000
+    return truncate && redacted.length > 16_000
       ? `${redacted.slice(0, 16_000)}\n[TRUNCATED]`
       : redacted;
   }
   if (Array.isArray(value))
-    return value.slice(0, 100).map((item) => sanitize(item, depth + 1));
+    return (truncate ? value.slice(0, 100) : value).map((item) =>
+      sanitize(item, depth + 1, truncate),
+    );
   if (value && typeof value === "object") {
     if (value instanceof Date) return value.toISOString();
     const object = value as Record<string, unknown>;
@@ -43,23 +45,18 @@ export function sanitize(value: unknown, depth = 0): unknown {
     ) {
       return { name: object.name, value: "[REDACTED]" };
     }
+    const entries = Object.entries(object);
     return Object.fromEntries(
-      Object.entries(object)
-        .slice(0, 100)
-        .map(([key, item]) => [
+      (truncate ? entries.slice(0, 100) : entries).map(([key, item]) => [
+        key,
+        ["path", "logsPath", "rootDir", "workspacePath", "artifactOutputDir"].includes(
           key,
-          [
-            "path",
-            "logsPath",
-            "rootDir",
-            "workspacePath",
-            "artifactOutputDir",
-          ].includes(key)
-            ? "[OMITTED]"
-            : SENSITIVE.test(key)
-              ? "[REDACTED]"
-              : sanitize(item, depth + 1),
-        ]),
+        )
+          ? "[OMITTED]"
+          : SENSITIVE.test(key)
+            ? "[REDACTED]"
+            : sanitize(item, depth + 1, truncate),
+      ]),
     );
   }
   return value;
