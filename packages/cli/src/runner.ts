@@ -1167,7 +1167,7 @@ async function runBrowserCheck(
     timeout: processTimeout,
   });
   const logsPath = run
-    ? await writeRunLog(options.rootDir, run.id, logs.output)
+    ? await writeRunLog(artifactPaths.logsPath, logs.output)
     : undefined;
   const artifacts = run
     ? await collectRunArtifacts(
@@ -1837,15 +1837,8 @@ function signalChildProcess(
   child.kill(signal);
 }
 
-async function writeRunLog(
-  rootDir: string,
-  runId: string,
-  output: string,
-): Promise<string> {
-  const directory = path.join(rootDir, ".selfchecks", "runs");
-  const filePath = path.join(directory, `${runId}.log`);
-
-  await mkdir(directory, {
+async function writeRunLog(filePath: string, output: string): Promise<string> {
+  await mkdir(path.dirname(filePath), {
     recursive: true,
   });
   await writeFile(filePath, output);
@@ -1955,6 +1948,7 @@ function createBrowserArtifactPaths(rootDir: string, runId: string | undefined) 
   return {
     blobReportDir: path.join(artifactRoot, "blob-report"),
     htmlReportDir: path.join(artifactRoot, "playwright-report"),
+    logsPath: path.join(artifactRoot, `${artifactRunId}.log`),
     performanceCollectorPath: path.join(artifactRoot, "performance-collector.cjs"),
     performanceDir: path.join(artifactRoot, "performance"),
     testResultsDir: path.join(artifactRoot, "test-results"),
