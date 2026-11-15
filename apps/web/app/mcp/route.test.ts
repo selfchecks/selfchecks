@@ -118,9 +118,14 @@ describe("Selfchecks MCP HTTP endpoint", () => {
       const args = { checkId: "track-list", project: "shop", limit: 1 };
       const call = (options: Record<string, unknown>) =>
         client.callTool({ name: "get_check_runs", arguments: { ...args, ...options } });
-      expect((await call({})).structuredContent).toMatchObject({
+      expect((await call({ includeResult: true })).structuredContent).toMatchObject({
         data: { truncated: true },
       });
+      const legacy = (await call({})).structuredContent;
+      expect(legacy).toMatchObject({
+        data: { resultOmitted: true, runs: [{ id: "newer" }], nextOffset: 1 },
+      });
+      expect(JSON.stringify(legacy)).not.toContain('"result"');
       const first = (await call({ includeResult: false })).structuredContent;
       expect(first).toMatchObject({
         data: {
