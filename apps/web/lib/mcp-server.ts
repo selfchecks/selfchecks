@@ -43,7 +43,10 @@ const check = { checkId: id, project };
 const run = { runId: id };
 
 function result(value: unknown): CallToolResult {
-  const sanitized = sanitize(value);
+  return sanitizedResult(sanitize(value));
+}
+
+function sanitizedResult(sanitized: unknown): CallToolResult {
   const data =
     Buffer.byteLength(JSON.stringify(sanitized), "utf8") > 128_000
       ? {
@@ -153,12 +156,13 @@ export function createMcpServer(access: McpAccess) {
   );
   tool(
     "get_check_runs",
-    "Read paginated run history. Date filters refer to run creation time.",
+    "Read paginated run history. Date filters refer to run creation time. Set includeResult to false for metadata-only history.",
     {
       ...check,
       ...page,
       from: z.string().datetime().optional(),
       to: z.string().datetime().optional(),
+      includeResult: z.boolean().optional(),
     },
     async (args) => result(await listRuns(access, args)),
   );
@@ -180,12 +184,31 @@ export function createMcpServer(access: McpAccess) {
   );
   tool(
     "get_run_response",
-    "Read captured API response and stored request configuration. Configuration is not an exact wire request; secrets are redacted.",
-    run,
-    async ({ runId }) => {
+    "Read captured API response and stored request configuration. Set bodyOffset or bodyLimit to page through only the redacted body. Configuration is not an exact wire request.",
+    {
+      ...run,
+      bodyOffset: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
+      bodyLimit: z.number().int().min(1).max(8000).optional(),
+    },
+    async ({ runId, bodyOffset, bodyLimit }) => {
       const data = await findRun(access, runId);
       if ((data.checkSnapshotType ?? data.check?.type) !== "API")
         throw new McpToolError("Run is not an API check.");
+      if (bodyOffset !== undefined || bodyLimit !== undefined) {
+        const captured = data.result as { body?: unknown } | null;
+        const safe = sanitize(captured?.body, 0, false);
+        const body =
+          safe == null ? "" : typeof safe === "string" ? safe : JSON.stringify(safe);
+        const offset = bodyOffset ?? 0;
+        const end = Math.min(offset + (bodyLimit ?? 8000), body.length);
+        return sanitizedResult({
+          body: body.slice(offset, end),
+          bodyOffset: offset,
+          nextBodyOffset: end < body.length ? end : null,
+          totalBodyCharacters: body.length,
+          paginationUnit: "redacted UTF-16 code units",
+        });
+      }
       const config = await prisma.checkRun.findFirst({
         where: { id: data.id },
         select: { checkSnapshotRequest: true, check: { select: { request: true } } },

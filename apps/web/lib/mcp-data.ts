@@ -21,7 +21,7 @@ export function projectWhere(
       : {};
 }
 
-const runSelect = {
+const runMetadataSelect = {
   id: true,
   checkId: true,
   testSessionId: true,
@@ -35,7 +35,6 @@ const runSelect = {
   finishedAt: true,
   durationMs: true,
   errorMessage: true,
-  result: true,
   checkSnapshotKey: true,
   checkSnapshotType: true,
   checkSnapshotName: true,
@@ -56,6 +55,11 @@ const runSelect = {
   },
 } satisfies Prisma.CheckRunSelect;
 
+const runSelect = {
+  ...runMetadataSelect,
+  result: true,
+} satisfies Prisma.CheckRunSelect;
+
 export async function findRun(access: McpAccess, id: string) {
   const run = await prisma.checkRun.findFirst({
     where: { id, project: projectWhere(access) },
@@ -65,7 +69,7 @@ export async function findRun(access: McpAccess, id: string) {
   return run;
 }
 
-export function presentRun(run: Awaited<ReturnType<typeof findRun>>) {
+export function presentRun(run: Omit<Awaited<ReturnType<typeof findRun>>, "result">) {
   const { testSession, ...data } = run;
   return sanitize({
     ...data,
@@ -162,6 +166,7 @@ export async function listRuns(
     offset: number;
     from?: string;
     to?: string;
+    includeResult?: boolean;
   },
 ) {
   const check = await findCheck(access, args.checkId, args.project);
@@ -171,7 +176,7 @@ export async function listRuns(
       project: projectWhere(access),
       createdAt: { gte: args.from, lt: args.to },
     },
-    select: runSelect,
+    select: args.includeResult === false ? runMetadataSelect : runSelect,
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: args.limit + 1,
     skip: args.offset,

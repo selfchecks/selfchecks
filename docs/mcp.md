@@ -95,6 +95,12 @@ omit Origin can authenticate normally. Browser CORS access is not enabled.
 | `trigger_check_group`     | Enabled checks queued within one group, with per-check outcomes. Requires run permission.    |
 | `trigger_check`           | Queued run ID, available only with run permission.                                           |
 
+For automation that enumerates runs, pass `includeResult: false` to `get_check_runs`.
+Follow `nextOffset` for the same date range and fetch only the evidence needed for
+selected runs. To read a large stored API body, call `get_run_response` with
+`bodyOffset: 0` and follow `nextBodyOffset` until it is null. Offsets count UTF-16
+code units in the redacted body. Body pages contain up to 8,000 code units.
+
 Use `project` when identifying a check by its key. Check IDs can be used without a
 project. Project restrictions apply to every check, run and artifact lookup.
 
