@@ -1,5 +1,69 @@
 const SENSITIVE =
   /authorization|cookie|password|passwd|secret|token|api[-_]?key|credential/i;
+const CAPTURE_TRUNCATION = /\n\.\.\. truncated \d+ chars \.\.\.$/;
+const OMITTED = "[OMITTED]";
+
+export function omitBodyFromRunError(message: string): string {
+  // The runner interpolates the full text body into this message.
+  return message.startsWith("TEXT_BODY expected ")
+    ? "TEXT_BODY assertion failed. See assertion results."
+    : message;
+}
+
+function advertisesJson(headers: unknown): boolean {
+  if (!headers || typeof headers !== "object") return false;
+  return Object.entries(headers).some(
+    ([name, value]) =>
+      name.toLowerCase() === "content-type" &&
+      typeof value === "string" &&
+      /(?:\/|\+)json(?:\s*;|\s*$)|\/(?:x-ndjson|json-seq)(?:\s*;|\s*$)/i.test(value),
+  );
+}
+
+function unsafeResponseBody(value: unknown, expectsJson: boolean): boolean {
+  if (typeof value !== "string") return false;
+  if (CAPTURE_TRUNCATION.test(value)) return true;
+  const body = value.trim();
+  const looksLikeJson =
+    body.startsWith("{") ||
+    body.startsWith('"') ||
+    /^\[\s*(?:[[\]{"0-9-]|true|false|null|$)/.test(body);
+  if (!body || (!expectsJson && !looksLikeJson)) return false;
+  try {
+    JSON.parse(body);
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+export function omitUnsafeResponseBodies<T>(result: T): T {
+  if (!result || typeof result !== "object" || Array.isArray(result)) return result;
+  const capture = result as Record<string, unknown>;
+  const expectsJson =
+    advertisesJson(capture.headers) || advertisesJson(capture.responseHeaders);
+  const omitBody = unsafeResponseBody(capture.body, expectsJson);
+  const omitLegacyBody = unsafeResponseBody(capture.responseBody, expectsJson);
+  const assertions = Array.isArray(capture.assertions) ? capture.assertions : undefined;
+  const safeAssertions = assertions?.map((value: unknown) => {
+    if (!value || typeof value !== "object") return value;
+    const assertion = value as Record<string, unknown>;
+    if (
+      assertion.source === "TEXT_BODY" &&
+      typeof assertion.actual === "string" &&
+      (omitBody || omitLegacyBody || unsafeResponseBody(assertion.actual, expectsJson))
+    ) {
+      return { ...assertion, actual: OMITTED };
+    }
+    return value;
+  });
+  return {
+    ...result,
+    ...(omitBody ? { body: OMITTED } : {}),
+    ...(omitLegacyBody ? { responseBody: OMITTED } : {}),
+    ...(safeAssertions ? { assertions: safeAssertions } : {}),
+  };
+}
 
 export function redactText(text: string): string {
   return text
@@ -19,7 +83,7 @@ export function sanitize(value: unknown, depth = 0, truncate = true): unknown {
   if (typeof value === "string") {
     // JSON bodies need key-based redaction, including nested objects.
     try {
-      const parsed: unknown = JSON.parse(value);
+      const parsed: unknown = JSON.parse(value.trim());
       if (parsed && typeof parsed === "object")
         return JSON.stringify(sanitize(parsed, depth + 1, truncate));
     } catch {
@@ -55,7 +119,13 @@ export function sanitize(value: unknown, depth = 0, truncate = true): unknown {
           ? "[OMITTED]"
           : SENSITIVE.test(key)
             ? "[REDACTED]"
-            : sanitize(item, depth + 1, truncate),
+            : sanitize(
+                key === "errorMessage" && typeof item === "string"
+                  ? omitBodyFromRunError(item)
+                  : item,
+                depth + 1,
+                truncate,
+              ),
       ]),
     );
   }

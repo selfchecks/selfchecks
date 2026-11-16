@@ -1,7 +1,28 @@
 import { describe, expect, it } from "vitest";
-import { redactText, sanitize, summarizeMetrics } from "./mcp-sanitize";
+import {
+  omitUnsafeResponseBodies,
+  redactText,
+  sanitize,
+  summarizeMetrics,
+} from "./mcp-sanitize";
 
 describe("MCP evidence", () => {
+  it("omits unreadable JSON in legacy captures and preserves ordinary text and complete JSON", () => {
+    expect(
+      omitUnsafeResponseBodies({
+        responseBody: "Service unavailable",
+        responseHeaders: { "Content-Type": "application/problem+json; charset=utf-8" },
+      }),
+    ).toMatchObject({ responseBody: "[OMITTED]" });
+    expect(omitUnsafeResponseBodies({ body: '  ["unfinished' }).body).toBe("[OMITTED]");
+    expect(omitUnsafeResponseBodies({ body: "[ready] Service available" }).body).toBe(
+      "[ready] Service available",
+    );
+    expect(omitUnsafeResponseBodies({ body: '{"ready":true}' }).body).toBe(
+      '{"ready":true}',
+    );
+  });
+
   it("redacts credentials in structured headers, nested JSON bodies, URLs and logs", () => {
     const value = sanitize({
       headers: [{ name: "Authorization", value: "secret" }],

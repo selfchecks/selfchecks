@@ -14,7 +14,7 @@ import {
   readArtifactFile,
   trace,
 } from "./mcp-data";
-import { sanitize } from "./mcp-sanitize";
+import { omitUnsafeResponseBodies, sanitize } from "./mcp-sanitize";
 import { prisma } from "./prisma";
 import { getTestSession, listTestSessions, listTestSessionRuns } from "./mcp-sessions";
 import { enqueueCheckRun } from "./run-check";
@@ -203,9 +203,10 @@ export function createMcpServer(access: McpAccess) {
       const data = await findRun(access, runId);
       if ((data.checkSnapshotType ?? data.check?.type) !== "API")
         throw new McpToolError("Run is not an API check.");
+      const response = omitUnsafeResponseBodies(data.result);
       if (bodyOffset !== undefined || bodyLimit !== undefined) {
-        const captured = data.result as { body?: unknown } | null;
-        const safe = sanitize(captured?.body, 0, false);
+        const captured = response as { body?: unknown; responseBody?: unknown } | null;
+        const safe = sanitize(captured?.body ?? captured?.responseBody, 0, false);
         const body =
           safe == null ? "" : typeof safe === "string" ? safe : JSON.stringify(safe);
         const offset = bodyOffset ?? 0;
@@ -223,7 +224,7 @@ export function createMcpServer(access: McpAccess) {
         select: { checkSnapshotRequest: true, check: { select: { request: true } } },
       });
       return result({
-        response: data.result,
+        response,
         requestConfiguration: config?.checkSnapshotRequest ?? config?.check?.request,
         requestMeaning: config?.checkSnapshotRequest
           ? "Run snapshot, before environment interpolation."
