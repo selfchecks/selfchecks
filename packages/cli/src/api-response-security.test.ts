@@ -10,6 +10,12 @@ describe("bounded API response capture", () => {
       ),
     ).toBe("Привет");
   });
+  it("matches Response.text UTF-8 BOM handling", async () => {
+    const body = new Uint8Array([0xef, 0xbb, 0xbf, 0x7b, 0x7d]);
+    expect(
+      await readBoundedApiResponse(new Response(body), new AbortController().signal),
+    ).toBe(await new Response(body).text());
+  });
   it("rejects oversized bodies instead of asserting on truncated content", async () => {
     await expect(
       readBoundedApiResponse(

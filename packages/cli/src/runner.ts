@@ -1390,7 +1390,7 @@ export async function readBoundedApiResponse(response: Response, signal: AbortSi
       }
       chunks.push(value);
     }
-    return Buffer.concat(chunks).toString("utf8");
+    return new TextDecoder().decode(Buffer.concat(chunks));
   } finally {
     signal.removeEventListener("abort", onAbort);
     reader.releaseLock();
