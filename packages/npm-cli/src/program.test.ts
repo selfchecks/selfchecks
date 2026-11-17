@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createRemoteSelfchecksProgram } from "./program.js";
+import { createRemoteSelfchecksProgram, parseEnv, parseEnvJson } from "./program.js";
 import { SELFCHECKS_CLI_VERSION } from "./version.js";
 
 const successfulSummary = {
@@ -65,7 +65,11 @@ describe("createRemoteSelfchecksProgram", () => {
       }),
     );
     expect(write).toHaveBeenCalledWith(
-      expect.objectContaining({ command: "test", status: "completed" }),
+      expect.objectContaining({
+        command: "test",
+        status: "completed",
+        env: [{ name: "ENVIRONMENT_URL", value: "[REDACTED]" }],
+      }),
     );
   });
 
@@ -160,4 +164,13 @@ describe("createRemoteSelfchecksProgram", () => {
       "SELFCHECKS_URL and SELFCHECKS_API_TOKEN are required for trigger.",
     );
   });
+});
+
+it("does not echo malformed environment secrets", () => {
+  expect(() => parseEnv("private-secret")).toThrow(
+    "Expected environment value in NAME=value format.",
+  );
+  expect(() => parseEnvJson("private-secret")).toThrow(
+    "SELFCHECKS_ENV_JSON must contain valid JSON.",
+  );
 });

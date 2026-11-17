@@ -1,3 +1,8 @@
+import fs from "node:fs";
+import path from "node:path";
+
+import { hasAdminEnvCredentials } from "@/lib/auth";
+import { getRuntimeConfigPath } from "@/lib/runtime-config";
 import { NextResponse } from "next/server";
 
 import {
@@ -31,7 +36,7 @@ function assertSetupToken(formData: FormData) {
   const expectedToken = process.env.SELFCHECKS_SETUP_TOKEN;
 
   if (!expectedToken) {
-    return;
+    throw new Error("Setup token is not configured.");
   }
 
   if (formData.get("setupToken") !== expectedToken) {
@@ -48,8 +53,9 @@ function redirectWithError(request: Request, error: unknown) {
 }
 
 export async function POST(request: Request) {
+  let lockPath: string | undefined;
   try {
-    if (isRuntimeAdminConfigured()) {
+    if (isRuntimeAdminConfigured() || hasAdminEnvCredentials()) {
       return NextResponse.redirect(new URL("/login", request.url), 303);
     }
 
@@ -72,6 +78,16 @@ export async function POST(request: Request) {
 
     if (password !== passwordConfirm) {
       throw new Error("Password confirmation does not match.");
+    }
+
+    const configPath = getRuntimeConfigPath();
+    if (!configPath) throw new Error("Runtime config path is not configured.");
+    fs.mkdirSync(path.dirname(configPath), { recursive: true });
+    const candidateLockPath = `${configPath}.setup.lock`;
+    fs.closeSync(fs.openSync(candidateLockPath, "wx", 0o600));
+    lockPath = candidateLockPath;
+    if (isRuntimeAdminConfigured() || hasAdminEnvCredentials()) {
+      return NextResponse.redirect(new URL("/login", request.url), 303);
     }
 
     const now = new Date().toISOString();
@@ -106,5 +122,7 @@ export async function POST(request: Request) {
     );
   } catch (error) {
     return redirectWithError(request, error);
+  } finally {
+    if (lockPath) fs.unlinkSync(lockPath);
   }
 }

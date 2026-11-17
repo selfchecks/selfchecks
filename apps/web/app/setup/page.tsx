@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
+import { hasAdminEnvCredentials } from "@/lib/auth";
 import { ServiceMark } from "@/components/service-mark";
 import { isRuntimeAdminConfigured, readRuntimeConfig } from "@/lib/runtime-config";
 
@@ -10,7 +11,7 @@ type SetupPageProps = {
 };
 
 export default async function SetupPage({ searchParams }: SetupPageProps) {
-  if (isRuntimeAdminConfigured()) {
+  if (isRuntimeAdminConfigured() || hasAdminEnvCredentials()) {
     redirect("/login");
   }
 

@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { LoginForm } from "./login-form";
+import { LoginForm, safeLoginDestination } from "./login-form";
 
 const push = vi.fn();
 const refresh = vi.fn();
@@ -30,6 +30,7 @@ describe("LoginForm", () => {
   it("submits credentials and redirects on success", async () => {
     signIn.mockResolvedValue({
       ok: true,
+      url: "http://localhost:3000/checks",
     });
 
     render(<LoginForm />);
@@ -61,5 +62,25 @@ describe("LoginForm", () => {
 
     expect(await screen.findByText("Invalid login or password.")).toBeTruthy();
     expect(push).not.toHaveBeenCalled();
+  });
+});
+
+describe("safeLoginDestination", () => {
+  it.each([
+    "javascript:alert(1)",
+    "https://other.test/a",
+    "//other.test/a",
+    "/\\other.test",
+    undefined,
+  ])("rejects unsafe result %s", (value) => {
+    expect(safeLoginDestination(value, "https://checks.test")).toBe("/");
+  });
+  it("preserves same-origin query and fragment", () => {
+    expect(
+      safeLoginDestination(
+        "https://checks.test/checks?q=1#details",
+        "https://checks.test",
+      ),
+    ).toBe("/checks?q=1#details");
   });
 });

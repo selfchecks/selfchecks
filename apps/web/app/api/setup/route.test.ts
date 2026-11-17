@@ -93,4 +93,40 @@ describe("setup route", () => {
     );
     expect(fs.existsSync(configPath)).toBe(false);
   });
+  it("does not replace an environment administrator", async () => {
+    const { configPath } = createRuntimePaths();
+    vi.stubEnv("SELFCHECKS_CONFIG_PATH", configPath);
+    vi.stubEnv("SELFCHECKS_ADMIN_LOGIN", "existing");
+    vi.stubEnv("SELFCHECKS_ADMIN_PASSWORD", "existing-secret");
+    const response = await POST(createSetupRequest({}));
+    expect(response.headers.get("location")).toBe("http://localhost/login");
+    expect(fs.existsSync(configPath)).toBe(false);
+  });
+  it("fails closed without a setup token", async () => {
+    const { configPath } = createRuntimePaths();
+    vi.stubEnv("SELFCHECKS_CONFIG_PATH", configPath);
+    vi.stubEnv("SELFCHECKS_SETUP_TOKEN", "");
+    const response = await POST(createSetupRequest({}));
+    expect(response.headers.get("location")).toContain("Setup+token+is+not+configured");
+    expect(fs.existsSync(configPath)).toBe(false);
+  });
+  it("does not overwrite configuration while another setup owns the lock", async () => {
+    const { configPath } = createRuntimePaths();
+    vi.stubEnv("SELFCHECKS_CONFIG_PATH", configPath);
+    vi.stubEnv("SELFCHECKS_SETUP_TOKEN", "setup-token");
+    fs.writeFileSync(`${configPath}.setup.lock`, "other setup");
+    const response = await POST(
+      createSetupRequest({
+        setupToken: "setup-token",
+        login: "admin",
+        password: "secret123",
+        passwordConfirm: "secret123",
+        domain: "checks.example.com",
+        caddyEmail: "ops@example.com",
+      }),
+    );
+    expect(response.status).toBe(303);
+    expect(fs.existsSync(configPath)).toBe(false);
+    expect(fs.readFileSync(`${configPath}.setup.lock`, "utf8")).toBe("other setup");
+  });
 });

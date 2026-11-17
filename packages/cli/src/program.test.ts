@@ -439,7 +439,7 @@ describe("createSelfchecksProgram", () => {
         env: [
           {
             name: "ENVIRONMENT_URL",
-            value: "https://example.test",
+            value: "[REDACTED]",
           },
         ],
         projectSlug: "default",

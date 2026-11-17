@@ -6,6 +6,27 @@ import { type FormEvent, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 
+export function safeLoginDestination(value: string | null | undefined, origin: string) {
+  if (
+    !value ||
+    [...value].some(
+      (character) =>
+        character === "\\" ||
+        character.charCodeAt(0) <= 32 ||
+        character.charCodeAt(0) === 127,
+    )
+  )
+    return "/";
+  try {
+    const url = new URL(value, origin);
+    return url.origin === origin && ["http:", "https:"].includes(url.protocol)
+      ? `${url.pathname}${url.search}${url.hash}`
+      : "/";
+  } catch {
+    return "/";
+  }
+}
+
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -29,7 +50,7 @@ export function LoginForm() {
     setIsPending(false);
 
     if (result?.ok) {
-      router.push(callbackUrl);
+      router.push(safeLoginDestination(result.url, window.location.origin));
       router.refresh();
       return;
     }
