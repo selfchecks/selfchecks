@@ -35,7 +35,7 @@ function readRequiredString(formData: FormData, name: string) {
 function assertSetupToken(formData: FormData) {
   const expectedToken = process.env.SELFCHECKS_SETUP_TOKEN;
 
-  if (!expectedToken) {
+  if (!expectedToken?.trim()) {
     throw new Error("Setup token is not configured.");
   }
 

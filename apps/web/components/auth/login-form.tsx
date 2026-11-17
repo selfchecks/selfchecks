@@ -19,7 +19,9 @@ export function safeLoginDestination(value: string | null | undefined, origin: s
     return "/";
   try {
     const url = new URL(value, origin);
-    return url.origin === origin && ["http:", "https:"].includes(url.protocol)
+    return url.origin === origin &&
+      !url.pathname.startsWith("//") &&
+      ["http:", "https:"].includes(url.protocol)
       ? `${url.pathname}${url.search}${url.hash}`
       : "/";
   } catch {

@@ -69,6 +69,7 @@ describe("safeLoginDestination", () => {
   it.each([
     "javascript:alert(1)",
     "https://other.test/a",
+    "https://checks.test//other.test/a",
     "//other.test/a",
     "/\\other.test",
     undefined,
