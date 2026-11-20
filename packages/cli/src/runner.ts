@@ -183,6 +183,8 @@ export type CollectedRunArtifact = {
 };
 
 const MAX_RESPONSE_BODY_CHARS = 20_000;
+export const MAX_API_RESPONSE_BYTES = 10 * 1024 * 1024;
+const DEFAULT_API_REQUEST_TIMEOUT_MS = 60_000;
 const DEFAULT_ARTIFACTS_DIR = ".selfchecks/artifacts";
 const DEFAULT_RETRY_BACKOFF_SECONDS = 60;
 const DEFAULT_RETRY_MAX_DURATION_SECONDS = 600;
@@ -1274,12 +1276,15 @@ async function runApiCheck(
   const controller = new AbortController();
   const handleCancellation = () => controller.abort();
   options.signal?.addEventListener("abort", handleCancellation, { once: true });
-  const timeoutTimer =
-    typeof remainingSessionMs === "number"
-      ? setTimeout(() => controller.abort(), remainingSessionMs)
-      : undefined;
+  if (options.signal?.aborted) handleCancellation();
+  const timeoutTimer = setTimeout(
+    () => controller.abort(),
+    remainingSessionMs ?? DEFAULT_API_REQUEST_TIMEOUT_MS,
+  );
   timeoutTimer?.unref?.();
   let response: Response;
+  let responseBody: string;
+  let responseTimeMs: number;
   const requestStartedAt = Date.now();
 
   try {
@@ -1290,6 +1295,8 @@ async function runApiCheck(
       ...(request.followRedirects === false ? { redirect: "manual" as const } : {}),
       signal: controller.signal,
     });
+    responseTimeMs = Date.now() - requestStartedAt;
+    responseBody = await readBoundedApiResponse(response, controller.signal);
   } catch (error) {
     if (options.signal?.aborted) {
       throw new TestSessionCancelledError();
@@ -1307,8 +1314,6 @@ async function runApiCheck(
 
     options.signal?.removeEventListener("abort", handleCancellation);
   }
-  const responseTimeMs = Date.now() - requestStartedAt;
-  const responseBody = await response.text();
   const body =
     responseBody.length > MAX_RESPONSE_BODY_CHARS
       ? `${responseBody.slice(0, MAX_RESPONSE_BODY_CHARS)}\n... truncated ${
@@ -1343,7 +1348,11 @@ async function runApiCheck(
     artifacts: [],
     errorMessage,
     resultJson: {
-      assertions: assertionResults,
+      assertions: assertionResults.map((assertion) => ({
+        ...assertion,
+        actual: boundedAssertionValue(assertion.actual),
+        target: boundedAssertionValue(assertion.target),
+      })),
       body,
       headers: Object.fromEntries(response.headers.entries()),
       responseTimeMs,
@@ -1353,6 +1362,52 @@ async function runApiCheck(
     },
     status: errorMessage ? "failed" : "passed",
   };
+}
+
+export async function readBoundedApiResponse(response: Response, signal: AbortSignal) {
+  const reader = response.body?.getReader();
+  if (!reader) return "";
+  let body = Buffer.alloc(0);
+  let length = 0;
+  const onAbort = () => {
+    void reader.cancel().catch(() => {});
+  };
+  signal.addEventListener("abort", onAbort, { once: true });
+  try {
+    if (signal.aborted) onAbort();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (signal.aborted) throw new Error("API response read was aborted.");
+      if (done) break;
+      const end = length + value.byteLength;
+      if (end > MAX_API_RESPONSE_BYTES) {
+        onAbort();
+        throw new Error(`API response exceeds ${MAX_API_RESPONSE_BYTES} bytes.`);
+      }
+      if (end > body.length) {
+        const capacity = Math.min(
+          MAX_API_RESPONSE_BYTES,
+          Math.max(end, body.length * 2),
+        );
+        const expanded = Buffer.allocUnsafe(capacity);
+        body.copy(expanded, 0, 0, length);
+        body = expanded;
+      }
+      body.set(value, length);
+      length = end;
+    }
+    return new TextDecoder().decode(body.subarray(0, length));
+  } finally {
+    signal.removeEventListener("abort", onAbort);
+    reader.releaseLock();
+  }
+}
+
+function boundedAssertionValue(value: unknown): unknown {
+  const text = typeof value === "string" ? value : JSON.stringify(value);
+  return text && text.length > MAX_RESPONSE_BODY_CHARS
+    ? `${text.slice(0, MAX_RESPONSE_BODY_CHARS)}... truncated ...`
+    : value;
 }
 
 type AssertionContext = {
@@ -1639,7 +1694,8 @@ function hasHeader(headers: Record<string, string>, name: string): boolean {
 }
 
 function formatAssertionValue(value: unknown): string {
-  return typeof value === "string" ? value : JSON.stringify(value);
+  const bounded = boundedAssertionValue(value);
+  return typeof bounded === "string" ? bounded : JSON.stringify(bounded);
 }
 
 function assertTestSessionDeadline(

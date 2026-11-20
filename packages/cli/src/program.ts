@@ -83,7 +83,7 @@ export function parseEnv(value: string): EnvVar {
   const separatorIndex = value.indexOf("=");
 
   if (separatorIndex <= 0) {
-    throw new Error(`Expected environment value in NAME=value format: ${value}`);
+    throw new Error("Expected environment value in NAME=value format.");
   }
 
   return {
@@ -121,7 +121,12 @@ export function parseEnvJson(value: string | undefined): EnvVar[] {
     return [];
   }
 
-  const parsed = JSON.parse(value) as unknown;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new Error("SELFCHECKS_ENV_JSON must contain valid JSON.");
+  }
 
   if (!Array.isArray(parsed)) {
     throw new Error("SELFCHECKS_ENV_JSON must contain an array.");
@@ -399,7 +404,7 @@ export function createSelfchecksProgram(
           checkKeys: commandOptions.check,
           checkTypes,
           command: "test",
-          env,
+          env: env.map(({ name }) => ({ name, value: "[REDACTED]" })),
           projectSlug: commandOptions.project,
           record: Boolean(commandOptions.record),
           reporter: commandOptions.reporter,
