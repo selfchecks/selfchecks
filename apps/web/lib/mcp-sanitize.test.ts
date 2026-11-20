@@ -1,7 +1,37 @@
 import { describe, expect, it } from "vitest";
-import { redactText, sanitize, summarizeMetrics } from "./mcp-sanitize";
+import {
+  omitUnsafeResponseBodies,
+  redactText,
+  sanitize,
+  summarizeMetrics,
+} from "./mcp-sanitize";
 
 describe("MCP evidence", () => {
+  it("summarizes response assertion failures without interpolated values", () => {
+    expect(
+      sanitize({ errorMessage: "JSON_BODY expected EQUALS 42, received 43." }),
+    ).toEqual({ errorMessage: "JSON_BODY assertion failed. See assertion results." });
+    expect(
+      sanitize({ errorMessage: "HEADERS expected EQUALS plain, received HTML." }),
+    ).toEqual({ errorMessage: "HEADERS assertion failed. See assertion results." });
+  });
+
+  it("omits unreadable JSON in legacy captures and preserves ordinary text and complete JSON", () => {
+    expect(
+      omitUnsafeResponseBodies({
+        responseBody: "Service unavailable",
+        responseHeaders: { "Content-Type": "application/problem+json; charset=utf-8" },
+      }),
+    ).toMatchObject({ responseBody: "[OMITTED]" });
+    expect(omitUnsafeResponseBodies({ body: '  ["unfinished' }).body).toBe("[OMITTED]");
+    expect(omitUnsafeResponseBodies({ body: "[ready] Service available" }).body).toBe(
+      "[ready] Service available",
+    );
+    expect(omitUnsafeResponseBodies({ body: '{"ready":true}' }).body).toBe(
+      '{"ready":true}',
+    );
+  });
+
   it("redacts credentials in structured headers, nested JSON bodies, URLs and logs", () => {
     const value = sanitize({
       headers: [{ name: "Authorization", value: "secret" }],

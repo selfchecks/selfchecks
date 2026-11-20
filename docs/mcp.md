@@ -101,6 +101,9 @@ selected runs. For older clients that omit `includeResult`, a full page that
 exceeds the MCP response limit falls back to metadata with `resultOmitted: true`. To read a large stored API body, call `get_run_response` with
 `bodyOffset: 0` and follow `nextBodyOffset` until it is null. Offsets count UTF-16
 code units in the redacted body. Body pages contain up to 8,000 code units.
+MCP displays `[OMITTED]` for stored body excerpts, malformed JSON bodies and
+truncated response assertion values. It redacts assertion values for sensitive
+JSON properties and headers. Response assertion errors omit the compared values.
 
 Use `project` when identifying a check by its key. Check IDs can be used without a
 project. Project restrictions apply to every check, run and artifact lookup.

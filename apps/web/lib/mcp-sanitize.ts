@@ -1,5 +1,82 @@
 const SENSITIVE =
   /authorization|cookie|password|passwd|secret|token|api[-_]?key|credential/i;
+const CAPTURE_TRUNCATION = /\n\.\.\. truncated \d+ chars \.\.\.$/;
+const ASSERTION_TRUNCATION = /\.\.\. truncated \.\.\.$/;
+const OMITTED = "[OMITTED]";
+
+export function summarizeResponseAssertionError(message: string): string {
+  const source = /^(TEXT_BODY|JSON_BODY|HEADERS) expected /.exec(message)?.[1];
+  return source ? `${source} assertion failed. See assertion results.` : message;
+}
+
+function advertisesJson(headers: unknown): boolean {
+  if (!headers || typeof headers !== "object") return false;
+  return Object.entries(headers).some(
+    ([name, value]) =>
+      name.toLowerCase() === "content-type" &&
+      typeof value === "string" &&
+      /(?:\/|\+)json(?:\s*;|\s*$)|\/(?:x-ndjson|json-seq)(?:\s*;|\s*$)/i.test(value),
+  );
+}
+
+function unsafeResponseBody(value: unknown, expectsJson: boolean): boolean {
+  if (typeof value !== "string") return false;
+  if (CAPTURE_TRUNCATION.test(value)) return true;
+  const body = value.trim();
+  const looksLikeJson =
+    body.startsWith("{") ||
+    body.startsWith('"') ||
+    /^\[\s*(?:[[\]{"0-9-]|true|false|null|$)/.test(body);
+  if (!body || (!expectsJson && !looksLikeJson)) return false;
+  try {
+    JSON.parse(body);
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+export function omitUnsafeResponseBodies<T>(result: T): T {
+  if (!result || typeof result !== "object" || Array.isArray(result)) return result;
+  const capture = result as Record<string, unknown>;
+  const expectsJson =
+    advertisesJson(capture.headers) || advertisesJson(capture.responseHeaders);
+  const omitBody = unsafeResponseBody(capture.body, expectsJson);
+  const omitLegacyBody = unsafeResponseBody(capture.responseBody, expectsJson);
+  const assertions = Array.isArray(capture.assertions) ? capture.assertions : undefined;
+  const safeAssertions = assertions?.map((value: unknown) => {
+    if (!value || typeof value !== "object") return value;
+    const assertion = value as Record<string, unknown>;
+    const { actual, property, source, target } = assertion;
+    if (
+      (source === "JSON_BODY" || source === "HEADERS") &&
+      typeof property === "string" &&
+      SENSITIVE.test(property)
+    ) {
+      return { ...assertion, actual: "[REDACTED]", target: "[REDACTED]" };
+    }
+    if (source !== "TEXT_BODY" && source !== "JSON_BODY" && source !== "HEADERS")
+      return value;
+    const omitActual =
+      typeof actual === "string" &&
+      (ASSERTION_TRUNCATION.test(actual) ||
+        (source === "TEXT_BODY" &&
+          (omitBody || omitLegacyBody || unsafeResponseBody(actual, expectsJson))));
+    const omitTarget = typeof target === "string" && ASSERTION_TRUNCATION.test(target);
+    if (!omitActual && !omitTarget) return value;
+    return {
+      ...assertion,
+      ...(omitActual ? { actual: OMITTED } : {}),
+      ...(omitTarget ? { target: OMITTED } : {}),
+    };
+  });
+  return {
+    ...result,
+    ...(omitBody ? { body: OMITTED } : {}),
+    ...(omitLegacyBody ? { responseBody: OMITTED } : {}),
+    ...(safeAssertions ? { assertions: safeAssertions } : {}),
+  };
+}
 
 export function redactText(text: string): string {
   return text
@@ -19,7 +96,7 @@ export function sanitize(value: unknown, depth = 0, truncate = true): unknown {
   if (typeof value === "string") {
     // JSON bodies need key-based redaction, including nested objects.
     try {
-      const parsed: unknown = JSON.parse(value);
+      const parsed: unknown = JSON.parse(value.trim());
       if (parsed && typeof parsed === "object")
         return JSON.stringify(sanitize(parsed, depth + 1, truncate));
     } catch {
@@ -55,7 +132,13 @@ export function sanitize(value: unknown, depth = 0, truncate = true): unknown {
           ? "[OMITTED]"
           : SENSITIVE.test(key)
             ? "[REDACTED]"
-            : sanitize(item, depth + 1, truncate),
+            : sanitize(
+                key === "errorMessage" && typeof item === "string"
+                  ? summarizeResponseAssertionError(item)
+                  : item,
+                depth + 1,
+                truncate,
+              ),
       ]),
     );
   }

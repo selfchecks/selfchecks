@@ -19,8 +19,13 @@ vi.mock("@/lib/mcp-data", async (importOriginal) => ({
 vi.mock("@/lib/run-check", () => ({ enqueueCheckRun: mocks.enqueue }));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
+    artifact: { findFirst: vi.fn().mockResolvedValue(null) },
     check: { findFirst: mocks.findCheck },
-    checkRun: { findFirst: mocks.runFindFirst, findMany: mocks.runFindMany },
+    checkRun: {
+      findFirst: mocks.runFindFirst,
+      findMany: mocks.runFindMany,
+      findUnique: vi.fn().mockResolvedValue(null),
+    },
   },
 }));
 import { POST, GET } from "./route";
@@ -185,6 +190,96 @@ describe("Selfchecks MCP HTTP endpoint", () => {
         body: expected.slice(150_000),
         nextBodyOffset: null,
       });
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("omits incomplete captured bodies from MCP response and run views", async () => {
+    const prefix = '{"items":["a complete item","an incomplete item';
+    const storedResult = {
+      body: prefix + "\n... truncated 104 chars ...",
+      headers: { "content-type": "text/plain" },
+      status: 200,
+      assertions: [
+        { source: "TEXT_BODY", comparison: "CONTAINS", passed: false, actual: prefix },
+        {
+          source: "JSON_BODY",
+          property: "$.items",
+          actual: prefix + "... truncated ...",
+        },
+        { source: "JSON_BODY", property: "$.apiToken", actual: "fixture value" },
+        { source: "JSON_BODY", property: "$.ready", actual: true },
+      ],
+    };
+    const run = {
+      id: "run",
+      checkSnapshotType: "API",
+      status: "FAILED",
+      artifacts: [],
+      result: storedResult,
+      errorMessage:
+        "TEXT_BODY expected CONTAINS another item, received " + prefix + ".",
+    };
+    mocks.runFindFirst.mockResolvedValue(run);
+    mocks.runFindMany.mockResolvedValue([run]);
+    mocks.findCheck.mockResolvedValue({ id: "check" });
+    const client = await connect();
+    try {
+      const call = (name: string, args: Record<string, unknown>) =>
+        client.callTool({ name, arguments: args });
+      const page = await call("get_run_response", { runId: "run", bodyOffset: 0 });
+      expect(page.structuredContent).toMatchObject({
+        data: { body: "[OMITTED]", nextBodyOffset: null, totalBodyCharacters: 9 },
+      });
+      const detail = await call("get_run_response", { runId: "run" });
+      expect(detail.structuredContent).toMatchObject({
+        data: {
+          response: {
+            body: "[OMITTED]",
+            status: 200,
+            assertions: [
+              { actual: "[OMITTED]", comparison: "CONTAINS", passed: false },
+              { actual: "[OMITTED]", property: "$.items" },
+              { actual: "[REDACTED]", property: "$.apiToken" },
+              { actual: true, property: "$.ready" },
+            ],
+          },
+        },
+      });
+      const evidence = await call("get_run", { runId: "run" });
+      expect(evidence.structuredContent).toMatchObject({
+        data: {
+          result: { body: "[OMITTED]" },
+          errorMessage: "TEXT_BODY assertion failed. See assertion results.",
+        },
+      });
+      const history = await call("get_check_runs", {
+        checkId: "check",
+        includeResult: true,
+      });
+      expect(history.structuredContent).toMatchObject({
+        data: { runs: [{ result: { body: "[OMITTED]" } }] },
+      });
+      const diagnosis = await call("get_failure_context", { runId: "run" });
+      expect(diagnosis.structuredContent).toMatchObject({
+        data: { run: { result: { body: "[OMITTED]" } } },
+      });
+      mocks.runFindMany.mockResolvedValueOnce([
+        { id: run.id, status: run.status, errorMessage: run.errorMessage },
+      ]);
+      const execution = await call("get_execution_status", { runIds: ["run"] });
+      expect(execution.structuredContent).toMatchObject({
+        data: {
+          runs: [
+            { errorMessage: "TEXT_BODY assertion failed. See assertion results." },
+          ],
+        },
+      });
+      for (const result of [page, detail, evidence, history, diagnosis, execution]) {
+        expect(JSON.stringify(result)).not.toContain("an incomplete item");
+        expect(JSON.stringify(result)).not.toContain("fixture value");
+      }
     } finally {
       await client.close();
     }

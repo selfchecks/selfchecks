@@ -9,7 +9,13 @@ import {
   trace,
 } from "./mcp-data";
 import { prisma } from "./prisma";
-import { redactText, sanitize, summarizeMetrics } from "./mcp-sanitize";
+import {
+  summarizeResponseAssertionError,
+  omitUnsafeResponseBodies,
+  redactText,
+  sanitize,
+  summarizeMetrics,
+} from "./mcp-sanitize";
 import { enqueueCheckRun } from "./run-check";
 import { TEST_SESSION_FAILURE_CLASSIFIER_VERSION } from "./test-session-analysis";
 
@@ -202,7 +208,7 @@ export async function failureContext(access: McpAccess, args: { runId: string })
     }
   };
   return {
-    run: { ...data, result: sanitize(runResult) },
+    run: { ...data, result: sanitize(omitUnsafeResponseBodies(runResult)) },
     baselineRunId,
     storedAnalysis: { run: runAnalysis, session: sessionAnalysis },
     logs: reuse
@@ -416,7 +422,7 @@ function period(from: string, to: string) {
 }
 
 export function failureFingerprint(error: string) {
-  return redactText(error)
+  return redactText(summarizeResponseAssertionError(error))
     .replace(/\b[0-9a-f]{8}-[0-9a-f-]{27,}\b/gi, "<id>")
     .replace(/\b[0-9a-f]{16,}\b/gi, "<id>")
     .replace(/\b\d+\b/g, "<n>")
@@ -489,7 +495,9 @@ export async function similarFailures(
     if (cluster.examples.length < 5)
       cluster.examples.push({
         ...run,
-        errorMessage: redactText(run.errorMessage).slice(0, 2000),
+        errorMessage: redactText(
+          summarizeResponseAssertionError(run.errorMessage),
+        ).slice(0, 2000),
       });
     clusters.set(fingerprint, cluster);
   }

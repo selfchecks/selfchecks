@@ -4,7 +4,12 @@ import { unzipSync } from "fflate";
 import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import type { McpAccess } from "./mcp-auth";
-import { redactText, sanitize, summarizeMetrics } from "./mcp-sanitize";
+import {
+  omitUnsafeResponseBodies,
+  redactText,
+  sanitize,
+  summarizeMetrics,
+} from "./mcp-sanitize";
 
 export class McpToolError extends Error {}
 
@@ -69,10 +74,15 @@ export async function findRun(access: McpAccess, id: string) {
   return run;
 }
 
-export function presentRun(run: Omit<Awaited<ReturnType<typeof findRun>>, "result">) {
-  const { testSession, ...data } = run;
+export function presentRun(
+  run: Omit<Awaited<ReturnType<typeof findRun>>, "result"> & {
+    result?: Prisma.JsonValue;
+  },
+) {
+  const { testSession, result, ...data } = run;
   return sanitize({
     ...data,
+    ...(result !== undefined ? { result: omitUnsafeResponseBodies(result) } : {}),
     revisionContext: {
       testSession,
       meaning:
