@@ -34,6 +34,22 @@ function ConsentShell({ children }: { children: ReactNode }) {
 const focus =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#151c26]";
 
+const optionalPermissions = [
+  {
+    scope: "run",
+    icon: Play,
+    label: "Run checks manually",
+    description:
+      "Start individual and group runs. Checks may change data in the monitored application.",
+  },
+  {
+    scope: "deploy",
+    icon: GitBranch,
+    label: "Record application releases",
+    description: "Add deployment events to release history.",
+  },
+];
+
 export function ConsentView({
   requestId,
   csrf,
@@ -73,8 +89,8 @@ export function ConsentView({
           </h1>
           <p className="mt-4 break-words text-sm leading-6 text-slate-400">
             <strong className="font-medium text-slate-200">{clientName}</strong> wants
-            to read your monitoring results. Choose which projects and actions it can
-            access.
+            to connect to SelfChecks. Review the permissions and choose which projects
+            it can access.
           </p>
           <div className="mt-7 border-t border-slate-700/60 pt-5">
             <div className="flex items-center gap-2 text-xs font-medium text-slate-400">
@@ -144,63 +160,70 @@ export function ConsentView({
             <legend className="text-sm font-semibold text-slate-100">
               Permissions
             </legend>
-            <div className="mt-3 divide-y divide-slate-700/70 overflow-hidden rounded-xl border border-slate-700/70">
-              <div className="flex items-start gap-3 bg-slate-800/25 p-4">
+            <ul
+              role="list"
+              className="mt-3 divide-y divide-slate-700/70 overflow-hidden rounded-xl border border-slate-700/70"
+            >
+              <li className="flex items-start gap-3 bg-slate-800/25 p-4">
                 <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0 text-blue-300" />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-slate-200">
                     Read monitoring results
                   </p>
                   <p className="mt-1 text-xs leading-5 text-slate-400">
-                    Checks, run history, logs, artifacts and saved AI analysis.
+                    Checks, test sessions and their runs, logs, artifacts, release
+                    history and saved AI analysis.
                   </p>
                 </div>
                 <span className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-slate-400">
                   <Check className="h-3 w-3" />
                   Required
                 </span>
-              </div>
-              {requestedScopes.includes("run") && (
-                <label className="flex cursor-pointer items-start gap-3 p-4 transition-colors hover:bg-slate-800/40 focus-within:bg-slate-800/40">
-                  <Play className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-medium text-slate-200">
-                      Run checks manually
-                    </span>
-                    <span className="mt-1 block text-xs leading-5 text-slate-400">
-                      Allow individual and group runs. Checks may change data in the
-                      monitored application.
-                    </span>
-                  </span>
-                  <input
-                    type="checkbox"
-                    name="run"
-                    value="yes"
-                    className={`mt-0.5 h-4 w-4 shrink-0 accent-blue-500 ${focus}`}
-                  />
-                </label>
-              )}
-              {requestedScopes.includes("deploy") && (
-                <label className="flex cursor-pointer items-start gap-3 p-4 transition-colors hover:bg-slate-800/40 focus-within:bg-slate-800/40">
-                  <GitBranch className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-medium text-slate-200">
-                      Record application releases
-                    </span>
-                    <span className="mt-1 block text-xs leading-5 text-slate-400">
-                      Add deployment events to release history. This permission does not
-                      deploy code.
-                    </span>
-                  </span>
-                  <input
-                    type="checkbox"
-                    name="deploy"
-                    value="yes"
-                    className={`mt-0.5 h-4 w-4 shrink-0 accent-blue-500 ${focus}`}
-                  />
-                </label>
-              )}
-            </div>
+              </li>
+              {optionalPermissions.map(({ scope, icon: Icon, label, description }) => {
+                const requested = requestedScopes.includes(scope);
+                const labelId = `permission-${scope}-label`;
+                const descriptionId = `permission-${scope}-description`;
+                const statusId = `permission-${scope}-status`;
+                return (
+                  <li key={scope}>
+                    <label
+                      className={`flex items-start gap-3 p-4 ${requested ? "cursor-pointer transition-colors hover:bg-slate-800/40 focus-within:bg-slate-800/40" : ""}`}
+                    >
+                      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+                      <span className="min-w-0 flex-1">
+                        <span
+                          id={labelId}
+                          className="block text-sm font-medium text-slate-200"
+                        >
+                          {label}
+                        </span>
+                        <span
+                          id={descriptionId}
+                          className="mt-1 block text-xs leading-5 text-slate-400"
+                        >
+                          {description}
+                        </span>
+                      </span>
+                      <span className="mt-0.5 flex shrink-0 flex-col items-end gap-1 text-[11px] text-slate-400 sm:flex-row sm:items-center sm:gap-2">
+                        <span id={statusId}>
+                          {requested ? "Optional" : "Not requested"}
+                        </span>
+                        <input
+                          type="checkbox"
+                          name={scope}
+                          value="yes"
+                          disabled={!requested}
+                          aria-labelledby={labelId}
+                          aria-describedby={`${descriptionId} ${statusId}`}
+                          className={`h-4 w-4 shrink-0 accent-blue-500 ${focus}`}
+                        />
+                      </span>
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
           </fieldset>
           <div className="mt-7 grid grid-cols-[0.7fr_1.3fr] gap-3">
             <button
